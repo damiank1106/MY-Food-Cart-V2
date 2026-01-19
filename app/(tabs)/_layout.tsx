@@ -48,7 +48,7 @@ export default function TabLayout() {
             height: '100%',
             flexDirection: 'column' as const,
             paddingTop: 60,
-            paddingBottom: 28,
+            paddingBottom: 18,
             borderTopWidth: 0,
             borderRightWidth: 1,
             borderRightColor: tabBarBorderColor,
