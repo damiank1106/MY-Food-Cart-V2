@@ -16,17 +16,22 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { ShoppingCart, Lock, Eye, EyeOff } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useAuth } from '@/contexts/AuthContext';
+import { useSync } from '@/contexts/SyncContext';
 import { Colors } from '@/constants/colors';
+import SyncProgressModal from '@/components/SyncProgressModal';
 
 const { width } = Dimensions.get('window');
 
 export default function WelcomeScreen() {
   const router = useRouter();
   const { login, settings, user, isInitialized } = useAuth();
+  const { triggerFullSync } = useSync();
   const [pin, setPin] = useState('');
   const [showPin, setShowPin] = useState(false);
   const [error, setError] = useState('');
   const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [showSyncModal, setShowSyncModal] = useState(false);
+  const [syncStep, setSyncStep] = useState<'uploading' | 'downloading'>('uploading');
   
   const shakeAnimation = useRef(new Animated.Value(0)).current;
   const fadeAnimation = useRef(new Animated.Value(0)).current;
@@ -79,15 +84,28 @@ export default function WelcomeScreen() {
     
     if (result.success) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setIsLoggingIn(false);
+      
+      setShowSyncModal(true);
+      setSyncStep('uploading');
+      
+      setTimeout(() => setSyncStep('downloading'), 1000);
+      
+      try {
+        await triggerFullSync({ reason: 'login' });
+      } catch (syncError) {
+        console.log('Sync after login failed (continuing anyway):', syncError);
+      }
+      
+      setShowSyncModal(false);
       router.replace('/home');
     } else {
       setError('Invalid PIN. Please try again.');
       shake();
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       setPin('');
+      setIsLoggingIn(false);
     }
-    
-    setIsLoggingIn(false);
   };
 
   const handlePinChange = (text: string) => {
@@ -190,6 +208,12 @@ export default function WelcomeScreen() {
           </View>
         </Animated.View>
       </KeyboardAvoidingView>
+      
+      <SyncProgressModal 
+        visible={showSyncModal} 
+        step={syncStep}
+        darkMode={settings.darkMode}
+      />
     </View>
   );
 }
