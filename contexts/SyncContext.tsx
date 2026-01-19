@@ -99,10 +99,10 @@ export const [SyncProvider, useSync] = createContextHook(() => {
       const serverUsers = await fetchUsersFromSupabase();
       
       if (serverUsers && serverUsers.length > 0) {
-        console.log(`Running user ID migration with ${serverUsers.length} server users...`);
-        await migrateLocalUserIdsToServerIds(
-          serverUsers.map(u => ({ id: u.id, pin: u.pin, role: u.role, name: u.name }))
-        );
+        await migrateLocalUserIdsToServerIds({
+          serverUsers: serverUsers.map(u => ({ id: u.id, pin: u.pin, role: u.role, name: u.name })),
+          fallbackPin: DEVELOPER_PIN,
+        });
       }
 
       console.log('Running pre-sync database repair...');

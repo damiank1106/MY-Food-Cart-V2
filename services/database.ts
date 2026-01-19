@@ -985,12 +985,27 @@ interface ServerUser {
   name?: string;
 }
 
-export async function migrateLocalUserIdsToServerIds(serverUsers: ServerUser[]): Promise<void> {
+interface MigrationOptions {
+  serverUsers: ServerUser[];
+  fallbackPin?: string;
+}
+
+export async function migrateLocalUserIdsToServerIds(options: MigrationOptions): Promise<void> {
+  const { serverUsers, fallbackPin } = options;
+  
   if (serverUsers.length === 0) {
     console.log('No server users to migrate to');
     return;
   }
   console.log(`Running user ID migration with ${serverUsers.length} server users...`);
+
+  const pinToServerId = new Map<string, string>();
+  for (const su of serverUsers) {
+    pinToServerId.set(su.pin, su.id);
+  }
+
+  const fallbackServerId = fallbackPin ? pinToServerId.get(fallbackPin) : (pinToServerId.get('2345') || serverUsers[0]?.id);
+  console.log(`Fallback server ID for orphans: ${fallbackServerId} (pin: ${fallbackPin || '2345 or first'})`);
 
   if (Platform.OS === 'web') {
     const localUsers = await getFromStorage<User[]>(STORAGE_KEYS.users, []);
@@ -1001,6 +1016,7 @@ export async function migrateLocalUserIdsToServerIds(serverUsers: ServerUser[]):
 
     const idRemapping = new Map<string, string>();
     const localIdsToRemove = new Set<string>();
+    const validServerIds = new Set(serverUsers.map(su => su.id));
 
     for (const localUser of localUsers) {
       const matchingServer = serverUsers.find(su => su.pin === localUser.pin);
@@ -1011,14 +1027,17 @@ export async function migrateLocalUserIdsToServerIds(serverUsers: ServerUser[]):
       }
     }
 
-    if (idRemapping.size === 0) {
-      console.log('No user ID migrations needed');
-      return;
-    }
+    const localUserIds = new Set(localUsers.map(u => u.id));
+    let orphanFixCount = 0;
 
     inventory = inventory.map(item => {
       if (item.createdBy && idRemapping.has(item.createdBy)) {
         return { ...item, createdBy: idRemapping.get(item.createdBy)! };
+      }
+      if (item.createdBy && !localUserIds.has(item.createdBy) && !validServerIds.has(item.createdBy) && fallbackServerId) {
+        console.log(`Fixing orphan inventory ${item.id}: ${item.createdBy} -> ${fallbackServerId}`);
+        orphanFixCount++;
+        return { ...item, createdBy: fallbackServerId };
       }
       return item;
     });
@@ -1027,6 +1046,11 @@ export async function migrateLocalUserIdsToServerIds(serverUsers: ServerUser[]):
       if (s.createdBy && idRemapping.has(s.createdBy)) {
         return { ...s, createdBy: idRemapping.get(s.createdBy)! };
       }
+      if (s.createdBy && !localUserIds.has(s.createdBy) && !validServerIds.has(s.createdBy) && fallbackServerId) {
+        console.log(`Fixing orphan sale ${s.id}: ${s.createdBy} -> ${fallbackServerId}`);
+        orphanFixCount++;
+        return { ...s, createdBy: fallbackServerId };
+      }
       return s;
     });
 
@@ -1034,12 +1058,22 @@ export async function migrateLocalUserIdsToServerIds(serverUsers: ServerUser[]):
       if (e.createdBy && idRemapping.has(e.createdBy)) {
         return { ...e, createdBy: idRemapping.get(e.createdBy)! };
       }
+      if (e.createdBy && !localUserIds.has(e.createdBy) && !validServerIds.has(e.createdBy) && fallbackServerId) {
+        console.log(`Fixing orphan expense ${e.id}: ${e.createdBy} -> ${fallbackServerId}`);
+        orphanFixCount++;
+        return { ...e, createdBy: fallbackServerId };
+      }
       return e;
     });
 
     activities = activities.map(a => {
       if (a.userId && idRemapping.has(a.userId)) {
         return { ...a, userId: idRemapping.get(a.userId)! };
+      }
+      if (a.userId && !localUserIds.has(a.userId) && !validServerIds.has(a.userId) && fallbackServerId) {
+        console.log(`Fixing orphan activity ${a.id}: ${a.userId} -> ${fallbackServerId}`);
+        orphanFixCount++;
+        return { ...a, userId: fallbackServerId };
       }
       return a;
     });
@@ -1069,7 +1103,7 @@ export async function migrateLocalUserIdsToServerIds(serverUsers: ServerUser[]):
     await setToStorage(STORAGE_KEYS.expenses, expenses);
     await setToStorage(STORAGE_KEYS.activities, activities);
 
-    console.log(`Migrated ${idRemapping.size} user IDs`);
+    console.log(`Migration complete: ${idRemapping.size} user ID remaps, ${orphanFixCount} orphan fixes`);
     return;
   }
 
@@ -1086,11 +1120,6 @@ export async function migrateLocalUserIdsToServerIds(serverUsers: ServerUser[]):
       idRemapping.set(localUser.id, matchingServer.id);
       localIdsToRemove.push(localUser.id);
     }
-  }
-
-  if (idRemapping.size === 0) {
-    console.log('No user ID migrations needed');
-    return;
   }
 
   for (const [localId, serverId] of idRemapping) {
@@ -1127,33 +1156,47 @@ export async function migrateLocalUserIdsToServerIds(serverUsers: ServerUser[]):
     }
   }
 
-  const orphanedInventory = await db.getAllAsync<{ id: string; createdBy: string }>(
-    'SELECT id, createdBy FROM inventory WHERE createdBy NOT IN (SELECT id FROM users)'
-  );
-  if (orphanedInventory.length > 0) {
-    console.log(`Found ${orphanedInventory.length} orphaned inventory items, will attempt to fix`);
-    const firstUser = await db.getFirstAsync<{ id: string }>('SELECT id FROM users LIMIT 1');
-    if (firstUser) {
-      for (const item of orphanedInventory) {
-        await db.runAsync('UPDATE inventory SET createdBy = ? WHERE id = ?', [firstUser.id, item.id]);
-      }
+  let orphanFixCount = 0;
+
+  if (fallbackServerId) {
+    const orphanedInventory = await db.getAllAsync<{ id: string; createdBy: string }>(
+      `SELECT id, createdBy FROM inventory WHERE createdBy NOT IN (SELECT id FROM users)`
+    );
+    for (const item of orphanedInventory) {
+      console.log(`Fixing orphan inventory ${item.id}: ${item.createdBy} -> ${fallbackServerId}`);
+      await db.runAsync('UPDATE inventory SET createdBy = ? WHERE id = ?', [fallbackServerId, item.id]);
+      orphanFixCount++;
+    }
+
+    const orphanedSales = await db.getAllAsync<{ id: string; createdBy: string }>(
+      `SELECT id, createdBy FROM sales WHERE createdBy NOT IN (SELECT id FROM users)`
+    );
+    for (const sale of orphanedSales) {
+      console.log(`Fixing orphan sale ${sale.id}: ${sale.createdBy} -> ${fallbackServerId}`);
+      await db.runAsync('UPDATE sales SET createdBy = ? WHERE id = ?', [fallbackServerId, sale.id]);
+      orphanFixCount++;
+    }
+
+    const orphanedExpenses = await db.getAllAsync<{ id: string; createdBy: string }>(
+      `SELECT id, createdBy FROM expenses WHERE createdBy NOT IN (SELECT id FROM users)`
+    );
+    for (const expense of orphanedExpenses) {
+      console.log(`Fixing orphan expense ${expense.id}: ${expense.createdBy} -> ${fallbackServerId}`);
+      await db.runAsync('UPDATE expenses SET createdBy = ? WHERE id = ?', [fallbackServerId, expense.id]);
+      orphanFixCount++;
+    }
+
+    const orphanedActivities = await db.getAllAsync<{ id: string; userId: string }>(
+      `SELECT id, userId FROM activities WHERE userId NOT IN (SELECT id FROM users)`
+    );
+    for (const activity of orphanedActivities) {
+      console.log(`Fixing orphan activity ${activity.id}: ${activity.userId} -> ${fallbackServerId}`);
+      await db.runAsync('UPDATE activities SET userId = ? WHERE id = ?', [fallbackServerId, activity.id]);
+      orphanFixCount++;
     }
   }
 
-  const orphanedActivities = await db.getAllAsync<{ id: string; userId: string }>(
-    'SELECT id, userId FROM activities WHERE userId NOT IN (SELECT id FROM users)'
-  );
-  if (orphanedActivities.length > 0) {
-    console.log(`Found ${orphanedActivities.length} orphaned activities, will attempt to fix`);
-    const firstUser = await db.getFirstAsync<{ id: string }>('SELECT id FROM users LIMIT 1');
-    if (firstUser) {
-      for (const activity of orphanedActivities) {
-        await db.runAsync('UPDATE activities SET userId = ? WHERE id = ?', [firstUser.id, activity.id]);
-      }
-    }
-  }
-
-  console.log(`Migrated ${idRemapping.size} user IDs`);
+  console.log(`Migration complete: ${idRemapping.size} user ID remaps, ${orphanFixCount} orphan fixes`);
 }
 
 export async function resolveUserPinConflict(
