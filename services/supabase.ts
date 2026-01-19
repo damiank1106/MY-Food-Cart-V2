@@ -331,6 +331,31 @@ export async function syncActivitiesToSupabase(activities: Activity[]): Promise<
   }
 }
 
+export async function findUserByPinInSupabase(pin: string): Promise<{ id: string; pin: string } | null> {
+  if (!isSupabaseConfigured() || !supabase) return null;
+  
+  try {
+    const { data, error } = await supabase
+      .from('users')
+      .select('id, pin')
+      .eq('pin', pin)
+      .limit(1)
+      .single();
+    
+    if (error) {
+      if (error.code === 'PGRST116') {
+        return null;
+      }
+      console.log('Error finding user by PIN:', error);
+      return null;
+    }
+    return data ? { id: data.id, pin: data.pin } : null;
+  } catch (error) {
+    console.log('Error finding user by PIN:', error);
+    return null;
+  }
+}
+
 export async function deleteFromSupabase(table: string, id: string): Promise<boolean> {
   if (!isSupabaseConfigured() || !supabase) return false;
   

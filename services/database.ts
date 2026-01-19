@@ -1156,6 +1156,83 @@ export async function migrateLocalUserIdsToServerIds(serverUsers: ServerUser[]):
   console.log(`Migrated ${idRemapping.size} user IDs`);
 }
 
+export async function resolveUserPinConflict(
+  localUserId: string,
+  serverUserId: string,
+  localUser: User
+): Promise<void> {
+  if (localUserId === serverUserId) return;
+  
+  console.log(`Resolving PIN conflict: local ${localUserId} -> server ${serverUserId}`);
+
+  if (Platform.OS === 'web') {
+    let users = await getFromStorage<User[]>(STORAGE_KEYS.users, []);
+    let inventory = await getFromStorage<InventoryItem[]>(STORAGE_KEYS.inventory, []);
+    let sales = await getFromStorage<Sale[]>(STORAGE_KEYS.sales, []);
+    let expenses = await getFromStorage<Expense[]>(STORAGE_KEYS.expenses, []);
+    let activities = await getFromStorage<Activity[]>(STORAGE_KEYS.activities, []);
+
+    inventory = inventory.map(item =>
+      item.createdBy === localUserId ? { ...item, createdBy: serverUserId } : item
+    );
+    sales = sales.map(s =>
+      s.createdBy === localUserId ? { ...s, createdBy: serverUserId } : s
+    );
+    expenses = expenses.map(e =>
+      e.createdBy === localUserId ? { ...e, createdBy: serverUserId } : e
+    );
+    activities = activities.map(a =>
+      a.userId === localUserId ? { ...a, userId: serverUserId } : a
+    );
+
+    users = users.filter(u => u.id !== localUserId);
+    const existingServer = users.find(u => u.id === serverUserId);
+    if (!existingServer) {
+      users.push({
+        ...localUser,
+        id: serverUserId,
+        syncStatus: 'synced',
+      });
+    }
+
+    await setToStorage(STORAGE_KEYS.users, users);
+    await setToStorage(STORAGE_KEYS.inventory, inventory);
+    await setToStorage(STORAGE_KEYS.sales, sales);
+    await setToStorage(STORAGE_KEYS.expenses, expenses);
+    await setToStorage(STORAGE_KEYS.activities, activities);
+    return;
+  }
+
+  if (!db) return;
+
+  await db.runAsync('UPDATE inventory SET createdBy = ? WHERE createdBy = ?', [serverUserId, localUserId]);
+  await db.runAsync('UPDATE sales SET createdBy = ? WHERE createdBy = ?', [serverUserId, localUserId]);
+  await db.runAsync('UPDATE expenses SET createdBy = ? WHERE createdBy = ?', [serverUserId, localUserId]);
+  await db.runAsync('UPDATE activities SET userId = ? WHERE userId = ?', [serverUserId, localUserId]);
+
+  await db.runAsync('DELETE FROM users WHERE id = ?', [localUserId]);
+
+  const existingServer = await db.getFirstAsync<{ id: string }>('SELECT id FROM users WHERE id = ?', [serverUserId]);
+  if (!existingServer) {
+    await db.runAsync(
+      'INSERT INTO users (id, name, pin, role, bio, profilePicture, createdAt, updatedAt, syncStatus) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [
+        serverUserId,
+        localUser.name,
+        localUser.pin,
+        localUser.role,
+        localUser.bio || null,
+        localUser.profilePicture || null,
+        localUser.createdAt,
+        new Date().toISOString(),
+        'synced'
+      ]
+    );
+  }
+
+  console.log(`PIN conflict resolved: ${localUserId} -> ${serverUserId}`);
+}
+
 export async function upsertActivitiesFromServer(serverActivities: Activity[]): Promise<void> {
   if (serverActivities.length === 0) return;
   console.log(`Upserting ${serverActivities.length} activities from server`);

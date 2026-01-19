@@ -18,6 +18,7 @@ import {
   upsertActivitiesFromServer,
   repairDuplicateCategories,
   migrateLocalUserIdsToServerIds,
+  resolveUserPinConflict,
 } from '@/services/database';
 import {
   isSupabaseConfigured,
@@ -34,6 +35,7 @@ import {
   fetchSalesFromSupabase,
   fetchExpensesFromSupabase,
   fetchActivitiesFromSupabase,
+  findUserByPinInSupabase,
 } from '@/services/supabase';
 
 export type SyncStatus = 'synced' | 'pending' | 'syncing' | 'offline';
@@ -119,7 +121,7 @@ export const [SyncProvider, useSync] = createContextHook(() => {
         getActivities(),
       ]);
 
-      const pendingUsers = users.filter(u => u.syncStatus === 'pending');
+      let pendingUsers = users.filter(u => u.syncStatus === 'pending');
       const pendingCategories = categories.filter(c => c.syncStatus === 'pending');
       const pendingInventory = inventory.filter(i => i.syncStatus === 'pending');
       const pendingSales = sales.filter(s => s.syncStatus === 'pending');
@@ -131,9 +133,31 @@ export const [SyncProvider, useSync] = createContextHook(() => {
       let pushSuccess = true;
 
       if (pendingUsers.length > 0) {
-        console.log('Pushing users...');
-        const result = await syncUsersToSupabase(pendingUsers);
-        if (!result) pushSuccess = false;
+        console.log('Resolving user PIN conflicts before push...');
+        const usersToSkip = new Set<string>();
+        
+        for (const localUser of pendingUsers) {
+          try {
+            const serverUser = await findUserByPinInSupabase(localUser.pin);
+            if (serverUser && serverUser.id !== localUser.id) {
+              console.log(`PIN conflict detected: local ${localUser.id} vs server ${serverUser.id} for PIN ${localUser.pin}`);
+              await resolveUserPinConflict(localUser.id, serverUser.id, localUser);
+              usersToSkip.add(localUser.id);
+            }
+          } catch (error) {
+            console.log(`Error checking PIN conflict for user ${localUser.id}:`, error);
+          }
+        }
+        
+        pendingUsers = pendingUsers.filter(u => !usersToSkip.has(u.id));
+        
+        if (pendingUsers.length > 0) {
+          console.log(`Pushing ${pendingUsers.length} users (${usersToSkip.size} resolved via PIN conflict)...`);
+          const result = await syncUsersToSupabase(pendingUsers);
+          if (!result) pushSuccess = false;
+        } else {
+          console.log(`All ${usersToSkip.size} pending users resolved via PIN conflict, none to push`);
+        }
       }
 
       if (pendingCategories.length > 0) {
