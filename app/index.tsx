@@ -78,7 +78,7 @@ export default function IntroScreen() {
             playsInline
             style={{ width: '100%', height: '100%', objectFit: 'cover' } as React.CSSProperties}
           >
-            <source src="https://pub-e001eb4506b145aa938b5d3badbff6a5.r2.dev/attachments/w9yigrrx8luuuiv2awdgw" type="video/mp4" />
+            <source src="/assets/videos/intro.webm" type="video/mp4" />
           </video>
         </View>
       ) : (
