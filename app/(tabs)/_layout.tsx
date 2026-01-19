@@ -16,10 +16,14 @@ export default function TabLayout() {
   
   const isInventoryClerk = user?.role === 'inventory_clerk';
   const tabBarBackground = settings.glassContainers
-    ? theme.tabBar.startsWith("#")
-      ? `${theme.tabBar}00`
-      : "transparent"
+    ? "transparent"
     : theme.tabBar;
+  const tabBarBorderColor = settings.glassContainers
+    ? "transparent"
+    : theme.tabBarBorder;
+  const tabBarBackgroundComponent = settings.glassContainers
+    ? () => null
+    : undefined;
 
   return (
     <Tabs
@@ -28,11 +32,13 @@ export default function TabLayout() {
         tabBarInactiveTintColor: theme.tabIconDefault,
         tabBarStyle: {
           backgroundColor: tabBarBackground,
-          borderTopColor: theme.tabBarBorder,
+          borderTopColor: tabBarBorderColor,
           borderTopWidth: 1,
           paddingBottom: insets.bottom + 8,
           paddingTop: 8,
           height: 60 + insets.bottom + 8,
+          elevation: settings.glassContainers ? 0 : undefined,
+          shadowOpacity: settings.glassContainers ? 0 : undefined,
           ...(isTablet && {
             position: 'absolute' as const,
             left: 0,
@@ -45,9 +51,10 @@ export default function TabLayout() {
             paddingBottom: 28,
             borderTopWidth: 0,
             borderRightWidth: 1,
-            borderRightColor: theme.tabBarBorder,
+            borderRightColor: tabBarBorderColor,
           }),
         },
+        tabBarBackground: tabBarBackgroundComponent,
         tabBarLabelStyle: {
           fontSize: 11,
           fontWeight: '500' as const,
