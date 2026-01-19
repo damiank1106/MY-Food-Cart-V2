@@ -1,0 +1,422 @@
+import React, { useState, useCallback, useMemo } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  Dimensions,
+  RefreshControl,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Package, ShoppingCart, User, Settings, ChevronRight } from 'lucide-react-native';
+import { useQuery } from '@tanstack/react-query';
+import { useAuth } from '@/contexts/AuthContext';
+import { Colors } from '@/constants/colors';
+import { formatDate } from '@/types';
+import { getSalesByDateRange, getActivities } from '@/services/database';
+import Svg, { Path, Circle, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
+
+const { width } = Dimensions.get('window');
+
+function getWeekDates(weeksAgo: number = 0) {
+  const today = new Date();
+  const dayOfWeek = today.getDay();
+  const monday = new Date(today);
+  monday.setDate(today.getDate() - dayOfWeek + 1 - (weeksAgo * 7));
+  
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  
+  return { start: monday, end: sunday };
+}
+
+function formatWeekRange(start: Date, end: Date): string {
+  const startMonth = start.toLocaleDateString('en-US', { month: 'short' });
+  const endMonth = end.toLocaleDateString('en-US', { month: 'short' });
+  const startDay = start.getDate();
+  const endDay = end.getDate();
+  
+  if (startMonth === endMonth) {
+    return `${startMonth}\n${startDay}-${endDay}`;
+  }
+  return `${startMonth} ${startDay}-\n${endMonth} ${endDay}`;
+}
+
+function getActivityIcon(type: string, color: string) {
+  switch (type) {
+    case 'inventory_add':
+    case 'inventory_update':
+    case 'inventory_delete':
+      return <Package color={color} size={20} />;
+    case 'sale_add':
+    case 'expense_add':
+      return <ShoppingCart color={color} size={20} />;
+    case 'profile_update':
+      return <User color={color} size={20} />;
+    case 'settings_change':
+      return <Settings color={color} size={20} />;
+    default:
+      return <Package color={color} size={20} />;
+  }
+}
+
+function getRelativeTime(dateString: string): string {
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+  
+  if (diffMins < 1) return 'Just now';
+  if (diffMins < 60) return `${diffMins} minute${diffMins > 1 ? 's' : ''} ago`;
+  if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
+  return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
+}
+
+export default function HomeScreen() {
+  const { user, settings } = useAuth();
+  const theme = settings.darkMode ? Colors.dark : Colors.light;
+  const [selectedWeek, setSelectedWeek] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const weeks = useMemo(() => {
+    return [0, 1, 2, 3].map(i => {
+      const { start, end } = getWeekDates(i);
+      return { start, end, label: formatWeekRange(start, end) };
+    });
+  }, []);
+
+  const currentWeek = weeks[selectedWeek];
+  const startDateStr = currentWeek.start.toISOString().split('T')[0];
+  const endDateStr = currentWeek.end.toISOString().split('T')[0];
+
+  const { data: salesData = [], refetch: refetchSales } = useQuery({
+    queryKey: ['sales', startDateStr, endDateStr],
+    queryFn: () => getSalesByDateRange(startDateStr, endDateStr),
+  });
+
+  const { data: activities = [], refetch: refetchActivities } = useQuery({
+    queryKey: ['activities'],
+    queryFn: getActivities,
+  });
+
+  const chartData = useMemo(() => {
+    const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    const data = days.map((day, index) => {
+      const date = new Date(currentWeek.start);
+      date.setDate(date.getDate() + index);
+      const dateStr = date.toISOString().split('T')[0];
+      
+      const daySales = salesData
+        .filter(s => s.date === dateStr)
+        .reduce((sum, s) => sum + s.total, 0);
+      
+      return { day, sales: daySales };
+    });
+    return data;
+  }, [salesData, currentWeek]);
+
+  const maxValue = Math.max(...chartData.map(d => d.sales), 200);
+  const chartHeight = 150;
+  const chartWidth = width - 100;
+  const stepX = chartWidth / 6;
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await Promise.all([refetchSales(), refetchActivities()]);
+    setRefreshing(false);
+  }, [refetchSales, refetchActivities]);
+
+  const pathData = chartData.map((point, index) => {
+    const x = index * stepX;
+    const y = chartHeight - (point.sales / maxValue) * chartHeight;
+    return `${index === 0 ? 'M' : 'L'} ${x} ${y}`;
+  }).join(' ');
+
+  const areaPath = `${pathData} L ${(chartData.length - 1) * stepX} ${chartHeight} L 0 ${chartHeight} Z`;
+
+  return (
+    <View style={[styles.container, { backgroundColor: theme.background }]}>
+      <LinearGradient
+        colors={[theme.backgroundGradientStart, theme.backgroundGradientEnd]}
+        style={StyleSheet.absoluteFill}
+      />
+      
+      <SafeAreaView style={styles.safeArea} edges={['top']}>
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={theme.primary}
+            />
+          }
+        >
+          <View style={[styles.welcomeCard, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
+            <Text style={[styles.welcomeText, { color: theme.text }]}>
+              Welcome to {user?.name || 'Guest'} Food Cart
+            </Text>
+          </View>
+
+          <View style={styles.row}>
+            <View style={[styles.dateCard, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
+              <Text style={[styles.dateLabel, { color: theme.textSecondary }]}>Date</Text>
+              <Text style={[styles.dateText, { color: theme.text }]}>{formatDate(new Date())}</Text>
+              
+              <Text style={[styles.sectionTitle, { color: theme.text, marginTop: 16 }]}>Previous Weeks</Text>
+              <View style={styles.weeksContainer}>
+                {weeks.map((week, index) => (
+                  <TouchableOpacity
+                    key={index}
+                    style={[
+                      styles.weekButton,
+                      { borderColor: theme.cardBorder },
+                      selectedWeek === index && { backgroundColor: theme.primary + '30', borderColor: theme.primary },
+                    ]}
+                    onPress={() => setSelectedWeek(index)}
+                  >
+                    <Text style={[
+                      styles.weekText,
+                      { color: selectedWeek === index ? theme.primary : theme.textSecondary },
+                    ]}>
+                      {week.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
+            <View style={[styles.chartCard, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
+              <Text style={[styles.sectionTitle, { color: theme.text }]}>{"Today's Overview"}</Text>
+              
+              <View style={styles.chartContainer}>
+                <View style={styles.yAxis}>
+                  {[200, 150, 100, 50, 0].map((val, i) => (
+                    <Text key={i} style={[styles.yAxisLabel, { color: theme.textMuted }]}>
+                      ₱{val}
+                    </Text>
+                  ))}
+                </View>
+                
+                <Svg width={chartWidth} height={chartHeight + 30} style={styles.chart}>
+                  <Defs>
+                    <SvgLinearGradient id="areaGradient" x1="0" y1="0" x2="0" y2="1">
+                      <Stop offset="0" stopColor={theme.chartLine} stopOpacity="0.3" />
+                      <Stop offset="1" stopColor={theme.chartLine} stopOpacity="0.05" />
+                    </SvgLinearGradient>
+                  </Defs>
+                  
+                  <Path d={areaPath} fill="url(#areaGradient)" />
+                  <Path d={pathData} stroke={theme.chartLine} strokeWidth={2} fill="none" />
+                  
+                  {chartData.map((point, index) => (
+                    <Circle
+                      key={index}
+                      cx={index * stepX}
+                      cy={chartHeight - (point.sales / maxValue) * chartHeight}
+                      r={4}
+                      fill={theme.chartLine}
+                    />
+                  ))}
+                </Svg>
+              </View>
+              
+              <View style={styles.xAxis}>
+                {chartData.map((point, index) => (
+                  <Text key={index} style={[styles.xAxisLabel, { color: theme.textMuted }]}>
+                    {point.day}
+                  </Text>
+                ))}
+              </View>
+            </View>
+          </View>
+
+          <View style={[styles.updatesCard, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
+            <Text style={[styles.sectionTitle, { color: theme.text }]}>Latest Updates</Text>
+            
+            <View style={styles.updatesGrid}>
+              {activities.slice(0, 4).map((activity) => (
+                <TouchableOpacity
+                  key={activity.id}
+                  style={[styles.updateItem, { backgroundColor: theme.cardHighlight, borderColor: theme.cardBorder }]}
+                >
+                  <View style={[styles.updateIcon, { backgroundColor: theme.primary + '20' }]}>
+                    {getActivityIcon(activity.type, theme.primary)}
+                  </View>
+                  <View style={styles.updateContent}>
+                    <Text style={[styles.updateTitle, { color: theme.text }]} numberOfLines={1}>
+                      {activity.description}
+                    </Text>
+                    <Text style={[styles.updateTime, { color: theme.textMuted }]}>
+                      {getRelativeTime(activity.createdAt)}
+                    </Text>
+                  </View>
+                  <ChevronRight color={theme.textMuted} size={20} />
+                </TouchableOpacity>
+              ))}
+              
+              {activities.length === 0 && (
+                <View style={styles.emptyUpdates}>
+                  <Text style={[styles.emptyText, { color: theme.textMuted }]}>
+                    No recent updates
+                  </Text>
+                </View>
+              )}
+            </View>
+          </View>
+        </ScrollView>
+      </SafeAreaView>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+  safeArea: {
+    flex: 1,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    padding: 16,
+    paddingBottom: 100,
+  },
+  welcomeCard: {
+    padding: 20,
+    borderRadius: 16,
+    borderWidth: 1,
+    marginBottom: 16,
+  },
+  welcomeText: {
+    fontSize: 24,
+    fontWeight: '700' as const,
+  },
+  row: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 16,
+    flexWrap: 'wrap',
+  },
+  dateCard: {
+    flex: 1,
+    minWidth: 200,
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+  },
+  dateLabel: {
+    fontSize: 12,
+    marginBottom: 4,
+  },
+  dateText: {
+    fontSize: 16,
+    fontWeight: '600' as const,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '600' as const,
+    marginBottom: 12,
+  },
+  weeksContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  weekButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    minWidth: 70,
+    alignItems: 'center',
+  },
+  weekText: {
+    fontSize: 11,
+    textAlign: 'center',
+  },
+  chartCard: {
+    flex: 2,
+    minWidth: 300,
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+  },
+  chartContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+  },
+  yAxis: {
+    width: 40,
+    height: 150,
+    justifyContent: 'space-between',
+    paddingRight: 8,
+  },
+  yAxisLabel: {
+    fontSize: 10,
+    textAlign: 'right',
+  },
+  chart: {
+    marginLeft: 8,
+  },
+  xAxis: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 8,
+    paddingLeft: 48,
+  },
+  xAxisLabel: {
+    fontSize: 10,
+    width: 30,
+    textAlign: 'center',
+  },
+  updatesCard: {
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+  },
+  updatesGrid: {
+    gap: 12,
+  },
+  updateItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  updateIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  updateContent: {
+    flex: 1,
+  },
+  updateTitle: {
+    fontSize: 14,
+    fontWeight: '500' as const,
+    marginBottom: 2,
+  },
+  updateTime: {
+    fontSize: 12,
+  },
+  emptyUpdates: {
+    padding: 20,
+    alignItems: 'center',
+  },
+  emptyText: {
+    fontSize: 14,
+  },
+});
