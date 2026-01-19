@@ -26,6 +26,7 @@ import { createUser, isPinTaken, getPendingSummaryAndItems, PendingSummary } fro
 import { useSync } from '@/contexts/SyncContext';
 import { supabase, isSupabaseConfigured } from '@/services/supabase';
 import SyncProgressModal from '@/components/SyncProgressModal';
+import LaserBackground from '@/components/LaserBackground';
 
 const APP_VERSION = '1.0.0';
 const PRIVACY_POLICY_GITHUB_URL = 'https://github.com/user/myfoodcart-privacy-policy';
@@ -296,6 +297,9 @@ export default function SettingsScreen() {
         colors={[theme.backgroundGradientStart, theme.backgroundGradientEnd]}
         style={StyleSheet.absoluteFill}
       />
+      {settings.laserBackground && (
+        <LaserBackground isDarkMode={settings.darkMode} colorPalette={settings.backgroundColorPalette} />
+      )}
       
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         <View style={[styles.header, { borderBottomColor: theme.divider }]}>
