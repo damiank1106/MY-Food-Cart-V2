@@ -17,6 +17,7 @@ import { Plus, Edit2, Trash2, X, ChevronDown } from 'lucide-react-native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
 import { useAuth } from '@/contexts/AuthContext';
+import { useSync } from '@/contexts/SyncContext';
 import { Colors } from '@/constants/colors';
 import { 
   Category, InventoryItem, UnitType, UNITS, formatCurrency 
@@ -29,6 +30,7 @@ import {
 
 export default function InventoryScreen() {
   const { user, settings } = useAuth();
+  const { queueDeletion } = useSync();
   const theme = settings.darkMode ? Colors.dark : Colors.light;
   const queryClient = useQueryClient();
   
@@ -96,7 +98,10 @@ export default function InventoryScreen() {
   });
 
   const deleteItemMutation = useMutation({
-    mutationFn: (id: string) => deleteInventoryItem(id),
+    mutationFn: async (id: string) => {
+      queueDeletion('inventory', id);
+      return deleteInventoryItem(id);
+    },
     onSuccess: async () => {
       queryClient.invalidateQueries({ queryKey: ['inventory'] });
       if (user) {
@@ -122,7 +127,10 @@ export default function InventoryScreen() {
   });
 
   const deleteCategoryMutation = useMutation({
-    mutationFn: (id: string) => deleteCategory(id),
+    mutationFn: async (id: string) => {
+      queueDeletion('categories', id);
+      return deleteCategory(id);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['categories'] });
       if (selectedCategory === editingItem?.categoryId) {

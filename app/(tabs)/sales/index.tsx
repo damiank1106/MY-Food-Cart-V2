@@ -18,6 +18,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
 import { useAuth } from '@/contexts/AuthContext';
+import { useSync } from '@/contexts/SyncContext';
 import { Colors } from '@/constants/colors';
 import { formatCurrency, formatDate } from '@/types';
 import { 
@@ -27,6 +28,7 @@ import {
 
 export default function SalesScreen() {
   const { user, settings } = useAuth();
+  const { queueDeletion } = useSync();
   const theme = settings.darkMode ? Colors.dark : Colors.light;
   const queryClient = useQueryClient();
   
@@ -176,7 +178,10 @@ export default function SalesScreen() {
   });
 
   const deleteSaleMutation = useMutation({
-    mutationFn: (id: string) => deleteSale(id),
+    mutationFn: async (id: string) => {
+      queueDeletion('sales', id);
+      return deleteSale(id);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sales'] });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -184,7 +189,10 @@ export default function SalesScreen() {
   });
 
   const deleteExpenseMutation = useMutation({
-    mutationFn: (id: string) => deleteExpense(id),
+    mutationFn: async (id: string) => {
+      queueDeletion('expenses', id);
+      return deleteExpense(id);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['expenses'] });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);

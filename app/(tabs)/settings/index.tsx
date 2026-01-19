@@ -24,6 +24,7 @@ import { UserRole, ROLE_DISPLAY_NAMES } from '@/types';
 import { createUser, isPinTaken } from '@/services/database';
 import { useSync } from '@/contexts/SyncContext';
 import { supabase, isSupabaseConfigured } from '@/services/supabase';
+import SyncProgressModal from '@/components/SyncProgressModal';
 
 const APP_VERSION = '1.0.0';
 const PRIVACY_POLICY_GITHUB_URL = 'https://github.com/user/myfoodcart-privacy-policy';
@@ -52,6 +53,7 @@ export default function SettingsScreen() {
   const [showConnectionTestModal, setShowConnectionTestModal] = useState(false);
   const [connectionTestResult, setConnectionTestResult] = useState<'connected' | 'not_connected' | null>(null);
   const [isTestingConnection, setIsTestingConnection] = useState(false);
+  const [showSyncModal, setShowSyncModal] = useState(false);
 
   const isDeveloper = user?.role === 'developer';
 
@@ -145,14 +147,24 @@ export default function SettingsScreen() {
   };
 
   const handleLogout = async () => {
-    await syncBeforeLogout();
+    setShowSyncModal(true);
+    try {
+      await syncBeforeLogout();
+    } finally {
+      setShowSyncModal(false);
+    }
     await logout();
     await updateSettings({ hasSeenIntro: false });
     router.replace('/');
   };
 
   const handleGoToWelcome = async () => {
-    await syncBeforeLogout();
+    setShowSyncModal(true);
+    try {
+      await syncBeforeLogout();
+    } finally {
+      setShowSyncModal(false);
+    }
     await logout();
     await updateSettings({ hasSeenIntro: false });
     router.replace('/');
@@ -637,6 +649,11 @@ export default function SettingsScreen() {
           </View>
         </View>
       </Modal>
+
+      <SyncProgressModal 
+        visible={showSyncModal} 
+        darkMode={settings.darkMode} 
+      />
     </View>
   );
 }
