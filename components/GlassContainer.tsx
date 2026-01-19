@@ -17,10 +17,6 @@ export default function GlassContainer({
   opacity,
   darkMode 
 }: GlassContainerProps) {
-  if (!enabled || !isLiquidGlassAvailable()) {
-    return <View style={style}>{children}</View>;
-  }
-
   const opacityMap: Record<'low' | 'medium' | 'high', number> = {
     low: 0.3,
     medium: 0.6,
@@ -31,6 +27,14 @@ export default function GlassContainer({
   const tintColor = darkMode 
     ? `rgba(20, 20, 40, ${tintOpacity})` 
     : `rgba(255, 255, 255, ${tintOpacity})`;
+
+  if (!enabled) {
+    return <View style={style}>{children}</View>;
+  }
+
+  if (!isLiquidGlassAvailable()) {
+    return <View style={[style, { backgroundColor: tintColor }]}>{children}</View>;
+  }
 
   return (
     <GlassView 
