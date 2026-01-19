@@ -495,20 +495,26 @@ export default function SettingsScreen() {
                   <Text style={[styles.settingLabel, { color: theme.text }]}>Glass Opacity</Text>
                 </View>
                 <View style={styles.glassOpacityGrid}>
-                  {([1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as GlassOpacity[]).map((level) => {
+                  {(['low', 'medium', 'high'] as GlassOpacity[]).map((level) => {
                     const isSelected = settings.glassOpacity === level;
+                    const levelColors = {
+                      low: theme.textMuted,
+                      medium: theme.primary,
+                      high: theme.success,
+                    };
                     return (
                       <TouchableOpacity
                         key={level}
                         style={[
                           styles.glassOpacityOption,
-                          { borderColor: isSelected ? theme.primary : theme.cardBorder, backgroundColor: isSelected ? theme.primary + '20' : 'transparent' },
-                          isSelected && { borderWidth: 2 },
+                          { borderColor: isSelected ? levelColors[level] : theme.cardBorder, backgroundColor: isSelected ? levelColors[level] + '20' : 'transparent' },
+                          isSelected && { borderWidth: 3 },
                         ]}
                         onPress={() => handleGlassOpacityChange(level)}
                       >
-                        <Text style={[styles.glassOpacityLabel, { color: isSelected ? theme.primary : theme.textMuted }]}>
-                          {level}
+                        <Droplet color={levelColors[level]} size={24} />
+                        <Text style={[styles.glassOpacityLabel, { color: isSelected ? theme.text : theme.textMuted }]}>
+                          {level.charAt(0).toUpperCase() + level.slice(1)}
                         </Text>
                       </TouchableOpacity>
                     );
@@ -1527,21 +1533,22 @@ const styles = StyleSheet.create({
   },
   glassOpacityGrid: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     paddingHorizontal: 16,
     paddingBottom: 16,
-    gap: 8,
+    gap: 12,
   },
   glassOpacityOption: {
-    width: 50,
-    height: 50,
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 8,
     borderRadius: 12,
-    borderWidth: 1,
+    borderWidth: 2,
   },
   glassOpacityLabel: {
-    fontSize: 16,
-    fontWeight: '700' as const,
+    fontSize: 12,
+    fontWeight: '600' as const,
+    marginTop: 8,
   },
 });

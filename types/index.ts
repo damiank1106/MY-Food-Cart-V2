@@ -72,7 +72,7 @@ export type BackgroundColorPalette = 'blue' | 'purple' | 'green' | 'orange' | 'p
 
 export type BackgroundIntensity = 'low' | 'medium' | 'high';
 
-export type GlassOpacity = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
+export type GlassOpacity = 'low' | 'medium' | 'high';
 
 export interface AppSettings {
   darkMode: boolean;

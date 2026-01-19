@@ -6,7 +6,7 @@ interface GlassContainerProps {
   children: React.ReactNode;
   style?: StyleProp<ViewStyle>;
   enabled: boolean;
-  opacity: number;
+  opacity: 'low' | 'medium' | 'high';
   darkMode: boolean;
 }
 
@@ -21,20 +21,13 @@ export default function GlassContainer({
     return <View style={style}>{children}</View>;
   }
 
-  const opacityMap: Record<number, number> = {
-    1: 0.1,
-    2: 0.2,
-    3: 0.3,
-    4: 0.4,
-    5: 0.5,
-    6: 0.6,
-    7: 0.7,
-    8: 0.8,
-    9: 0.9,
-    10: 1.0,
+  const opacityMap: Record<'low' | 'medium' | 'high', number> = {
+    low: 0.3,
+    medium: 0.6,
+    high: 0.9,
   };
 
-  const tintOpacity = opacityMap[opacity] || 0.5;
+  const tintOpacity = opacityMap[opacity] || 0.6;
   const tintColor = darkMode 
     ? `rgba(20, 20, 40, ${tintOpacity})` 
     : `rgba(255, 255, 255, ${tintOpacity})`;
