@@ -4,11 +4,11 @@ import {
   StyleSheet, 
   TouchableOpacity, 
   Dimensions,
+  Platform,
   ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-
-
+import { useVideoPlayer, VideoView } from 'expo-video';
 import { ChevronRight } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '@/contexts/AuthContext';
@@ -20,9 +20,17 @@ const { width, height } = Dimensions.get('window');
 const isLargeScreen = width >= 768;
 const videoHeight = isLargeScreen ? height * 1.8 : height;
 
+const videoSource = require('../assets/videos/intro.webm');
+
 export default function IntroScreen() {
   const router = useRouter();
   const { isLoading, isInitialized, settings, markIntroSeen, user } = useAuth();
+
+  const player = useVideoPlayer(videoSource, (p) => {
+    p.loop = true;
+    p.muted = false;
+    p.play();
+  });
 
   const theme = settings.darkMode ? Colors.dark : Colors.light;
 
@@ -30,9 +38,9 @@ export default function IntroScreen() {
     if (!isLoading && isInitialized) {
       if (settings.hasSeenIntro) {
         if (user) {
-          router.replace('/(tabs)/home' as any);
+          router.replace('/home');
         } else {
-          router.replace('/welcome' as any);
+          router.replace('/welcome');
         }
       }
     }
@@ -40,7 +48,7 @@ export default function IntroScreen() {
 
   const handleNext = async () => {
     await markIntroSeen();
-    router.replace('/welcome' as any);
+    router.replace('/welcome');
   };
 
   if (isLoading || !isInitialized) {
@@ -66,9 +74,29 @@ export default function IntroScreen() {
         style={StyleSheet.absoluteFill}
       />
       
-      <View style={styles.nativeVideoContainer}>
-        <View style={[styles.video, { backgroundColor: theme.backgroundGradientEnd }]} />
-      </View>
+      {Platform.OS === 'web' ? (
+        <View style={styles.webVideoContainer}>
+          {/* Web: Uses HTML5 video element for better compatibility */}
+          <video
+            autoPlay
+            loop
+            muted
+            playsInline
+            style={{ width: '100%', height: '100%', objectFit: 'cover' } as React.CSSProperties}
+          >
+            <source src="/assets/videos/intro.webm" type="video/webm" />
+          </video>
+        </View>
+      ) : (
+        <View style={styles.nativeVideoContainer}>
+          <VideoView
+              player={player}
+              style={styles.video}
+              contentFit="contain"
+              nativeControls={false}
+            />
+        </View>
+      )}
 
       <TouchableOpacity 
         style={[styles.nextButton, { backgroundColor: theme.primary }]}
