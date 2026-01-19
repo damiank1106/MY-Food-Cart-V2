@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -13,7 +13,8 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Calendar, Plus, X, Trash2 } from 'lucide-react-native';
+import { Calendar, Plus, X, Trash2, PieChart, Save, AlertCircle } from 'lucide-react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
 import { useAuth } from '@/contexts/AuthContext';
@@ -44,6 +45,36 @@ export default function SalesScreen() {
   const [calendarMonth, setCalendarMonth] = useState(selectedDate.getMonth());
   const [calendarDay, setCalendarDay] = useState(selectedDate.getDate());
 
+  const [showSplitModal, setShowSplitModal] = useState(false);
+  const [operationManagerPercent, setOperationManagerPercent] = useState(65);
+  const [generalManagerPercent, setGeneralManagerPercent] = useState(25);
+  const [foodCartPercent, setFoodCartPercent] = useState(10);
+  const [tempOperationPercent, setTempOperationPercent] = useState(65);
+  const [tempGeneralPercent, setTempGeneralPercent] = useState(25);
+  const [tempFoodCartPercent, setTempFoodCartPercent] = useState(10);
+  
+
+  useEffect(() => {
+    loadSplitPercentages();
+  }, []);
+
+  const loadSplitPercentages = async () => {
+    try {
+      const stored = await AsyncStorage.getItem('netSalesSplit');
+      if (stored) {
+        const { operation, general, foodCart } = JSON.parse(stored);
+        setOperationManagerPercent(operation);
+        setGeneralManagerPercent(general);
+        setFoodCartPercent(foodCart);
+        setTempOperationPercent(operation);
+        setTempGeneralPercent(general);
+        setTempFoodCartPercent(foodCart);
+      }
+    } catch (error) {
+      console.log('Error loading split percentages:', error);
+    }
+  };
+
   const dateStr = selectedDate.toISOString().split('T')[0];
 
   const { data: sales = [], refetch: refetchSales } = useQuery({
@@ -58,6 +89,53 @@ export default function SalesScreen() {
 
   const totalSales = sales.reduce((sum, s) => sum + s.total, 0);
   const totalExpenses = expenses.reduce((sum, e) => sum + e.total, 0);
+
+  const netSales = totalSales - totalExpenses;
+  const isNegativeNet = netSales < 0;
+  const effectiveNetSales = isNegativeNet ? 0 : netSales;
+  const operationManagerAmount = (effectiveNetSales * operationManagerPercent) / 100;
+  const generalManagerAmount = (effectiveNetSales * generalManagerPercent) / 100;
+  const foodCartAmount = (effectiveNetSales * foodCartPercent) / 100;
+
+  const saveSplitPercentages = async () => {
+    try {
+      const totalPercent = tempOperationPercent + tempGeneralPercent + tempFoodCartPercent;
+      if (totalPercent !== 100) {
+        Alert.alert('Invalid Split', 'Percentages must add up to 100%');
+        return;
+      }
+      await AsyncStorage.setItem('netSalesSplit', JSON.stringify({
+        operation: tempOperationPercent,
+        general: tempGeneralPercent,
+        foodCart: tempFoodCartPercent,
+      }));
+      setOperationManagerPercent(tempOperationPercent);
+      setGeneralManagerPercent(tempGeneralPercent);
+      setFoodCartPercent(tempFoodCartPercent);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setShowSplitModal(false);
+    } catch (error) {
+      console.log('Error saving split percentages:', error);
+    }
+  };
+
+  const adjustPercentage = (type: 'operation' | 'general' | 'foodCart', delta: number) => {
+    const current = type === 'operation' ? tempOperationPercent : type === 'general' ? tempGeneralPercent : tempFoodCartPercent;
+    const newValue = Math.max(0, Math.min(100, current + delta));
+    
+    if (type === 'operation') setTempOperationPercent(newValue);
+    else if (type === 'general') setTempGeneralPercent(newValue);
+    else setTempFoodCartPercent(newValue);
+    
+    Haptics.selectionAsync();
+  };
+
+  const openSplitModal = () => {
+    setTempOperationPercent(operationManagerPercent);
+    setTempGeneralPercent(generalManagerPercent);
+    setTempFoodCartPercent(foodCartPercent);
+    setShowSplitModal(true);
+  };
 
   const createSaleMutation = useMutation({
     mutationFn: (data: { name: string; total: number }) => 
@@ -230,6 +308,80 @@ export default function SalesScreen() {
             <View style={styles.summaryRow}>
               <Text style={[styles.summaryLabel, { color: theme.textSecondary }]}>Total Expenses</Text>
               <Text style={[styles.summaryValue, { color: theme.error }]}>{formatCurrency(totalExpenses)}</Text>
+            </View>
+            <View style={[styles.summaryDivider, { backgroundColor: theme.divider }]} />
+            <View style={styles.summaryRow}>
+              <Text style={[styles.summaryLabel, { color: theme.textSecondary }]}>Net Sales</Text>
+              <Text style={[styles.summaryValue, { color: isNegativeNet ? theme.error : theme.primary }]}>
+                {formatCurrency(netSales)}
+              </Text>
+            </View>
+          </View>
+
+          {/* Net Sales Split Section */}
+          <View style={[styles.splitCard, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
+            <View style={styles.splitHeader}>
+              <View style={styles.splitTitleRow}>
+                <PieChart color={theme.primary} size={20} />
+                <Text style={[styles.splitTitle, { color: theme.text }]}>Net Sales Split</Text>
+              </View>
+              <TouchableOpacity
+                style={[styles.adjustButton, { backgroundColor: theme.primary + '20' }]}
+                onPress={openSplitModal}
+              >
+                <Text style={[styles.adjustButtonText, { color: theme.primary }]}>Adjust</Text>
+              </TouchableOpacity>
+            </View>
+
+            {isNegativeNet && (
+              <View style={[styles.warningBanner, { backgroundColor: theme.warning + '20' }]}>
+                <AlertCircle color={theme.warning} size={16} />
+                <Text style={[styles.warningText, { color: theme.warning }]}>
+                  Net sales are negative. Split calculation requires positive Total Sales.
+                </Text>
+              </View>
+            )}
+
+            <View style={styles.splitItems}>
+              <View style={styles.splitItem}>
+                <View style={styles.splitItemLeft}>
+                  <View style={[styles.splitDot, { backgroundColor: '#4CAF50' }]} />
+                  <Text style={[styles.splitItemLabel, { color: theme.textSecondary }]}>Operation Manager</Text>
+                </View>
+                <View style={styles.splitItemRight}>
+                  <Text style={[styles.splitPercent, { color: theme.textMuted }]}>{operationManagerPercent}%</Text>
+                  <Text style={[styles.splitAmount, { color: theme.text }]}>{formatCurrency(operationManagerAmount)}</Text>
+                </View>
+              </View>
+
+              <View style={styles.splitItem}>
+                <View style={styles.splitItemLeft}>
+                  <View style={[styles.splitDot, { backgroundColor: '#2196F3' }]} />
+                  <Text style={[styles.splitItemLabel, { color: theme.textSecondary }]}>General Manager</Text>
+                </View>
+                <View style={styles.splitItemRight}>
+                  <Text style={[styles.splitPercent, { color: theme.textMuted }]}>{generalManagerPercent}%</Text>
+                  <Text style={[styles.splitAmount, { color: theme.text }]}>{formatCurrency(generalManagerAmount)}</Text>
+                </View>
+              </View>
+
+              <View style={styles.splitItem}>
+                <View style={styles.splitItemLeft}>
+                  <View style={[styles.splitDot, { backgroundColor: '#FF9800' }]} />
+                  <Text style={[styles.splitItemLabel, { color: theme.textSecondary }]}>Food Cart</Text>
+                </View>
+                <View style={styles.splitItemRight}>
+                  <Text style={[styles.splitPercent, { color: theme.textMuted }]}>{foodCartPercent}%</Text>
+                  <Text style={[styles.splitAmount, { color: theme.text }]}>{formatCurrency(foodCartAmount)}</Text>
+                </View>
+              </View>
+            </View>
+
+            {/* Visual Bar */}
+            <View style={styles.splitBarContainer}>
+              <View style={[styles.splitBar, { width: `${operationManagerPercent}%`, backgroundColor: '#4CAF50' }]} />
+              <View style={[styles.splitBar, { width: `${generalManagerPercent}%`, backgroundColor: '#2196F3' }]} />
+              <View style={[styles.splitBar, { width: `${foodCartPercent}%`, backgroundColor: '#FF9800' }]} />
             </View>
           </View>
 
@@ -460,6 +612,125 @@ export default function SalesScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Net Sales Split Adjustment Modal */}
+      <Modal visible={showSplitModal} transparent animationType="fade">
+        <View style={[styles.modalOverlay, { backgroundColor: theme.modalOverlay }]}>
+          <View style={[styles.splitModal, { backgroundColor: theme.card }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: theme.text }]}>Adjust Net Sales Split</Text>
+              <TouchableOpacity onPress={() => setShowSplitModal(false)}>
+                <X color={theme.textMuted} size={24} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.splitModalContent}>
+              <Text style={[styles.splitModalNote, { color: theme.textMuted }]}>
+                Total must equal 100%. Current: {tempOperationPercent + tempGeneralPercent + tempFoodCartPercent}%
+              </Text>
+
+              {/* Operation Manager */}
+              <View style={styles.percentageRow}>
+                <View style={styles.percentageLabelRow}>
+                  <View style={[styles.splitDot, { backgroundColor: '#4CAF50' }]} />
+                  <Text style={[styles.percentageLabel, { color: theme.text }]}>Operation Manager</Text>
+                </View>
+                <View style={styles.percentageControls}>
+                  <TouchableOpacity
+                    style={[styles.percentageButton, { backgroundColor: theme.error + '20' }]}
+                    onPress={() => adjustPercentage('operation', -5)}
+                  >
+                    <Text style={[styles.percentageButtonText, { color: theme.error }]}>-5</Text>
+                  </TouchableOpacity>
+                  <Text style={[styles.percentageValue, { color: theme.text }]}>{tempOperationPercent}%</Text>
+                  <TouchableOpacity
+                    style={[styles.percentageButton, { backgroundColor: theme.success + '20' }]}
+                    onPress={() => adjustPercentage('operation', 5)}
+                  >
+                    <Text style={[styles.percentageButtonText, { color: theme.success }]}>+5</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {/* General Manager */}
+              <View style={styles.percentageRow}>
+                <View style={styles.percentageLabelRow}>
+                  <View style={[styles.splitDot, { backgroundColor: '#2196F3' }]} />
+                  <Text style={[styles.percentageLabel, { color: theme.text }]}>General Manager</Text>
+                </View>
+                <View style={styles.percentageControls}>
+                  <TouchableOpacity
+                    style={[styles.percentageButton, { backgroundColor: theme.error + '20' }]}
+                    onPress={() => adjustPercentage('general', -5)}
+                  >
+                    <Text style={[styles.percentageButtonText, { color: theme.error }]}>-5</Text>
+                  </TouchableOpacity>
+                  <Text style={[styles.percentageValue, { color: theme.text }]}>{tempGeneralPercent}%</Text>
+                  <TouchableOpacity
+                    style={[styles.percentageButton, { backgroundColor: theme.success + '20' }]}
+                    onPress={() => adjustPercentage('general', 5)}
+                  >
+                    <Text style={[styles.percentageButtonText, { color: theme.success }]}>+5</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {/* Food Cart */}
+              <View style={styles.percentageRow}>
+                <View style={styles.percentageLabelRow}>
+                  <View style={[styles.splitDot, { backgroundColor: '#FF9800' }]} />
+                  <Text style={[styles.percentageLabel, { color: theme.text }]}>Food Cart</Text>
+                </View>
+                <View style={styles.percentageControls}>
+                  <TouchableOpacity
+                    style={[styles.percentageButton, { backgroundColor: theme.error + '20' }]}
+                    onPress={() => adjustPercentage('foodCart', -5)}
+                  >
+                    <Text style={[styles.percentageButtonText, { color: theme.error }]}>-5</Text>
+                  </TouchableOpacity>
+                  <Text style={[styles.percentageValue, { color: theme.text }]}>{tempFoodCartPercent}%</Text>
+                  <TouchableOpacity
+                    style={[styles.percentageButton, { backgroundColor: theme.success + '20' }]}
+                    onPress={() => adjustPercentage('foodCart', 5)}
+                  >
+                    <Text style={[styles.percentageButtonText, { color: theme.success }]}>+5</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {/* Preview Bar */}
+              <View style={styles.previewSection}>
+                <Text style={[styles.previewLabel, { color: theme.textSecondary }]}>Preview</Text>
+                <View style={styles.splitBarContainer}>
+                  <View style={[styles.splitBar, { width: `${tempOperationPercent}%`, backgroundColor: '#4CAF50' }]} />
+                  <View style={[styles.splitBar, { width: `${tempGeneralPercent}%`, backgroundColor: '#2196F3' }]} />
+                  <View style={[styles.splitBar, { width: `${tempFoodCartPercent}%`, backgroundColor: '#FF9800' }]} />
+                </View>
+              </View>
+            </View>
+
+            <View style={styles.modalFooter}>
+              <TouchableOpacity
+                style={[styles.cancelButton, { borderColor: theme.cardBorder }]}
+                onPress={() => setShowSplitModal(false)}
+              >
+                <Text style={[styles.cancelButtonText, { color: theme.textSecondary }]}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.submitButton, 
+                  { backgroundColor: (tempOperationPercent + tempGeneralPercent + tempFoodCartPercent) === 100 ? theme.primary : theme.textMuted }
+                ]}
+                onPress={saveSplitPercentages}
+                disabled={(tempOperationPercent + tempGeneralPercent + tempFoodCartPercent) !== 100}
+              >
+                <Save color="#fff" size={18} />
+                <Text style={styles.submitButtonText}>Save</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -672,12 +943,161 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 48,
     borderRadius: 12,
+    flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
+    gap: 8,
   },
   submitButtonText: {
     color: '#fff',
     fontSize: 16,
     fontWeight: '600' as const,
+  },
+  splitCard: {
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    marginBottom: 24,
+  },
+  splitHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  splitTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  splitTitle: {
+    fontSize: 16,
+    fontWeight: '600' as const,
+  },
+  adjustButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  adjustButtonText: {
+    fontSize: 13,
+    fontWeight: '600' as const,
+  },
+  warningBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 10,
+    marginBottom: 16,
+    gap: 8,
+  },
+  warningText: {
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  splitItems: {
+    gap: 12,
+  },
+  splitItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  splitItemLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  splitDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  splitItemLabel: {
+    fontSize: 14,
+  },
+  splitItemRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  splitPercent: {
+    fontSize: 12,
+    minWidth: 36,
+    textAlign: 'right',
+  },
+  splitAmount: {
+    fontSize: 15,
+    fontWeight: '600' as const,
+    minWidth: 80,
+    textAlign: 'right',
+  },
+  splitBarContainer: {
+    flexDirection: 'row',
+    height: 8,
+    borderRadius: 4,
+    overflow: 'hidden',
+    marginTop: 16,
+  },
+  splitBar: {
+    height: '100%',
+  },
+  splitModal: {
+    width: '100%',
+    maxWidth: 400,
+    borderRadius: 20,
+    overflow: 'hidden',
+  },
+  splitModalContent: {
+    padding: 20,
+  },
+  splitModalNote: {
+    fontSize: 13,
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  percentageRow: {
+    marginBottom: 20,
+  },
+  percentageLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 10,
+  },
+  percentageLabel: {
+    fontSize: 14,
+    fontWeight: '500' as const,
+  },
+  percentageControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 16,
+  },
+  percentageButton: {
+    width: 48,
+    height: 36,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  percentageButtonText: {
+    fontSize: 14,
+    fontWeight: '600' as const,
+  },
+  percentageValue: {
+    fontSize: 24,
+    fontWeight: '700' as const,
+    minWidth: 70,
+    textAlign: 'center',
+  },
+  previewSection: {
+    marginTop: 8,
+  },
+  previewLabel: {
+    fontSize: 12,
+    marginBottom: 8,
   },
 });
