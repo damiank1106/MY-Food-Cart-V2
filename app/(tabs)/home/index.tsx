@@ -15,7 +15,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { Colors } from '@/constants/colors';
 import { formatDate } from '@/types';
-import { getSalesByDateRange, getActivities } from '@/services/database';
+import { getSalesByDateRange, getExpensesByDateRange, getActivities } from '@/services/database';
 import Svg, { Path, Circle, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
 
 const { width } = Dimensions.get('window');
@@ -77,7 +77,7 @@ function getRelativeTime(dateString: string): string {
 }
 
 export default function HomeScreen() {
-  const { user, settings } = useAuth();
+  const { settings } = useAuth();
   const theme = settings.darkMode ? Colors.dark : Colors.light;
   const [selectedWeek, setSelectedWeek] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
@@ -98,6 +98,11 @@ export default function HomeScreen() {
     queryFn: () => getSalesByDateRange(startDateStr, endDateStr),
   });
 
+  const { data: expensesData = [], refetch: refetchExpenses } = useQuery({
+    queryKey: ['expenses', startDateStr, endDateStr],
+    queryFn: () => getExpensesByDateRange(startDateStr, endDateStr),
+  });
+
   const { data: activities = [], refetch: refetchActivities } = useQuery({
     queryKey: ['activities'],
     queryFn: getActivities,
@@ -113,22 +118,26 @@ export default function HomeScreen() {
       const daySales = salesData
         .filter(s => s.date === dateStr)
         .reduce((sum, s) => sum + s.total, 0);
+
+      const dayExpenses = expensesData
+        .filter(e => e.date === dateStr)
+        .reduce((sum, e) => sum + e.total, 0);
       
-      return { day, sales: daySales };
+      return { day, sales: daySales, expenses: dayExpenses };
     });
     return data;
-  }, [salesData, currentWeek]);
+  }, [salesData, expensesData, currentWeek]);
 
-  const maxValue = Math.max(...chartData.map(d => d.sales), 200);
+  const maxValue = Math.max(...chartData.map(d => Math.max(d.sales, d.expenses)), 200);
   const chartHeight = 150;
   const chartWidth = width - 100;
   const stepX = chartWidth / 6;
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await Promise.all([refetchSales(), refetchActivities()]);
+    await Promise.all([refetchSales(), refetchExpenses(), refetchActivities()]);
     setRefreshing(false);
-  }, [refetchSales, refetchActivities]);
+  }, [refetchSales, refetchExpenses, refetchActivities]);
 
   const pathData = chartData.map((point, index) => {
     const x = index * stepX;
@@ -137,6 +146,14 @@ export default function HomeScreen() {
   }).join(' ');
 
   const areaPath = `${pathData} L ${(chartData.length - 1) * stepX} ${chartHeight} L 0 ${chartHeight} Z`;
+
+  const expensePathData = chartData.map((point, index) => {
+    const x = index * stepX;
+    const y = chartHeight - (point.expenses / maxValue) * chartHeight;
+    return `${index === 0 ? 'M' : 'L'} ${x} ${y}`;
+  }).join(' ');
+
+  const expenseAreaPath = `${expensePathData} L ${(chartData.length - 1) * stepX} ${chartHeight} L 0 ${chartHeight} Z`;
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
@@ -159,8 +176,8 @@ export default function HomeScreen() {
           }
         >
           <View style={[styles.welcomeCard, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
-            <Text style={[styles.welcomeText, { color: theme.text }]}>
-              Welcome to {user?.name || 'Guest'} Food Cart
+            <Text style={[styles.welcomeText, { color: theme.text }]} numberOfLines={1} adjustsFontSizeToFit>
+              Welcome to MY Food Cart
             </Text>
           </View>
 
@@ -195,6 +212,17 @@ export default function HomeScreen() {
             <View style={[styles.chartCard, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
               <Text style={[styles.sectionTitle, { color: theme.text }]}>{"Today's Overview"}</Text>
               
+              <View style={styles.chartLegend}>
+                <View style={styles.legendItem}>
+                  <View style={[styles.legendDot, { backgroundColor: theme.chartLine }]} />
+                  <Text style={[styles.legendText, { color: theme.textSecondary }]}>Sales</Text>
+                </View>
+                <View style={styles.legendItem}>
+                  <View style={[styles.legendDot, { backgroundColor: theme.error }]} />
+                  <Text style={[styles.legendText, { color: theme.textSecondary }]}>Expenses</Text>
+                </View>
+              </View>
+              
               <View style={styles.chartContainer}>
                 <View style={styles.yAxis}>
                   {[200, 150, 100, 50, 0].map((val, i) => (
@@ -210,18 +238,34 @@ export default function HomeScreen() {
                       <Stop offset="0" stopColor={theme.chartLine} stopOpacity="0.3" />
                       <Stop offset="1" stopColor={theme.chartLine} stopOpacity="0.05" />
                     </SvgLinearGradient>
+                    <SvgLinearGradient id="expenseGradient" x1="0" y1="0" x2="0" y2="1">
+                      <Stop offset="0" stopColor={theme.error} stopOpacity="0.2" />
+                      <Stop offset="1" stopColor={theme.error} stopOpacity="0.02" />
+                    </SvgLinearGradient>
                   </Defs>
                   
                   <Path d={areaPath} fill="url(#areaGradient)" />
                   <Path d={pathData} stroke={theme.chartLine} strokeWidth={2} fill="none" />
                   
+                  <Path d={expenseAreaPath} fill="url(#expenseGradient)" />
+                  <Path d={expensePathData} stroke={theme.error} strokeWidth={2} fill="none" strokeDasharray="4,4" />
+                  
                   {chartData.map((point, index) => (
                     <Circle
-                      key={index}
+                      key={`sales-${index}`}
                       cx={index * stepX}
                       cy={chartHeight - (point.sales / maxValue) * chartHeight}
                       r={4}
                       fill={theme.chartLine}
+                    />
+                  ))}
+                  {chartData.map((point, index) => (
+                    <Circle
+                      key={`expense-${index}`}
+                      cx={index * stepX}
+                      cy={chartHeight - (point.expenses / maxValue) * chartHeight}
+                      r={3}
+                      fill={theme.error}
                     />
                   ))}
                 </Svg>
@@ -377,6 +421,24 @@ const styles = StyleSheet.create({
     fontSize: 10,
     width: 30,
     textAlign: 'center',
+  },
+  chartLegend: {
+    flexDirection: 'row',
+    gap: 16,
+    marginBottom: 12,
+  },
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  legendDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  legendText: {
+    fontSize: 12,
   },
   updatesCard: {
     padding: 16,

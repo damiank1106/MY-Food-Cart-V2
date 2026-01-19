@@ -406,7 +406,7 @@ export default function SettingsScreen() {
               </TouchableOpacity>
             </View>
             
-            <ScrollView style={styles.modalBody}>
+            <ScrollView style={styles.modalBody} contentContainerStyle={styles.modalBodyContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
               <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Name</Text>
               <TextInput
                 style={[styles.input, { backgroundColor: theme.inputBackground, borderColor: theme.inputBorder, color: theme.text }]}
@@ -568,7 +568,7 @@ const styles = StyleSheet.create({
   modalContent: {
     width: '100%',
     maxWidth: 400,
-    maxHeight: '80%',
+    maxHeight: '90%',
     borderRadius: 20,
     overflow: 'hidden',
   },
@@ -586,6 +586,10 @@ const styles = StyleSheet.create({
   },
   modalBody: {
     padding: 20,
+    maxHeight: 400,
+  },
+  modalBodyContent: {
+    paddingBottom: 20,
   },
   modalFooter: {
     flexDirection: 'row',

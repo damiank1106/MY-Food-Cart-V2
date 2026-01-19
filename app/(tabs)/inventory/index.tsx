@@ -362,7 +362,7 @@ export default function InventoryScreen() {
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
+            <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false} contentContainerStyle={styles.modalBodyContent}>
               <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Storage Category</Text>
               <View style={styles.categorySelectRow}>
                 <TouchableOpacity
@@ -611,7 +611,7 @@ const styles = StyleSheet.create({
   modalContent: {
     width: '100%',
     maxWidth: 400,
-    maxHeight: '80%',
+    maxHeight: '85%',
     borderRadius: 20,
     overflow: 'hidden',
   },
@@ -629,6 +629,10 @@ const styles = StyleSheet.create({
   },
   modalBody: {
     padding: 20,
+    maxHeight: 350,
+  },
+  modalBodyContent: {
+    paddingBottom: 20,
   },
   modalFooter: {
     flexDirection: 'row',
