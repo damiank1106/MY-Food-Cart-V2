@@ -14,6 +14,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Calendar, Plus, X, Trash2, PieChart, Save, AlertCircle } from 'lucide-react-native';
+import CalendarModal from '@/components/CalendarModal';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
@@ -43,9 +44,7 @@ export default function SalesScreen() {
   const [expenseName, setExpenseName] = useState('');
   const [expenseTotal, setExpenseTotal] = useState('');
   
-  const [calendarYear, setCalendarYear] = useState(selectedDate.getFullYear());
-  const [calendarMonth, setCalendarMonth] = useState(selectedDate.getMonth());
-  const [calendarDay, setCalendarDay] = useState(selectedDate.getDate());
+  
 
   const [showSplitModal, setShowSplitModal] = useState(false);
   const [operationManagerPercent, setOperationManagerPercent] = useState(65);
@@ -253,13 +252,10 @@ export default function SalesScreen() {
     }
   };
 
-  const confirmCalendarDate = () => {
-    setSelectedDate(new Date(calendarYear, calendarMonth, calendarDay));
+  const handleCalendarConfirm = (date: Date) => {
+    setSelectedDate(date);
     setShowCalendar(false);
   };
-
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  const daysInMonth = new Date(calendarYear, calendarMonth + 1, 0).getDate();
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
@@ -452,95 +448,13 @@ export default function SalesScreen() {
         </ScrollView>
       </SafeAreaView>
 
-      <Modal visible={showCalendar} transparent animationType="fade">
-        <View style={[styles.modalOverlay, { backgroundColor: theme.modalOverlay }]}>
-          <View style={[styles.calendarModal, { backgroundColor: theme.card }]}>
-            <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: theme.text }]}>Select Date</Text>
-              <TouchableOpacity onPress={() => setShowCalendar(false)}>
-                <X color={theme.textMuted} size={24} />
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.calendarContent}>
-              <Text style={[styles.pickerLabel, { color: theme.textSecondary }]}>Year</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.pickerScroll}>
-                {Array.from({ length: 40 }, (_, i) => 2020 + i).map(year => (
-                  <TouchableOpacity
-                    key={year}
-                    style={[
-                      styles.pickerItem,
-                      { borderColor: theme.cardBorder },
-                      calendarYear === year && { backgroundColor: theme.primary, borderColor: theme.primary },
-                    ]}
-                    onPress={() => setCalendarYear(year)}
-                  >
-                    <Text style={[
-                      styles.pickerItemText,
-                      { color: calendarYear === year ? '#fff' : theme.text },
-                    ]}>{year}</Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-
-              <Text style={[styles.pickerLabel, { color: theme.textSecondary }]}>Month</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.pickerScroll}>
-                {months.map((month, index) => (
-                  <TouchableOpacity
-                    key={month}
-                    style={[
-                      styles.pickerItem,
-                      { borderColor: theme.cardBorder },
-                      calendarMonth === index && { backgroundColor: theme.primary, borderColor: theme.primary },
-                    ]}
-                    onPress={() => setCalendarMonth(index)}
-                  >
-                    <Text style={[
-                      styles.pickerItemText,
-                      { color: calendarMonth === index ? '#fff' : theme.text },
-                    ]}>{month}</Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-
-              <Text style={[styles.pickerLabel, { color: theme.textSecondary }]}>Day</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.pickerScroll}>
-                {Array.from({ length: daysInMonth }, (_, i) => i + 1).map(day => (
-                  <TouchableOpacity
-                    key={day}
-                    style={[
-                      styles.pickerItem,
-                      { borderColor: theme.cardBorder },
-                      calendarDay === day && { backgroundColor: theme.primary, borderColor: theme.primary },
-                    ]}
-                    onPress={() => setCalendarDay(day)}
-                  >
-                    <Text style={[
-                      styles.pickerItemText,
-                      { color: calendarDay === day ? '#fff' : theme.text },
-                    ]}>{day}</Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            </View>
-
-            <View style={styles.modalFooter}>
-              <TouchableOpacity
-                style={[styles.cancelButton, { borderColor: theme.cardBorder }]}
-                onPress={() => setShowCalendar(false)}
-              >
-                <Text style={[styles.cancelButtonText, { color: theme.textSecondary }]}>Close</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.submitButton, { backgroundColor: theme.primary }]}
-                onPress={confirmCalendarDate}
-              >
-                <Text style={styles.submitButtonText}>Confirm</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
+      <CalendarModal
+        visible={showCalendar}
+        onClose={() => setShowCalendar(false)}
+        onConfirm={handleCalendarConfirm}
+        initialDate={selectedDate}
+        theme={theme}
+      />
 
       <Modal visible={showSaleModal} transparent animationType="fade">
         <View style={[styles.modalOverlay, { backgroundColor: theme.modalOverlay }]}>
@@ -888,12 +802,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 20,
   },
-  calendarModal: {
-    width: '100%',
-    maxWidth: 400,
-    borderRadius: 20,
-    overflow: 'hidden',
-  },
   formModal: {
     width: '100%',
     maxWidth: 400,
@@ -912,30 +820,8 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600' as const,
   },
-  calendarContent: {
-    padding: 20,
-  },
   formContent: {
     padding: 20,
-  },
-  pickerLabel: {
-    fontSize: 14,
-    marginBottom: 8,
-    marginTop: 12,
-  },
-  pickerScroll: {
-    maxHeight: 50,
-  },
-  pickerItem: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    borderWidth: 1,
-    marginRight: 8,
-  },
-  pickerItemText: {
-    fontSize: 14,
-    fontWeight: '500' as const,
   },
   inputLabel: {
     fontSize: 14,

@@ -1532,6 +1532,59 @@ export async function getPendingSummaryAndItems(limitPerTable = 50): Promise<Pen
   }
 }
 
+export async function getEntryDaysForMonth(year: number, month: number): Promise<string[]> {
+  const monthStr = String(month).padStart(2, '0');
+  const datePrefix = `${year}-${monthStr}`;
+  
+  try {
+    if (Platform.OS === 'web') {
+      const sales = await getFromStorage<Sale[]>(STORAGE_KEYS.sales, []);
+      const expenses = await getFromStorage<Expense[]>(STORAGE_KEYS.expenses, []);
+      
+      const datesSet = new Set<string>();
+      
+      for (const sale of sales) {
+        if (sale.date && sale.date.startsWith(datePrefix)) {
+          datesSet.add(sale.date);
+        }
+      }
+      
+      for (const expense of expenses) {
+        if (expense.date && expense.date.startsWith(datePrefix)) {
+          datesSet.add(expense.date);
+        }
+      }
+      
+      return Array.from(datesSet);
+    }
+
+    if (!db) return [];
+
+    const salesDates = await db.getAllAsync<{ date: string }>(
+      `SELECT DISTINCT date FROM sales WHERE date LIKE ?`,
+      [`${datePrefix}%`]
+    );
+    
+    const expensesDates = await db.getAllAsync<{ date: string }>(
+      `SELECT DISTINCT date FROM expenses WHERE date LIKE ?`,
+      [`${datePrefix}%`]
+    );
+    
+    const datesSet = new Set<string>();
+    for (const row of salesDates) {
+      if (row.date) datesSet.add(row.date);
+    }
+    for (const row of expensesDates) {
+      if (row.date) datesSet.add(row.date);
+    }
+    
+    return Array.from(datesSet);
+  } catch (error) {
+    console.log('Error getting entry days for month:', error);
+    return [];
+  }
+}
+
 export async function upsertActivitiesFromServer(serverActivities: Activity[]): Promise<void> {
   if (serverActivities.length === 0) return;
   console.log(`Upserting ${serverActivities.length} activities from server`);
