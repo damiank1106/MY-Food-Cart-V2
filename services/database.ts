@@ -630,3 +630,234 @@ export async function markAllSynced(): Promise<void> {
     UPDATE activities SET syncStatus = 'synced';
   `);
 }
+
+export async function upsertUsersFromServer(serverUsers: User[]): Promise<void> {
+  if (serverUsers.length === 0) return;
+  console.log(`Upserting ${serverUsers.length} users from server`);
+
+  if (Platform.OS === 'web') {
+    const localUsers = await getFromStorage<User[]>(STORAGE_KEYS.users, []);
+    const localMap = new Map(localUsers.map(u => [u.id, u]));
+    
+    for (const serverUser of serverUsers) {
+      const local = localMap.get(serverUser.id);
+      if (!local) {
+        localMap.set(serverUser.id, { ...serverUser, syncStatus: 'synced' });
+      } else if (local.syncStatus !== 'pending') {
+        localMap.set(serverUser.id, { ...serverUser, syncStatus: 'synced' });
+      }
+    }
+    await setToStorage(STORAGE_KEYS.users, Array.from(localMap.values()));
+    return;
+  }
+
+  if (!db) return;
+
+  for (const serverUser of serverUsers) {
+    const existing = await db.getFirstAsync<User>('SELECT * FROM users WHERE id = ?', [serverUser.id]);
+    if (!existing) {
+      await db.runAsync(
+        'INSERT INTO users (id, name, pin, role, bio, profilePicture, createdAt, updatedAt, syncStatus) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [serverUser.id, serverUser.name, serverUser.pin, serverUser.role, serverUser.bio || null, serverUser.profilePicture || null, serverUser.createdAt, serverUser.updatedAt, 'synced']
+      );
+    } else if (existing.syncStatus !== 'pending') {
+      await db.runAsync(
+        'UPDATE users SET name = ?, pin = ?, role = ?, bio = ?, profilePicture = ?, createdAt = ?, updatedAt = ?, syncStatus = ? WHERE id = ?',
+        [serverUser.name, serverUser.pin, serverUser.role, serverUser.bio || null, serverUser.profilePicture || null, serverUser.createdAt, serverUser.updatedAt, 'synced', serverUser.id]
+      );
+    }
+  }
+}
+
+export async function upsertCategoriesFromServer(serverCategories: Category[]): Promise<void> {
+  if (serverCategories.length === 0) return;
+  console.log(`Upserting ${serverCategories.length} categories from server`);
+
+  if (Platform.OS === 'web') {
+    const localCategories = await getFromStorage<Category[]>(STORAGE_KEYS.categories, []);
+    const localMap = new Map(localCategories.map(c => [c.id, c]));
+    
+    for (const serverCat of serverCategories) {
+      const local = localMap.get(serverCat.id);
+      if (!local) {
+        localMap.set(serverCat.id, { ...serverCat, syncStatus: 'synced' });
+      } else if (local.syncStatus !== 'pending') {
+        localMap.set(serverCat.id, { ...serverCat, syncStatus: 'synced' });
+      }
+    }
+    await setToStorage(STORAGE_KEYS.categories, Array.from(localMap.values()));
+    return;
+  }
+
+  if (!db) return;
+
+  for (const serverCat of serverCategories) {
+    const existing = await db.getFirstAsync<Category>('SELECT * FROM categories WHERE id = ?', [serverCat.id]);
+    if (!existing) {
+      await db.runAsync(
+        'INSERT INTO categories (id, name, createdAt, updatedAt, syncStatus) VALUES (?, ?, ?, ?, ?)',
+        [serverCat.id, serverCat.name, serverCat.createdAt, serverCat.updatedAt, 'synced']
+      );
+    } else if (existing.syncStatus !== 'pending') {
+      await db.runAsync(
+        'UPDATE categories SET name = ?, createdAt = ?, updatedAt = ?, syncStatus = ? WHERE id = ?',
+        [serverCat.name, serverCat.createdAt, serverCat.updatedAt, 'synced', serverCat.id]
+      );
+    }
+  }
+}
+
+export async function upsertInventoryFromServer(serverItems: InventoryItem[]): Promise<void> {
+  if (serverItems.length === 0) return;
+  console.log(`Upserting ${serverItems.length} inventory items from server`);
+
+  if (Platform.OS === 'web') {
+    const localInventory = await getFromStorage<InventoryItem[]>(STORAGE_KEYS.inventory, []);
+    const localMap = new Map(localInventory.map(i => [i.id, i]));
+    
+    for (const serverItem of serverItems) {
+      const local = localMap.get(serverItem.id);
+      if (!local) {
+        localMap.set(serverItem.id, { ...serverItem, syncStatus: 'synced' });
+      } else if (local.syncStatus !== 'pending') {
+        localMap.set(serverItem.id, { ...serverItem, syncStatus: 'synced' });
+      }
+    }
+    await setToStorage(STORAGE_KEYS.inventory, Array.from(localMap.values()));
+    return;
+  }
+
+  if (!db) return;
+
+  for (const serverItem of serverItems) {
+    const existing = await db.getFirstAsync<InventoryItem>('SELECT * FROM inventory WHERE id = ?', [serverItem.id]);
+    if (!existing) {
+      await db.runAsync(
+        'INSERT INTO inventory (id, name, categoryId, unit, price, quantity, createdAt, updatedAt, createdBy, syncStatus) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [serverItem.id, serverItem.name, serverItem.categoryId, serverItem.unit, serverItem.price, serverItem.quantity, serverItem.createdAt, serverItem.updatedAt, serverItem.createdBy, 'synced']
+      );
+    } else if (existing.syncStatus !== 'pending') {
+      await db.runAsync(
+        'UPDATE inventory SET name = ?, categoryId = ?, unit = ?, price = ?, quantity = ?, createdAt = ?, updatedAt = ?, createdBy = ?, syncStatus = ? WHERE id = ?',
+        [serverItem.name, serverItem.categoryId, serverItem.unit, serverItem.price, serverItem.quantity, serverItem.createdAt, serverItem.updatedAt, serverItem.createdBy, 'synced', serverItem.id]
+      );
+    }
+  }
+}
+
+export async function upsertSalesFromServer(serverSales: Sale[]): Promise<void> {
+  if (serverSales.length === 0) return;
+  console.log(`Upserting ${serverSales.length} sales from server`);
+
+  if (Platform.OS === 'web') {
+    const localSales = await getFromStorage<Sale[]>(STORAGE_KEYS.sales, []);
+    const localMap = new Map(localSales.map(s => [s.id, s]));
+    
+    for (const serverSale of serverSales) {
+      const local = localMap.get(serverSale.id);
+      if (!local) {
+        localMap.set(serverSale.id, { ...serverSale, syncStatus: 'synced' });
+      } else if (local.syncStatus !== 'pending') {
+        localMap.set(serverSale.id, { ...serverSale, syncStatus: 'synced' });
+      }
+    }
+    await setToStorage(STORAGE_KEYS.sales, Array.from(localMap.values()));
+    return;
+  }
+
+  if (!db) return;
+
+  for (const serverSale of serverSales) {
+    const existing = await db.getFirstAsync<Sale>('SELECT * FROM sales WHERE id = ?', [serverSale.id]);
+    if (!existing) {
+      await db.runAsync(
+        'INSERT INTO sales (id, name, total, date, createdBy, createdAt, updatedAt, syncStatus) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        [serverSale.id, serverSale.name, serverSale.total, serverSale.date, serverSale.createdBy, serverSale.createdAt, serverSale.updatedAt, 'synced']
+      );
+    } else if (existing.syncStatus !== 'pending') {
+      await db.runAsync(
+        'UPDATE sales SET name = ?, total = ?, date = ?, createdBy = ?, createdAt = ?, updatedAt = ?, syncStatus = ? WHERE id = ?',
+        [serverSale.name, serverSale.total, serverSale.date, serverSale.createdBy, serverSale.createdAt, serverSale.updatedAt, 'synced', serverSale.id]
+      );
+    }
+  }
+}
+
+export async function upsertExpensesFromServer(serverExpenses: Expense[]): Promise<void> {
+  if (serverExpenses.length === 0) return;
+  console.log(`Upserting ${serverExpenses.length} expenses from server`);
+
+  if (Platform.OS === 'web') {
+    const localExpenses = await getFromStorage<Expense[]>(STORAGE_KEYS.expenses, []);
+    const localMap = new Map(localExpenses.map(e => [e.id, e]));
+    
+    for (const serverExpense of serverExpenses) {
+      const local = localMap.get(serverExpense.id);
+      if (!local) {
+        localMap.set(serverExpense.id, { ...serverExpense, syncStatus: 'synced' });
+      } else if (local.syncStatus !== 'pending') {
+        localMap.set(serverExpense.id, { ...serverExpense, syncStatus: 'synced' });
+      }
+    }
+    await setToStorage(STORAGE_KEYS.expenses, Array.from(localMap.values()));
+    return;
+  }
+
+  if (!db) return;
+
+  for (const serverExpense of serverExpenses) {
+    const existing = await db.getFirstAsync<Expense>('SELECT * FROM expenses WHERE id = ?', [serverExpense.id]);
+    if (!existing) {
+      await db.runAsync(
+        'INSERT INTO expenses (id, name, total, date, createdBy, createdAt, updatedAt, syncStatus) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        [serverExpense.id, serverExpense.name, serverExpense.total, serverExpense.date, serverExpense.createdBy, serverExpense.createdAt, serverExpense.updatedAt, 'synced']
+      );
+    } else if (existing.syncStatus !== 'pending') {
+      await db.runAsync(
+        'UPDATE expenses SET name = ?, total = ?, date = ?, createdBy = ?, createdAt = ?, updatedAt = ?, syncStatus = ? WHERE id = ?',
+        [serverExpense.name, serverExpense.total, serverExpense.date, serverExpense.createdBy, serverExpense.createdAt, serverExpense.updatedAt, 'synced', serverExpense.id]
+      );
+    }
+  }
+}
+
+export async function upsertActivitiesFromServer(serverActivities: Activity[]): Promise<void> {
+  if (serverActivities.length === 0) return;
+  console.log(`Upserting ${serverActivities.length} activities from server`);
+
+  if (Platform.OS === 'web') {
+    const localActivities = await getFromStorage<Activity[]>(STORAGE_KEYS.activities, []);
+    const localMap = new Map(localActivities.map(a => [a.id, a]));
+    
+    for (const serverActivity of serverActivities) {
+      const local = localMap.get(serverActivity.id);
+      if (!local) {
+        localMap.set(serverActivity.id, { ...serverActivity, syncStatus: 'synced' });
+      } else if (local.syncStatus !== 'pending') {
+        localMap.set(serverActivity.id, { ...serverActivity, syncStatus: 'synced' });
+      }
+    }
+    const sortedActivities = Array.from(localMap.values()).sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    ).slice(0, 100);
+    await setToStorage(STORAGE_KEYS.activities, sortedActivities);
+    return;
+  }
+
+  if (!db) return;
+
+  for (const serverActivity of serverActivities) {
+    const existing = await db.getFirstAsync<Activity>('SELECT * FROM activities WHERE id = ?', [serverActivity.id]);
+    if (!existing) {
+      await db.runAsync(
+        'INSERT INTO activities (id, type, description, userId, createdAt, syncStatus) VALUES (?, ?, ?, ?, ?, ?)',
+        [serverActivity.id, serverActivity.type, serverActivity.description, serverActivity.userId, serverActivity.createdAt, 'synced']
+      );
+    } else if (existing.syncStatus !== 'pending') {
+      await db.runAsync(
+        'UPDATE activities SET type = ?, description = ?, userId = ?, createdAt = ?, syncStatus = ? WHERE id = ?',
+        [serverActivity.type, serverActivity.description, serverActivity.userId, serverActivity.createdAt, 'synced', serverActivity.id]
+      );
+    }
+  }
+}
