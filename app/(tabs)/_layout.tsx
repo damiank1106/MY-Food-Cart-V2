@@ -23,7 +23,7 @@ export default function TabLayout() {
           backgroundColor: theme.tabBar,
           borderTopColor: theme.tabBarBorder,
           borderTopWidth: 1,
-          paddingBottom: Platform.OS === 'ios' ? 20 : 8,
+          paddingBottom: Platform.OS === 'ios' ? 16 : 6,
           paddingTop: 8,
           height: Platform.OS === 'ios' ? 85 : 60,
           ...(isTablet && {
