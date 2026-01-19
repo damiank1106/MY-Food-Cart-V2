@@ -1,13 +1,15 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { 
   View, 
   StyleSheet, 
   TouchableOpacity, 
   Dimensions,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Video, ResizeMode } from 'expo-av';
+import { Asset } from 'expo-asset';
 import { ChevronRight } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '@/contexts/AuthContext';
@@ -19,14 +21,32 @@ const { width, height } = Dimensions.get('window');
 const isLargeScreen = width >= 768;
 const videoHeight = isLargeScreen ? height * 1.8 : height;
 
-const videoSource = require('../assets/videos/intro.webm');
-
 export default function IntroScreen() {
   const router = useRouter();
   const { isLoading, isInitialized, settings, markIntroSeen, user } = useAuth();
   const videoRef = useRef<Video>(null);
+  const [videoUri, setVideoUri] = useState<string | null>(null);
+  const [videoError, setVideoError] = useState(false);
 
   const theme = settings.darkMode ? Colors.dark : Colors.light;
+
+  useEffect(() => {
+    const loadVideo = async () => {
+      try {
+        if (Platform.OS === 'web') {
+          setVideoUri('/assets/videos/intro.webm');
+        } else {
+          const asset = Asset.fromModule(require('../assets/videos/intro.webm'));
+          await asset.downloadAsync();
+          setVideoUri(asset.localUri || asset.uri);
+        }
+      } catch (error) {
+        console.log('Video loading error:', error);
+        setVideoError(true);
+      }
+    };
+    loadVideo();
+  }, []);
 
   useEffect(() => {
     if (!isLoading && isInitialized) {
@@ -69,15 +89,23 @@ export default function IntroScreen() {
       />
       
       <View style={styles.nativeVideoContainer}>
-        <Video
-          ref={videoRef}
-          source={videoSource}
-          style={styles.video}
-          resizeMode={ResizeMode.COVER}
-          shouldPlay
-          isLooping
-          isMuted={false}
-        />
+        {videoUri && !videoError ? (
+          <Video
+            ref={videoRef}
+            source={{ uri: videoUri }}
+            style={styles.video}
+            resizeMode={ResizeMode.COVER}
+            shouldPlay
+            isLooping
+            isMuted={false}
+            onError={(e) => {
+              console.log('Video playback error:', e);
+              setVideoError(true);
+            }}
+          />
+        ) : (
+          <View style={[styles.video, { backgroundColor: theme.backgroundGradientEnd }]} />
+        )}
       </View>
 
       <TouchableOpacity 
