@@ -25,51 +25,38 @@ export default function ProfileAvatarGlow({
   size = 120,
   onPressCamera,
   fallbackText,
-  glowColor = 'rgba(74, 144, 217, 0.5)',
+  glowColor = 'rgba(74, 144, 217, 0.6)',
   primaryColor = '#4a90d9',
   backgroundColor = '#142238',
   borderColor = '#1e3a5f',
   iconColor = '#5a7a9a',
 }: ProfileAvatarGlowProps) {
-  const glowOpacity = useRef(new Animated.Value(0.35)).current;
-  const glowScale = useRef(new Animated.Value(1)).current;
+  const numLasers = 8;
+  const laserRotations = useRef(
+    Array.from({ length: numLasers }, () => new Animated.Value(0))
+  ).current;
 
   useEffect(() => {
-    const pulseAnimation = Animated.loop(
-      Animated.sequence([
-        Animated.parallel([
-          Animated.timing(glowOpacity, {
-            toValue: 0.75,
-            duration: 1500,
-            useNativeDriver: true,
-          }),
-          Animated.timing(glowScale, {
-            toValue: 1.06,
-            duration: 1500,
-            useNativeDriver: true,
-          }),
-        ]),
-        Animated.parallel([
-          Animated.timing(glowOpacity, {
-            toValue: 0.35,
-            duration: 1500,
-            useNativeDriver: true,
-          }),
-          Animated.timing(glowScale, {
+    const laserAnimations = laserRotations.map((rotation, index) => {
+      const startDelay = (index / numLasers) * 3000;
+      return Animated.loop(
+        Animated.sequence([
+          Animated.delay(startDelay),
+          Animated.timing(rotation, {
             toValue: 1,
-            duration: 1500,
+            duration: 3000,
             useNativeDriver: true,
           }),
-        ]),
-      ])
-    );
+        ])
+      );
+    });
 
-    pulseAnimation.start();
+    laserAnimations.forEach((anim) => anim.start());
 
     return () => {
-      pulseAnimation.stop();
+      laserAnimations.forEach((anim) => anim.stop());
     };
-  }, [glowOpacity, glowScale]);
+  }, [laserRotations]);
 
   const glowSize = size + 24;
   const cameraButtonSize = 40;
@@ -77,19 +64,32 @@ export default function ProfileAvatarGlow({
 
   return (
     <View style={[styles.container, { width: size + 60, height: size + 60 }]}>
-      <Animated.View
-        style={[
-          styles.glowRing,
-          {
-            width: glowSize,
-            height: glowSize,
-            borderRadius: glowSize / 2,
-            backgroundColor: glowColor,
-            opacity: glowOpacity,
-            transform: [{ scale: glowScale }],
-          },
-        ]}
-      />
+      <View style={[styles.laserContainer, { width: glowSize, height: glowSize }]}>
+        {laserRotations.map((rotation, index) => {
+          const rotate = rotation.interpolate({
+            inputRange: [0, 1],
+            outputRange: ['0deg', '360deg'],
+          });
+          
+          return (
+            <Animated.View
+              key={index}
+              style={[
+                styles.laser,
+                {
+                  width: glowSize,
+                  height: 3,
+                  backgroundColor: glowColor,
+                  transform: [
+                    { rotate: `${(index * 360) / numLasers}deg` },
+                    { rotate },
+                  ],
+                },
+              ]}
+            />
+          );
+        })}
+      </View>
       
       <View
         style={[
@@ -149,8 +149,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  glowRing: {
+  laserContainer: {
     position: 'absolute',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  laser: {
+    position: 'absolute',
+    shadowColor: '#4a90d9',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.8,
+    shadowRadius: 6,
+    elevation: 8,
   },
   avatarContainer: {
     borderWidth: 2,
