@@ -7,6 +7,9 @@ import {
   TouchableOpacity,
   TextInput,
   Image,
+  Alert,
+  Platform,
+  ActionSheetIOS,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -52,17 +55,62 @@ export default function ProfileScreen() {
     }
   }, [user]);
 
-  const handlePickImage = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.5,
-    });
+  const handlePickImage = async (useCamera: boolean) => {
+    if (useCamera) {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission Denied', 'Camera permission is required to take photos.');
+        return;
+      }
+      const result = await ImagePicker.launchCameraAsync({
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.5,
+      });
+      if (!result.canceled && result.assets[0]) {
+        setProfileImage(result.assets[0].uri);
+        setHasChanges(true);
+      }
+    } else {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.5,
+      });
+      if (!result.canceled && result.assets[0]) {
+        setProfileImage(result.assets[0].uri);
+        setHasChanges(true);
+      }
+    }
+  };
 
-    if (!result.canceled && result.assets[0]) {
-      setProfileImage(result.assets[0].uri);
-      setHasChanges(true);
+  const showImagePickerOptions = () => {
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          options: ['Cancel', 'Take Photo', 'Choose from Library'],
+          cancelButtonIndex: 0,
+        },
+        (buttonIndex) => {
+          if (buttonIndex === 1) {
+            handlePickImage(true);
+          } else if (buttonIndex === 2) {
+            handlePickImage(false);
+          }
+        }
+      );
+    } else {
+      Alert.alert(
+        'Change Profile Photo',
+        'Select an option',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Take Photo', onPress: () => handlePickImage(true) },
+          { text: 'Choose from Library', onPress: () => handlePickImage(false) },
+        ],
+        { cancelable: true }
+      );
     }
   };
 
@@ -129,19 +177,23 @@ export default function ProfileScreen() {
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.avatarSection}>
-            <TouchableOpacity
-              style={[styles.avatarContainer, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}
-              onPress={handlePickImage}
-            >
-              {profileImage ? (
-                <Image source={{ uri: profileImage }} style={styles.avatar} />
-              ) : (
-                <User color={theme.textMuted} size={60} />
-              )}
-              <View style={[styles.cameraButton, { backgroundColor: theme.primary }]}>
-                <Camera color="#fff" size={16} />
+            <View style={styles.avatarWrapper}>
+              <View
+                style={[styles.avatarContainer, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}
+              >
+                {profileImage ? (
+                  <Image source={{ uri: profileImage }} style={styles.avatar} />
+                ) : (
+                  <User color={theme.textMuted} size={60} />
+                )}
               </View>
-            </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.cameraButton, { backgroundColor: theme.primary }]}
+                onPress={showImagePickerOptions}
+              >
+                <Camera color="#fff" size={18} />
+              </TouchableOpacity>
+            </View>
             
             {isDeveloper && user?.role && (
               <View style={[styles.roleBadge, { backgroundColor: theme.primary + '20' }]}>
@@ -255,6 +307,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 24,
   },
+  avatarWrapper: {
+    position: 'relative',
+  },
   avatarContainer: {
     width: 120,
     height: 120,
@@ -270,13 +325,18 @@ const styles = StyleSheet.create({
   },
   cameraButton: {
     position: 'absolute',
-    bottom: 0,
-    right: 0,
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    bottom: -4,
+    right: -8,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     justifyContent: 'center',
     alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
   },
   roleBadge: {
     marginTop: 12,

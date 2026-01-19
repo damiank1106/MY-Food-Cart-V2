@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   Dimensions,
   RefreshControl,
+  useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -81,6 +82,11 @@ export default function HomeScreen() {
   const theme = settings.darkMode ? Colors.dark : Colors.light;
   const [selectedWeek, setSelectedWeek] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
+  const [showSales, setShowSales] = useState(true);
+  const [showExpenses, setShowExpenses] = useState(true);
+  const { width: screenWidth } = useWindowDimensions();
+  
+  const welcomeFontSize = screenWidth < 360 ? 18 : screenWidth < 400 ? 20 : 24;
 
   const weeks = useMemo(() => {
     return [0, 1, 2, 3].map(i => {
@@ -176,7 +182,7 @@ export default function HomeScreen() {
           }
         >
           <View style={[styles.welcomeCard, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
-            <Text style={[styles.welcomeText, { color: theme.text }]} numberOfLines={1} adjustsFontSizeToFit>
+            <Text style={[styles.welcomeText, { color: theme.text, fontSize: welcomeFontSize }]} numberOfLines={1} adjustsFontSizeToFit>
               Welcome to MY Food Cart
             </Text>
           </View>
@@ -213,14 +219,28 @@ export default function HomeScreen() {
               <Text style={[styles.sectionTitle, { color: theme.text }]}>{"Today's Overview"}</Text>
               
               <View style={styles.chartLegend}>
-                <View style={styles.legendItem}>
-                  <View style={[styles.legendDot, { backgroundColor: theme.chartLine }]} />
-                  <Text style={[styles.legendText, { color: theme.textSecondary }]}>Sales</Text>
-                </View>
-                <View style={styles.legendItem}>
-                  <View style={[styles.legendDot, { backgroundColor: theme.error }]} />
-                  <Text style={[styles.legendText, { color: theme.textSecondary }]}>Expenses</Text>
-                </View>
+                <TouchableOpacity 
+                  style={[
+                    styles.legendToggle,
+                    { borderColor: showSales ? theme.chartLine : theme.cardBorder },
+                    showSales && { backgroundColor: theme.chartLine + '20' }
+                  ]}
+                  onPress={() => setShowSales(!showSales)}
+                >
+                  <View style={[styles.legendDot, { backgroundColor: theme.chartLine, opacity: showSales ? 1 : 0.4 }]} />
+                  <Text style={[styles.legendText, { color: showSales ? theme.chartLine : theme.textMuted }]}>Sales</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={[
+                    styles.legendToggle,
+                    { borderColor: showExpenses ? theme.error : theme.cardBorder },
+                    showExpenses && { backgroundColor: theme.error + '20' }
+                  ]}
+                  onPress={() => setShowExpenses(!showExpenses)}
+                >
+                  <View style={[styles.legendDot, { backgroundColor: theme.error, opacity: showExpenses ? 1 : 0.4 }]} />
+                  <Text style={[styles.legendText, { color: showExpenses ? theme.error : theme.textMuted }]}>Expenses</Text>
+                </TouchableOpacity>
               </View>
               
               <View style={styles.chartContainer}>
@@ -244,13 +264,21 @@ export default function HomeScreen() {
                     </SvgLinearGradient>
                   </Defs>
                   
-                  <Path d={areaPath} fill="url(#areaGradient)" />
-                  <Path d={pathData} stroke={theme.chartLine} strokeWidth={2} fill="none" />
+                  {showSales && (
+                    <>
+                      <Path d={areaPath} fill="url(#areaGradient)" />
+                      <Path d={pathData} stroke={theme.chartLine} strokeWidth={2} fill="none" />
+                    </>
+                  )}
                   
-                  <Path d={expenseAreaPath} fill="url(#expenseGradient)" />
-                  <Path d={expensePathData} stroke={theme.error} strokeWidth={2} fill="none" strokeDasharray="4,4" />
+                  {showExpenses && (
+                    <>
+                      <Path d={expenseAreaPath} fill="url(#expenseGradient)" />
+                      <Path d={expensePathData} stroke={theme.error} strokeWidth={2} fill="none" strokeDasharray="4,4" />
+                    </>
+                  )}
                   
-                  {chartData.map((point, index) => (
+                  {showSales && chartData.map((point, index) => (
                     <Circle
                       key={`sales-${index}`}
                       cx={index * stepX}
@@ -259,7 +287,7 @@ export default function HomeScreen() {
                       fill={theme.chartLine}
                     />
                   ))}
-                  {chartData.map((point, index) => (
+                  {showExpenses && chartData.map((point, index) => (
                     <Circle
                       key={`expense-${index}`}
                       cx={index * stepX}
@@ -432,6 +460,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
   },
+  legendToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+  },
   legendDot: {
     width: 8,
     height: 8,
@@ -439,6 +476,7 @@ const styles = StyleSheet.create({
   },
   legendText: {
     fontSize: 12,
+    fontWeight: '500' as const,
   },
   updatesCard: {
     padding: 16,
