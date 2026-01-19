@@ -27,6 +27,7 @@ import {
   deleteSale, deleteExpense, createActivity
 } from '@/services/database';
 import LaserBackground from '@/components/LaserBackground';
+import GlassContainer from '@/components/GlassContainer';
 
 export default function SalesScreen() {
   const { user, settings } = useAuth();
@@ -311,7 +312,12 @@ export default function SalesScreen() {
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.primary} />
           }
         >
-          <View style={[styles.summaryCard, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
+          <GlassContainer
+            enabled={settings.glassContainers}
+            intensity={settings.glassIntensity}
+            darkMode={settings.darkMode}
+            style={[styles.summaryCard, { backgroundColor: settings.glassContainers ? 'transparent' : theme.card, borderColor: theme.cardBorder }]}
+          >
             <View style={styles.summaryRow}>
               <Text style={[styles.summaryLabel, { color: theme.textSecondary }]}>Total Sales</Text>
               <Text style={[styles.summaryValue, { color: theme.success }]}>{formatCurrency(totalSales)}</Text>
@@ -328,10 +334,15 @@ export default function SalesScreen() {
                 {formatCurrency(netSales)}
               </Text>
             </View>
-          </View>
+          </GlassContainer>
 
           {/* Net Sales Split Section */}
-          <View style={[styles.splitCard, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
+          <GlassContainer
+            enabled={settings.glassContainers}
+            intensity={settings.glassIntensity}
+            darkMode={settings.darkMode}
+            style={[styles.splitCard, { backgroundColor: settings.glassContainers ? 'transparent' : theme.card, borderColor: theme.cardBorder }]}
+          >
             <View style={styles.splitHeader}>
               <View style={styles.splitTitleRow}>
                 <PieChart color={theme.primary} size={20} />
@@ -410,11 +421,17 @@ export default function SalesScreen() {
               <View style={[styles.splitBar, { width: `${generalManagerPercent}%`, backgroundColor: '#2196F3' }]} />
               <View style={[styles.splitBar, { width: `${foodCartPercent}%`, backgroundColor: '#FF9800' }]} />
             </View>
-          </View>
+          </GlassContainer>
 
           <Text style={[styles.sectionTitle, { color: theme.text }]}>Sales ({sales.length})</Text>
           {sales.map(sale => (
-            <View key={sale.id} style={[styles.itemCard, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
+            <GlassContainer
+              key={sale.id}
+              enabled={settings.glassContainers}
+              intensity={settings.glassIntensity}
+              darkMode={settings.darkMode}
+              style={[styles.itemCard, { backgroundColor: settings.glassContainers ? 'transparent' : theme.card, borderColor: theme.cardBorder }]}
+            >
               <View style={styles.itemInfo}>
                 <Text style={[styles.itemName, { color: theme.text }]}>{sale.name}</Text>
                 <Text style={[styles.itemAmount, { color: theme.success }]}>{formatCurrency(sale.total)}</Text>
@@ -425,7 +442,7 @@ export default function SalesScreen() {
               >
                 <Trash2 color={theme.error} size={18} />
               </TouchableOpacity>
-            </View>
+            </GlassContainer>
           ))}
           {sales.length === 0 && (
             <Text style={[styles.emptyText, { color: theme.textMuted }]}>No sales for this date</Text>
@@ -433,7 +450,13 @@ export default function SalesScreen() {
 
           <Text style={[styles.sectionTitle, { color: theme.text, marginTop: 24 }]}>Expenses ({expenses.length})</Text>
           {expenses.map(expense => (
-            <View key={expense.id} style={[styles.itemCard, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
+            <GlassContainer
+              key={expense.id}
+              enabled={settings.glassContainers}
+              intensity={settings.glassIntensity}
+              darkMode={settings.darkMode}
+              style={[styles.itemCard, { backgroundColor: settings.glassContainers ? 'transparent' : theme.card, borderColor: theme.cardBorder }]}
+            >
               <View style={styles.itemInfo}>
                 <Text style={[styles.itemName, { color: theme.text }]}>{expense.name}</Text>
                 <Text style={[styles.itemAmount, { color: theme.error }]}>{formatCurrency(expense.total)}</Text>
@@ -444,7 +467,7 @@ export default function SalesScreen() {
               >
                 <Trash2 color={theme.error} size={18} />
               </TouchableOpacity>
-            </View>
+            </GlassContainer>
           ))}
           {expenses.length === 0 && (
             <Text style={[styles.emptyText, { color: theme.textMuted }]}>No expenses for this date</Text>

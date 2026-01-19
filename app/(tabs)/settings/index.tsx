@@ -15,18 +15,19 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Lock, Moon, HelpCircle, Info, LogOut, Eye, EyeOff, X, UserPlus, ChevronDown, ChevronRight, RefreshCw, Cloud, CloudOff, Database, AlertTriangle, Wrench, Sparkles, Palette, Zap } from 'lucide-react-native';
+import { Lock, Moon, HelpCircle, Info, LogOut, Eye, EyeOff, X, UserPlus, ChevronDown, ChevronRight, RefreshCw, Cloud, CloudOff, Database, AlertTriangle, Wrench, Sparkles, Palette, Zap, Droplet } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { Colors } from '@/constants/colors';
-import { UserRole, ROLE_DISPLAY_NAMES, BackgroundColorPalette, BackgroundIntensity } from '@/types';
+import { UserRole, ROLE_DISPLAY_NAMES, BackgroundColorPalette, BackgroundIntensity, GlassIntensity } from '@/types';
 import { createUser, isPinTaken, getPendingSummaryAndItems, PendingSummary } from '@/services/database';
 import { useSync } from '@/contexts/SyncContext';
 import { supabase, isSupabaseConfigured } from '@/services/supabase';
 import SyncProgressModal from '@/components/SyncProgressModal';
 import LaserBackground from '@/components/LaserBackground';
+import GlassContainer from '@/components/GlassContainer';
 
 const APP_VERSION = '1.0.0';
 const PRIVACY_POLICY_GITHUB_URL = 'https://github.com/user/myfoodcart-privacy-policy';
@@ -211,6 +212,16 @@ export default function SettingsScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
 
+  const handleGlassToggle = async (value: boolean) => {
+    await updateSettings({ glassContainers: value });
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  };
+
+  const handleGlassIntensityChange = async (intensity: GlassIntensity) => {
+    await updateSettings({ glassIntensity: intensity });
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  };
+
   const handleLogout = async () => {
     setShowSyncModal(true);
     try {
@@ -316,7 +327,12 @@ export default function SettingsScreen() {
           contentContainerStyle={styles.contentContainer}
           showsVerticalScrollIndicator={false}
         >
-          <View style={[styles.section, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
+          <GlassContainer
+            enabled={settings.glassContainers}
+            intensity={settings.glassIntensity}
+            darkMode={settings.darkMode}
+            style={[styles.section, { backgroundColor: settings.glassContainers ? 'transparent' : theme.card, borderColor: theme.cardBorder }]}
+          >
             <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>Account</Text>
             
             <TouchableOpacity
@@ -352,9 +368,14 @@ export default function SettingsScreen() {
                 <Text style={[styles.settingLabel, { color: theme.text }]}>Supabase Connection Test</Text>
               </TouchableOpacity>
             )}
-          </View>
+          </GlassContainer>
 
-          <View style={[styles.section, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
+          <GlassContainer
+            enabled={settings.glassContainers}
+            intensity={settings.glassIntensity}
+            darkMode={settings.darkMode}
+            style={[styles.section, { backgroundColor: settings.glassContainers ? 'transparent' : theme.card, borderColor: theme.cardBorder }]}
+          >
             <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>Preferences</Text>
             
             <View style={styles.settingRow}>
@@ -451,9 +472,54 @@ export default function SettingsScreen() {
                 );
               })}
             </View>
-          </View>
 
-          <View style={[styles.section, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
+            <View style={styles.glassSection}>
+              <View style={[styles.settingIcon, { backgroundColor: theme.primary + '20' }]}>
+                <Droplet color={theme.primary} size={20} />
+              </View>
+              <Text style={[styles.settingLabel, { color: theme.text }]}>Glass Containers</Text>
+              <Switch
+                value={settings.glassContainers}
+                onValueChange={handleGlassToggle}
+                trackColor={{ false: theme.inputBorder, true: theme.primary + '60' }}
+                thumbColor={settings.glassContainers ? theme.primary : theme.textMuted}
+              />
+            </View>
+
+            <View style={styles.glassIntensitySection}>
+              <View style={[styles.settingIcon, { backgroundColor: theme.primary + '20' }]}>
+                <Droplet color={theme.primary} size={20} />
+              </View>
+              <Text style={[styles.settingLabel, { color: theme.text }]}>Glass Intensity</Text>
+            </View>
+            <View style={styles.glassIntensityGrid}>
+              {([1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as GlassIntensity[]).map((level) => {
+                const isSelected = settings.glassIntensity === level;
+                return (
+                  <TouchableOpacity
+                    key={level}
+                    style={[
+                      styles.glassIntensityOption,
+                      { borderColor: isSelected ? theme.primary : theme.cardBorder, backgroundColor: isSelected ? theme.primary + '20' : 'transparent' },
+                      isSelected && { borderWidth: 2 },
+                    ]}
+                    onPress={() => handleGlassIntensityChange(level)}
+                  >
+                    <Text style={[styles.glassIntensityLabel, { color: isSelected ? theme.primary : theme.textMuted }]}>
+                      {level}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </GlassContainer>
+
+          <GlassContainer
+            enabled={settings.glassContainers}
+            intensity={settings.glassIntensity}
+            darkMode={settings.darkMode}
+            style={[styles.section, { backgroundColor: settings.glassContainers ? 'transparent' : theme.card, borderColor: theme.cardBorder }]}
+          >
             <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>Help & Legal</Text>
             
             <TouchableOpacity
@@ -465,9 +531,14 @@ export default function SettingsScreen() {
               </View>
               <Text style={[styles.settingLabel, { color: theme.text }]}>Privacy Policy</Text>
             </TouchableOpacity>
-          </View>
+          </GlassContainer>
 
-          <View style={[styles.section, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
+          <GlassContainer
+            enabled={settings.glassContainers}
+            intensity={settings.glassIntensity}
+            darkMode={settings.darkMode}
+            style={[styles.section, { backgroundColor: settings.glassContainers ? 'transparent' : theme.card, borderColor: theme.cardBorder }]}
+          >
             <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>Sync Status</Text>
             
             <View style={styles.settingRow}>
@@ -488,10 +559,15 @@ export default function SettingsScreen() {
               </View>
               <Text style={[styles.settingLabel, { color: theme.text }]}>Sync Now</Text>
             </TouchableOpacity>
-          </View>
+          </GlassContainer>
 
           {isDeveloper && (
-            <View style={[styles.section, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
+            <GlassContainer
+              enabled={settings.glassContainers}
+              intensity={settings.glassIntensity}
+              darkMode={settings.darkMode}
+              style={[styles.section, { backgroundColor: settings.glassContainers ? 'transparent' : theme.card, borderColor: theme.cardBorder }]}
+            >
               <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>Pending Sync Items (Developer)</Text>
               
               {isLoadingPending ? (
@@ -693,10 +769,15 @@ export default function SettingsScreen() {
               ) : (
                 <Text style={[styles.noDataText, { color: theme.textMuted }]}>No pending data available</Text>
               )}
-            </View>
+            </GlassContainer>
           )}
 
-          <View style={[styles.section, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
+          <GlassContainer
+            enabled={settings.glassContainers}
+            intensity={settings.glassIntensity}
+            darkMode={settings.darkMode}
+            style={[styles.section, { backgroundColor: settings.glassContainers ? 'transparent' : theme.card, borderColor: theme.cardBorder }]}
+          >
             <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>About</Text>
             
             <View style={styles.settingRow}>
@@ -706,7 +787,7 @@ export default function SettingsScreen() {
               <Text style={[styles.settingLabel, { color: theme.text }]}>App Version</Text>
               <Text style={[styles.settingValue, { color: theme.textMuted }]}>{APP_VERSION}</Text>
             </View>
-          </View>
+          </GlassContainer>
 
           <TouchableOpacity
             style={[styles.logoutButton, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}
@@ -1425,5 +1506,38 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600' as const,
     marginTop: 8,
+  },
+  glassSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  glassIntensitySection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    paddingBottom: 8,
+    paddingTop: 16,
+  },
+  glassIntensityGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+    gap: 8,
+  },
+  glassIntensityOption: {
+    width: 50,
+    height: 50,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  glassIntensityLabel: {
+    fontSize: 16,
+    fontWeight: '700' as const,
   },
 });

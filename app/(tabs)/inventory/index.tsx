@@ -28,6 +28,7 @@ import {
   getCategoryItemCount, createActivity
 } from '@/services/database';
 import LaserBackground from '@/components/LaserBackground';
+import GlassContainer from '@/components/GlassContainer';
 
 export default function InventoryScreen() {
   const { user, settings } = useAuth();
@@ -320,9 +321,12 @@ export default function InventoryScreen() {
           }
         >
           {filteredInventory.map(item => (
-            <View 
-              key={item.id} 
-              style={[styles.itemCard, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}
+            <GlassContainer
+              key={item.id}
+              enabled={settings.glassContainers}
+              intensity={settings.glassIntensity}
+              darkMode={settings.darkMode}
+              style={[styles.itemCard, { backgroundColor: settings.glassContainers ? 'transparent' : theme.card, borderColor: theme.cardBorder }]}
             >
               <View style={styles.itemInfo}>
                 <Text style={[styles.itemName, { color: theme.text }]}>{item.name}</Text>
@@ -344,7 +348,7 @@ export default function InventoryScreen() {
                   <Trash2 color={theme.error} size={18} />
                 </TouchableOpacity>
               </View>
-            </View>
+            </GlassContainer>
           ))}
           
           {filteredInventory.length === 0 && (

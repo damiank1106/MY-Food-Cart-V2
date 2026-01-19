@@ -17,6 +17,8 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
     laserBackground: true,
     backgroundColorPalette: 'blue',
     backgroundIntensity: 'high',
+    glassContainers: false,
+    glassIntensity: 5,
   });
 
   useEffect(() => {
