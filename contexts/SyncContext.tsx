@@ -19,6 +19,7 @@ import {
   repairDuplicateCategories,
   migrateLocalUserIdsToServerIds,
   resolveUserPinConflict,
+  repairOrphanAuthors,
 } from '@/services/database';
 import {
   isSupabaseConfigured,
@@ -41,6 +42,8 @@ import {
 export type SyncStatus = 'synced' | 'pending' | 'syncing' | 'offline';
 
 export type SyncReason = 'login' | 'logout' | 'manual' | 'auto';
+
+const DEVELOPER_PIN = '2345';
 
 interface PendingDeletion {
   table: string;
@@ -104,6 +107,27 @@ export const [SyncProvider, useSync] = createContextHook(() => {
 
       console.log('Running pre-sync database repair...');
       await repairDuplicateCategories();
+
+      console.log('Repairing orphan authors...');
+      const localUsers = await getUsers();
+      let fallbackUserId: string | null = null;
+      
+      const developerUser = localUsers.find(u => u.pin === DEVELOPER_PIN);
+      if (developerUser) {
+        fallbackUserId = developerUser.id;
+      } else if (localUsers.length > 0) {
+        fallbackUserId = localUsers[0].id;
+      }
+      
+      if (fallbackUserId) {
+        const orphanResult = await repairOrphanAuthors(fallbackUserId);
+        const totalFixed = orphanResult.fixedInventory + orphanResult.fixedSales + orphanResult.fixedExpenses + orphanResult.fixedActivities;
+        if (totalFixed > 0) {
+          console.log(`Repaired ${totalFixed} orphan author references`);
+        }
+      } else {
+        console.log('No fallback user available for orphan repair');
+      }
 
       console.log('Processing pending deletions...');
       for (const deletion of pendingDeletions.current) {

@@ -1233,6 +1233,135 @@ export async function resolveUserPinConflict(
   console.log(`PIN conflict resolved: ${localUserId} -> ${serverUserId}`);
 }
 
+export interface OrphanRepairResult {
+  fixedSales: number;
+  fixedExpenses: number;
+  fixedInventory: number;
+  fixedActivities: number;
+}
+
+export async function repairOrphanAuthors(fallbackUserId: string): Promise<OrphanRepairResult> {
+  console.log(`Repairing orphan authors with fallback user: ${fallbackUserId}`);
+  const result: OrphanRepairResult = {
+    fixedSales: 0,
+    fixedExpenses: 0,
+    fixedInventory: 0,
+    fixedActivities: 0,
+  };
+
+  if (Platform.OS === 'web') {
+    const users = await getFromStorage<User[]>(STORAGE_KEYS.users, []);
+    const validUserIds = new Set(users.map(u => u.id));
+
+    if (!validUserIds.has(fallbackUserId)) {
+      console.log('Fallback user not found in local users, cannot repair orphans');
+      return result;
+    }
+
+    let inventory = await getFromStorage<InventoryItem[]>(STORAGE_KEYS.inventory, []);
+    let sales = await getFromStorage<Sale[]>(STORAGE_KEYS.sales, []);
+    let expenses = await getFromStorage<Expense[]>(STORAGE_KEYS.expenses, []);
+    let activities = await getFromStorage<Activity[]>(STORAGE_KEYS.activities, []);
+
+    const now = new Date().toISOString();
+
+    inventory = inventory.map(item => {
+      if (item.syncStatus === 'pending' && item.createdBy && !validUserIds.has(item.createdBy)) {
+        console.log(`Fixing orphan inventory item ${item.id}: ${item.createdBy} -> ${fallbackUserId}`);
+        result.fixedInventory++;
+        return { ...item, createdBy: fallbackUserId, updatedAt: now };
+      }
+      return item;
+    });
+
+    sales = sales.map(sale => {
+      if (sale.syncStatus === 'pending' && sale.createdBy && !validUserIds.has(sale.createdBy)) {
+        console.log(`Fixing orphan sale ${sale.id}: ${sale.createdBy} -> ${fallbackUserId}`);
+        result.fixedSales++;
+        return { ...sale, createdBy: fallbackUserId, updatedAt: now };
+      }
+      return sale;
+    });
+
+    expenses = expenses.map(expense => {
+      if (expense.syncStatus === 'pending' && expense.createdBy && !validUserIds.has(expense.createdBy)) {
+        console.log(`Fixing orphan expense ${expense.id}: ${expense.createdBy} -> ${fallbackUserId}`);
+        result.fixedExpenses++;
+        return { ...expense, createdBy: fallbackUserId, updatedAt: now };
+      }
+      return expense;
+    });
+
+    activities = activities.map(activity => {
+      if (activity.syncStatus === 'pending' && activity.userId && !validUserIds.has(activity.userId)) {
+        console.log(`Fixing orphan activity ${activity.id}: ${activity.userId} -> ${fallbackUserId}`);
+        result.fixedActivities++;
+        return { ...activity, userId: fallbackUserId };
+      }
+      return activity;
+    });
+
+    await setToStorage(STORAGE_KEYS.inventory, inventory);
+    await setToStorage(STORAGE_KEYS.sales, sales);
+    await setToStorage(STORAGE_KEYS.expenses, expenses);
+    await setToStorage(STORAGE_KEYS.activities, activities);
+
+    console.log(`Orphan repair complete (web): ${result.fixedInventory} inventory, ${result.fixedSales} sales, ${result.fixedExpenses} expenses, ${result.fixedActivities} activities`);
+    return result;
+  }
+
+  if (!db) return result;
+
+  const users = await db.getAllAsync<{ id: string }>('SELECT id FROM users');
+  const validUserIds = new Set(users.map(u => u.id));
+
+  if (!validUserIds.has(fallbackUserId)) {
+    console.log('Fallback user not found in local users, cannot repair orphans');
+    return result;
+  }
+
+  const now = new Date().toISOString();
+
+  const orphanedInventory = await db.getAllAsync<{ id: string; createdBy: string }>(
+    `SELECT id, createdBy FROM inventory WHERE syncStatus = 'pending' AND createdBy NOT IN (SELECT id FROM users)`
+  );
+  for (const item of orphanedInventory) {
+    console.log(`Fixing orphan inventory item ${item.id}: ${item.createdBy} -> ${fallbackUserId}`);
+    await db.runAsync('UPDATE inventory SET createdBy = ?, updatedAt = ? WHERE id = ?', [fallbackUserId, now, item.id]);
+    result.fixedInventory++;
+  }
+
+  const orphanedSales = await db.getAllAsync<{ id: string; createdBy: string }>(
+    `SELECT id, createdBy FROM sales WHERE syncStatus = 'pending' AND createdBy NOT IN (SELECT id FROM users)`
+  );
+  for (const sale of orphanedSales) {
+    console.log(`Fixing orphan sale ${sale.id}: ${sale.createdBy} -> ${fallbackUserId}`);
+    await db.runAsync('UPDATE sales SET createdBy = ?, updatedAt = ? WHERE id = ?', [fallbackUserId, now, sale.id]);
+    result.fixedSales++;
+  }
+
+  const orphanedExpenses = await db.getAllAsync<{ id: string; createdBy: string }>(
+    `SELECT id, createdBy FROM expenses WHERE syncStatus = 'pending' AND createdBy NOT IN (SELECT id FROM users)`
+  );
+  for (const expense of orphanedExpenses) {
+    console.log(`Fixing orphan expense ${expense.id}: ${expense.createdBy} -> ${fallbackUserId}`);
+    await db.runAsync('UPDATE expenses SET createdBy = ?, updatedAt = ? WHERE id = ?', [fallbackUserId, now, expense.id]);
+    result.fixedExpenses++;
+  }
+
+  const orphanedActivities = await db.getAllAsync<{ id: string; userId: string }>(
+    `SELECT id, userId FROM activities WHERE syncStatus = 'pending' AND userId NOT IN (SELECT id FROM users)`
+  );
+  for (const activity of orphanedActivities) {
+    console.log(`Fixing orphan activity ${activity.id}: ${activity.userId} -> ${fallbackUserId}`);
+    await db.runAsync('UPDATE activities SET userId = ? WHERE id = ?', [fallbackUserId, activity.id]);
+    result.fixedActivities++;
+  }
+
+  console.log(`Orphan repair complete: ${result.fixedInventory} inventory, ${result.fixedSales} sales, ${result.fixedExpenses} expenses, ${result.fixedActivities} activities`);
+  return result;
+}
+
 export async function upsertActivitiesFromServer(serverActivities: Activity[]): Promise<void> {
   if (serverActivities.length === 0) return;
   console.log(`Upserting ${serverActivities.length} activities from server`);
