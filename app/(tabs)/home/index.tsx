@@ -19,6 +19,7 @@ import { Colors } from '@/constants/colors';
 import { formatDate, ROLE_DISPLAY_NAMES, UserRole } from '@/types';
 import { getSalesByDateRange, getExpensesByDateRange, getActivities, getUsers } from '@/services/database';
 import Svg, { Path, Circle, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
+import LaserBackground from '@/components/LaserBackground';
 
 const { width } = Dimensions.get('window');
 
@@ -195,6 +196,9 @@ export default function HomeScreen() {
         colors={[theme.backgroundGradientStart, theme.backgroundGradientEnd]}
         style={StyleSheet.absoluteFill}
       />
+      {settings.laserBackground && (
+        <LaserBackground isDarkMode={settings.darkMode} />
+      )}
       
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         <ScrollView

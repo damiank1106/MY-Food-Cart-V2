@@ -27,6 +27,7 @@ import {
   createInventoryItem, updateInventoryItem, deleteInventoryItem,
   getCategoryItemCount, createActivity
 } from '@/services/database';
+import LaserBackground from '@/components/LaserBackground';
 
 export default function InventoryScreen() {
   const { user, settings } = useAuth();
@@ -253,6 +254,9 @@ export default function InventoryScreen() {
         colors={[theme.backgroundGradientStart, theme.backgroundGradientEnd]}
         style={StyleSheet.absoluteFill}
       />
+      {settings.laserBackground && (
+        <LaserBackground isDarkMode={settings.darkMode} />
+      )}
       
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         <View style={styles.tabsContainer}>

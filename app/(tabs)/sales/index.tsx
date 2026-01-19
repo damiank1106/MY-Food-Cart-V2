@@ -26,6 +26,7 @@ import {
   getSalesByDate, getExpensesByDate, createSale, createExpense,
   deleteSale, deleteExpense, createActivity
 } from '@/services/database';
+import LaserBackground from '@/components/LaserBackground';
 
 export default function SalesScreen() {
   const { user, settings } = useAuth();
@@ -263,6 +264,9 @@ export default function SalesScreen() {
         colors={[theme.backgroundGradientStart, theme.backgroundGradientEnd]}
         style={StyleSheet.absoluteFill}
       />
+      {settings.laserBackground && (
+        <LaserBackground isDarkMode={settings.darkMode} />
+      )}
       
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         <View style={[styles.header, { borderBottomColor: theme.divider }]}>
