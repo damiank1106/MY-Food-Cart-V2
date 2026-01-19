@@ -23,9 +23,9 @@ export default function TabLayout() {
           backgroundColor: theme.tabBar,
           borderTopColor: theme.tabBarBorder,
           borderTopWidth: 1,
-          paddingBottom: Platform.OS === 'ios' ? 20 : 8,
-          paddingTop: 8,
-          height: Platform.OS === 'ios' ? 85 : 60,
+          paddingBottom: Platform.OS === 'ios' ? 28 : 16,
+          paddingTop: 10,
+          height: Platform.OS === 'ios' ? 90 : 70,
           ...(isTablet && {
             position: 'absolute' as const,
             left: 0,
