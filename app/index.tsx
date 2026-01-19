@@ -63,21 +63,42 @@ export default function IntroScreen() {
         style={StyleSheet.absoluteFill}
       />
       
-      {Platform.OS !== 'web' ? (
-        <Video
-          ref={videoRef}
-          source={{ uri: 'https://pub-e001eb4506b145aa938b5d3badbff6a5.r2.dev/attachments/w9yigrrx8luuuiv2awdgw' }}
-          style={styles.video}
-          resizeMode={ResizeMode.COVER}
-          shouldPlay
-          isLooping
-          isMuted
-        />
-      ) : (
+      {Platform.OS === 'web' ? (
         <View style={styles.webVideoContainer}>
-          <LinearGradient
-            colors={[theme.primary + '40', theme.accent + '20']}
-            style={styles.webVideoPlaceholder}
+          {/* 
+            PLACEHOLDER: Replace the src below with your local video path.
+            To use a local video:
+            1. Add your video file to: assets/videos/intro.webm
+            2. Update the source src to: src="/assets/videos/intro.webm"
+          */}
+          <video
+            autoPlay
+            loop
+            muted
+            playsInline
+            style={{ width: '100%', height: '100%', objectFit: 'cover' } as React.CSSProperties}
+          >
+            <source src="https://pub-e001eb4506b145aa938b5d3badbff6a5.r2.dev/attachments/w9yigrrx8luuuiv2awdgw" type="video/mp4" />
+          </video>
+        </View>
+      ) : (
+        <View style={styles.nativeVideoContainer}>
+          {/* 
+            PLACEHOLDER: Replace the URI below with your local video file.
+            To use a local video:
+            1. Add your video file to: assets/videos/intro.mp4
+            2. Replace the source line with: source={require('@/assets/videos/intro.mp4')}
+            Note: Use .mp4 format for best iOS/Android compatibility
+          */}
+          <Video
+            ref={videoRef}
+            source={{ uri: 'https://pub-e001eb4506b145aa938b5d3badbff6a5.r2.dev/attachments/w9yigrrx8luuuiv2awdgw' }}
+            style={styles.video}
+            resizeMode={ResizeMode.COVER}
+            shouldPlay
+            isLooping
+            isMuted
+            onError={(e) => console.log('Video error:', e)}
           />
         </View>
       )}
@@ -113,6 +134,20 @@ const styles = StyleSheet.create({
   webVideoPlaceholder: {
     width: '100%',
     height: '100%',
+  },
+  nativeVideoContainer: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  placeholderOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.3)',
+  },
+  placeholderText: {
+    fontSize: 14,
+    textAlign: 'center',
+    padding: 20,
   },
   nextButton: {
     position: 'absolute',
