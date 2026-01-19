@@ -92,7 +92,7 @@ export default function IntroScreen() {
           */}
           <Video
             ref={videoRef}
-            source={{ uri: 'https://pub-e001eb4506b145aa938b5d3badbff6a5.r2.dev/attachments/w9yigrrx8luuuiv2awdgw' }}
+            source={{ uri: "/assets/videos/intro.webm" }}
             style={styles.video}
             resizeMode={ResizeMode.COVER}
             shouldPlay
