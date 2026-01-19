@@ -6,20 +6,20 @@ import {
   ScrollView,
   TouchableOpacity,
   TextInput,
-  Image,
   Alert,
   Platform,
   ActionSheetIOS,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Camera, Save, User } from 'lucide-react-native';
+import { Save } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '@/contexts/AuthContext';
 import { Colors } from '@/constants/colors';
 import { ROLE_DISPLAY_NAMES } from '@/types';
+import ProfileAvatarGlow from '@/components/ProfileAvatarGlow';
 
 const BIO_STORAGE_KEY = '@myfoodcart_user_bio';
 
@@ -27,32 +27,32 @@ export default function ProfileScreen() {
   const { user, settings, updateCurrentUser } = useAuth();
   const theme = settings.darkMode ? Colors.dark : Colors.light;
   
-  const [displayName, setDisplayName] = useState('');
+  const [displayName, setDisplayName] = useState(user?.name || '');
   const [bio, setBio] = useState('');
   const [profileImage, setProfileImage] = useState<string | null>(user?.profilePicture || null);
   const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
-  const loadBio = useCallback(async () => {
+  const loadUserData = useCallback(async () => {
+    if (!user) return;
+    
     try {
-      const savedBio = await AsyncStorage.getItem(`${BIO_STORAGE_KEY}_${user?.id}`);
-      if (savedBio) {
+      setDisplayName(user.name || '');
+      setProfileImage(user.profilePicture || null);
+      
+      const savedBio = await AsyncStorage.getItem(`${BIO_STORAGE_KEY}_${user.id}`);
+      if (savedBio !== null) {
         setBio(savedBio);
       }
+      console.log('Profile data loaded - name:', user.name, 'bio:', savedBio);
     } catch (error) {
-      console.log('Error loading bio:', error);
-    }
-  }, [user?.id]);
-
-  useEffect(() => {
-    loadBio();
-  }, [loadBio]);
-
-  useEffect(() => {
-    if (user) {
-      setProfileImage(user.profilePicture || null);
+      console.log('Error loading profile data:', error);
     }
   }, [user]);
+
+  useEffect(() => {
+    loadUserData();
+  }, [loadUserData]);
 
   const handlePickImage = async (useCamera: boolean) => {
     if (useCamera) {
@@ -118,13 +118,16 @@ export default function ProfileScreen() {
     
     setIsSaving(true);
     try {
+      const newName = displayName.trim();
+      
       await updateCurrentUser({
-        name: displayName.trim() || user.name,
+        name: newName,
         profilePicture: profileImage || undefined,
       });
 
       await AsyncStorage.setItem(`${BIO_STORAGE_KEY}_${user.id}`, bio);
       
+      console.log('Profile saved - name:', newName, 'bio:', bio);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setHasChanges(false);
     } catch (error) {
@@ -176,23 +179,17 @@ export default function ProfileScreen() {
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.avatarSection}>
-            <View style={styles.avatarWrapper}>
-              <View
-                style={[styles.avatarContainer, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}
-              >
-                {profileImage ? (
-                  <Image source={{ uri: profileImage }} style={styles.avatar} />
-                ) : (
-                  <User color={theme.textMuted} size={60} />
-                )}
-              </View>
-              <TouchableOpacity 
-                style={[styles.cameraButton, { backgroundColor: theme.primary }]}
-                onPress={showImagePickerOptions}
-              >
-                <Camera color="#fff" size={18} />
-              </TouchableOpacity>
-            </View>
+            <ProfileAvatarGlow
+              imageUri={profileImage}
+              size={120}
+              onPressCamera={showImagePickerOptions}
+              fallbackText={displayName || user?.name}
+              glowColor={settings.darkMode ? 'rgba(74, 144, 217, 0.4)' : 'rgba(59, 130, 246, 0.35)'}
+              primaryColor={theme.primary}
+              backgroundColor={theme.card}
+              borderColor={theme.cardBorder}
+              iconColor={theme.textMuted}
+            />
             
             {isDeveloper && user?.role && (
               <View style={[styles.roleBadge, { backgroundColor: theme.primary + '20' }]}>
@@ -301,37 +298,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 24,
   },
-  avatarWrapper: {
-    position: 'relative',
-  },
-  avatarContainer: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    borderWidth: 2,
-    justifyContent: 'center',
-    alignItems: 'center',
-    overflow: 'hidden',
-  },
-  avatar: {
-    width: '100%',
-    height: '100%',
-  },
-  cameraButton: {
-    position: 'absolute',
-    bottom: -4,
-    right: -8,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 5,
-  },
+  
   roleBadge: {
     marginTop: 12,
     paddingVertical: 6,

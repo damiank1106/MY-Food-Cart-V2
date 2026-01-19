@@ -15,6 +15,7 @@ import { Package, ShoppingCart, User, Settings, ChevronRight } from 'lucide-reac
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { Colors } from '@/constants/colors';
+import UpdateDetailsModal from '@/components/UpdateDetailsModal';
 import { formatDate, ROLE_DISPLAY_NAMES, UserRole } from '@/types';
 import { getSalesByDateRange, getExpensesByDateRange, getActivities, getUsers } from '@/services/database';
 import Svg, { Path, Circle, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
@@ -86,6 +87,8 @@ export default function HomeScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [showSales, setShowSales] = useState(true);
   const [showExpenses, setShowExpenses] = useState(true);
+  const [selectedActivity, setSelectedActivity] = useState<typeof activities[0] | null>(null);
+  const [showUpdateModal, setShowUpdateModal] = useState(false);
   const { width: screenWidth } = useWindowDimensions();
   
   const welcomeFontSize = screenWidth < 360 ? 18 : screenWidth < 400 ? 20 : 24;
@@ -343,6 +346,11 @@ export default function HomeScreen() {
                 <TouchableOpacity
                   key={activity.id}
                   style={[styles.updateItem, { backgroundColor: theme.cardHighlight, borderColor: theme.cardBorder }]}
+                  onPress={() => {
+                    setSelectedActivity(activity);
+                    setShowUpdateModal(true);
+                  }}
+                  activeOpacity={0.7}
                 >
                   <View style={[styles.updateIcon, { backgroundColor: theme.primary + '20' }]}>
                     {getActivityIcon(activity.type, theme.primary)}
@@ -375,6 +383,17 @@ export default function HomeScreen() {
           </View>
         </ScrollView>
       </SafeAreaView>
+
+      <UpdateDetailsModal
+        visible={showUpdateModal}
+        onClose={() => {
+          setShowUpdateModal(false);
+          setSelectedActivity(null);
+        }}
+        activity={selectedActivity}
+        authorName={selectedActivity ? getAuthorDisplayName(selectedActivity.userId) : ''}
+        darkMode={settings.darkMode}
+      />
     </View>
   );
 }
