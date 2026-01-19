@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Lock, Moon, HelpCircle, Info, LogOut, Eye, EyeOff, X, UserPlus, ChevronDown, ChevronRight, RefreshCw, Cloud, CloudOff, Database, AlertTriangle, Wrench } from 'lucide-react-native';
+import { Lock, Moon, HelpCircle, Info, LogOut, Eye, EyeOff, X, UserPlus, ChevronDown, ChevronRight, RefreshCw, Cloud, CloudOff, Database, AlertTriangle, Wrench, Sparkles } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -195,6 +195,11 @@ export default function SettingsScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
 
+  const handleLaserToggle = async (value: boolean) => {
+    await updateSettings({ laserBackground: value });
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  };
+
   const handleLogout = async () => {
     setShowSyncModal(true);
     try {
@@ -348,6 +353,19 @@ export default function SettingsScreen() {
                 onValueChange={handleDarkModeToggle}
                 trackColor={{ false: theme.inputBorder, true: theme.primary + '60' }}
                 thumbColor={settings.darkMode ? theme.primary : theme.textMuted}
+              />
+            </View>
+
+            <View style={styles.settingRow}>
+              <View style={[styles.settingIcon, { backgroundColor: theme.primary + '20' }]}>
+                <Sparkles color={theme.primary} size={20} />
+              </View>
+              <Text style={[styles.settingLabel, { color: theme.text }]}>Animated Lasers</Text>
+              <Switch
+                value={settings.laserBackground}
+                onValueChange={handleLaserToggle}
+                trackColor={{ false: theme.inputBorder, true: theme.primary + '60' }}
+                thumbColor={settings.laserBackground ? theme.primary : theme.textMuted}
               />
             </View>
           </View>

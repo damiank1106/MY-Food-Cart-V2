@@ -14,6 +14,7 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
   const [settings, setSettings] = useState<AppSettings>({
     darkMode: true,
     hasSeenIntro: false,
+    laserBackground: true,
   });
 
   useEffect(() => {

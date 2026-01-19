@@ -71,6 +71,7 @@ export interface Activity {
 export interface AppSettings {
   darkMode: boolean;
   hasSeenIntro: boolean;
+  laserBackground: boolean;
 }
 
 export const DEFAULT_CATEGORIES: string[] = ['Cart', 'Freezer', 'Condiments', 'Packing Supply'];

@@ -2,9 +2,9 @@ import React, { useState } from 'react';
 import {
   View,
   StyleSheet,
+  Animated,
   TouchableOpacity,
   Image,
-  Text,
 } from 'react-native';
 import { User, Camera, Trash2 } from 'lucide-react-native';
 
@@ -14,6 +14,7 @@ interface ProfileAvatarGlowProps {
   onPressCamera?: () => void;
   onPressRemove?: () => void;
   fallbackText?: string;
+  glowColor?: string;
   primaryColor?: string;
   backgroundColor?: string;
   borderColor?: string;
@@ -26,18 +27,19 @@ export default function ProfileAvatarGlow({
   onPressCamera,
   onPressRemove,
   fallbackText,
+  glowColor = 'rgba(74, 144, 217, 0.6)',
   primaryColor = '#4a90d9',
   backgroundColor = '#142238',
   borderColor = '#1e3a5f',
   iconColor = '#5a7a9a',
 }: ProfileAvatarGlowProps) {
   const [showTrash, setShowTrash] = useState(false);
-
   const cameraButtonSize = 40;
   const cameraOffset = 8;
 
   return (
     <View style={[styles.container, { width: size + 60, height: size + 60 }]}>
+      
       <TouchableOpacity
         style={[
           styles.avatarContainer,
@@ -57,14 +59,14 @@ export default function ProfileAvatarGlow({
           <Image source={{ uri: imageUri }} style={styles.avatar} />
         ) : fallbackText ? (
           <View style={styles.fallbackContainer}>
-            <Text
+            <Animated.Text
               style={[
                 styles.fallbackText,
                 { fontSize: size * 0.4, color: iconColor },
               ]}
             >
               {fallbackText.charAt(0).toUpperCase()}
-            </Text>
+            </Animated.Text>
           </View>
         ) : (
           <User color={iconColor} size={size * 0.5} />
