@@ -8,7 +8,7 @@ interface LaserBackgroundProps {
 }
 
 export default function LaserBackground({ isDarkMode }: LaserBackgroundProps) {
-  const numLasers = 6;
+  const numLasers = 5;
   const laserAnimations = useRef(
     Array.from({ length: numLasers }, () => new Animated.Value(0))
   ).current;
@@ -93,7 +93,7 @@ const styles = StyleSheet.create({
   },
   laser: {
     position: 'absolute',
-    width: 3,
+    width: 150,
     height: height * 1.5,
     top: -height,
   },
@@ -102,7 +102,7 @@ const styles = StyleSheet.create({
     height: '100%',
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 1,
-    shadowRadius: 20,
+    shadowRadius: 40,
     elevation: 5,
   },
 });
