@@ -1,6 +1,6 @@
 import React from 'react';
-import { View, ViewStyle, StyleProp, Platform } from 'react-native';
-import { GlassView } from 'expo-glass-effect';
+import { View, ViewStyle, StyleProp } from 'react-native';
+import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
 
 interface GlassContainerProps {
   children: React.ReactNode;
@@ -17,7 +17,7 @@ export default function GlassContainer({
   intensity,
   darkMode 
 }: GlassContainerProps) {
-  if (!enabled || Platform.OS !== 'ios') {
+  if (!enabled || !isLiquidGlassAvailable()) {
     return <View style={style}>{children}</View>;
   }
 
