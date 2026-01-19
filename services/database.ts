@@ -674,17 +674,41 @@ export async function upsertCategoriesFromServer(serverCategories: Category[]): 
   console.log(`Upserting ${serverCategories.length} categories from server`);
 
   if (Platform.OS === 'web') {
-    const localCategories = await getFromStorage<Category[]>(STORAGE_KEYS.categories, []);
+    let localCategories = await getFromStorage<Category[]>(STORAGE_KEYS.categories, []);
+    let inventory = await getFromStorage<InventoryItem[]>(STORAGE_KEYS.inventory, []);
     const localMap = new Map(localCategories.map(c => [c.id, c]));
     
     for (const serverCat of serverCategories) {
-      const local = localMap.get(serverCat.id);
-      if (!local) {
-        localMap.set(serverCat.id, { ...serverCat, syncStatus: 'synced' });
-      } else if (local.syncStatus !== 'pending') {
-        localMap.set(serverCat.id, { ...serverCat, syncStatus: 'synced' });
+      try {
+        const serverNorm = serverCat.name.trim().toLowerCase();
+        
+        const collidingLocal = localCategories.find(
+          c => c.name.trim().toLowerCase() === serverNorm && c.id !== serverCat.id
+        );
+        
+        if (collidingLocal) {
+          console.log(`Name collision: local "${collidingLocal.name}" (${collidingLocal.id}) vs server "${serverCat.name}" (${serverCat.id}). Server wins.`);
+          inventory = inventory.map(item => 
+            item.categoryId === collidingLocal.id 
+              ? { ...item, categoryId: serverCat.id } 
+              : item
+          );
+          localMap.delete(collidingLocal.id);
+          localCategories = localCategories.filter(c => c.id !== collidingLocal.id);
+        }
+        
+        const existingById = localMap.get(serverCat.id);
+        if (!existingById) {
+          localMap.set(serverCat.id, { ...serverCat, syncStatus: 'synced' });
+        } else if (existingById.syncStatus !== 'pending') {
+          localMap.set(serverCat.id, { ...serverCat, syncStatus: 'synced' });
+        }
+      } catch (error) {
+        console.log(`Error upserting category ${serverCat.id}: ${error}`);
       }
     }
+    
+    await setToStorage(STORAGE_KEYS.inventory, inventory);
     await setToStorage(STORAGE_KEYS.categories, Array.from(localMap.values()));
     return;
   }
@@ -692,17 +716,38 @@ export async function upsertCategoriesFromServer(serverCategories: Category[]): 
   if (!db) return;
 
   for (const serverCat of serverCategories) {
-    const existing = await db.getFirstAsync<Category>('SELECT * FROM categories WHERE id = ?', [serverCat.id]);
-    if (!existing) {
-      await db.runAsync(
-        'INSERT INTO categories (id, name, createdAt, updatedAt, syncStatus) VALUES (?, ?, ?, ?, ?)',
-        [serverCat.id, serverCat.name, serverCat.createdAt, serverCat.updatedAt, 'synced']
+    try {
+      const serverNorm = serverCat.name.trim().toLowerCase();
+      
+      const collidingLocal = await db.getFirstAsync<Category>(
+        'SELECT * FROM categories WHERE lower(trim(name)) = ? AND id != ?',
+        [serverNorm, serverCat.id]
       );
-    } else if (existing.syncStatus !== 'pending') {
-      await db.runAsync(
-        'UPDATE categories SET name = ?, createdAt = ?, updatedAt = ?, syncStatus = ? WHERE id = ?',
-        [serverCat.name, serverCat.createdAt, serverCat.updatedAt, 'synced', serverCat.id]
-      );
+      
+      if (collidingLocal) {
+        console.log(`Name collision: local "${collidingLocal.name}" (${collidingLocal.id}) vs server "${serverCat.name}" (${serverCat.id}). Server wins.`);
+        await db.runAsync(
+          'UPDATE inventory SET categoryId = ? WHERE categoryId = ?',
+          [serverCat.id, collidingLocal.id]
+        );
+        await db.runAsync('DELETE FROM categories WHERE id = ?', [collidingLocal.id]);
+      }
+      
+      const existingById = await db.getFirstAsync<Category>('SELECT * FROM categories WHERE id = ?', [serverCat.id]);
+      
+      if (!existingById) {
+        await db.runAsync(
+          'INSERT INTO categories (id, name, createdAt, updatedAt, syncStatus) VALUES (?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET name = excluded.name, createdAt = excluded.createdAt, updatedAt = excluded.updatedAt, syncStatus = excluded.syncStatus',
+          [serverCat.id, serverCat.name, serverCat.createdAt, serverCat.updatedAt, 'synced']
+        );
+      } else if (existingById.syncStatus !== 'pending') {
+        await db.runAsync(
+          'UPDATE categories SET name = ?, createdAt = ?, updatedAt = ?, syncStatus = ? WHERE id = ?',
+          [serverCat.name, serverCat.createdAt, serverCat.updatedAt, 'synced', serverCat.id]
+        );
+      }
+    } catch (error) {
+      console.log(`Error upserting category ${serverCat.id}: ${error}`);
     }
   }
 }
