@@ -177,7 +177,7 @@ export default function CalendarModal({
               ? styles.selectedDayText
               : withEntry
                 ? [styles.entryDayText, { color: theme.success }]
-                : [styles.noEntryDayText, { color: '#ffffff' }],
+                : [styles.noEntryDayText, { color: theme.text }],
           ]}
         >
           {day}
