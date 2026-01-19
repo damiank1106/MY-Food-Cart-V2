@@ -15,13 +15,13 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Lock, Moon, HelpCircle, Info, LogOut, Eye, EyeOff, X, UserPlus, ChevronDown, ChevronRight, RefreshCw, Cloud, CloudOff, Database, AlertTriangle, Wrench, Sparkles } from 'lucide-react-native';
+import { Lock, Moon, HelpCircle, Info, LogOut, Eye, EyeOff, X, UserPlus, ChevronDown, ChevronRight, RefreshCw, Cloud, CloudOff, Database, AlertTriangle, Wrench, Sparkles, Palette } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { Colors } from '@/constants/colors';
-import { UserRole, ROLE_DISPLAY_NAMES } from '@/types';
+import { UserRole, ROLE_DISPLAY_NAMES, BackgroundColorPalette } from '@/types';
 import { createUser, isPinTaken, getPendingSummaryAndItems, PendingSummary } from '@/services/database';
 import { useSync } from '@/contexts/SyncContext';
 import { supabase, isSupabaseConfigured } from '@/services/supabase';
@@ -200,6 +200,11 @@ export default function SettingsScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
 
+  const handleColorPaletteChange = async (palette: BackgroundColorPalette) => {
+    await updateSettings({ backgroundColorPalette: palette });
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  };
+
   const handleLogout = async () => {
     setShowSyncModal(true);
     try {
@@ -367,6 +372,42 @@ export default function SettingsScreen() {
                 trackColor={{ false: theme.inputBorder, true: theme.primary + '60' }}
                 thumbColor={settings.laserBackground ? theme.primary : theme.textMuted}
               />
+            </View>
+
+            <View style={styles.colorPaletteSection}>
+              <View style={[styles.settingIcon, { backgroundColor: theme.primary + '20' }]}>
+                <Palette color={theme.primary} size={20} />
+              </View>
+              <Text style={[styles.settingLabel, { color: theme.text }]}>Background Color</Text>
+            </View>
+            <View style={styles.colorPaletteGrid}>
+              {(['blue', 'purple', 'green', 'orange', 'pink', 'cyan'] as BackgroundColorPalette[]).map((palette) => {
+                const colorMap = {
+                  blue: '#3B82F6',
+                  purple: '#A855F7',
+                  green: '#22C55E',
+                  orange: '#F97316',
+                  pink: '#EC4899',
+                  cyan: '#06B6D4',
+                };
+                const isSelected = settings.backgroundColorPalette === palette;
+                return (
+                  <TouchableOpacity
+                    key={palette}
+                    style={[
+                      styles.colorOption,
+                      { borderColor: isSelected ? colorMap[palette] : theme.cardBorder },
+                      isSelected && { borderWidth: 3 },
+                    ]}
+                    onPress={() => handleColorPaletteChange(palette)}
+                  >
+                    <View style={[styles.colorCircle, { backgroundColor: colorMap[palette] }]} />
+                    <Text style={[styles.colorLabel, { color: isSelected ? theme.text : theme.textMuted }]}>
+                      {palette.charAt(0).toUpperCase() + palette.slice(1)}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
           </View>
 
@@ -1281,5 +1322,38 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: 'center',
     padding: 20,
+  },
+  colorPaletteSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    paddingBottom: 8,
+  },
+  colorPaletteGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+    gap: 12,
+  },
+  colorOption: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    borderWidth: 2,
+    minWidth: 90,
+  },
+  colorCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    marginBottom: 6,
+  },
+  colorLabel: {
+    fontSize: 12,
+    fontWeight: '500' as const,
   },
 });

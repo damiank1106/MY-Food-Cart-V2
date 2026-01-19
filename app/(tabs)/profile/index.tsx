@@ -187,7 +187,7 @@ export default function ProfileScreen() {
         style={StyleSheet.absoluteFill}
       />
       {settings.laserBackground && (
-        <LaserBackground isDarkMode={settings.darkMode} />
+        <LaserBackground isDarkMode={settings.darkMode} colorPalette={settings.backgroundColorPalette} />
       )}
       
       <SafeAreaView style={styles.safeArea} edges={['top']}>

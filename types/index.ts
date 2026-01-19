@@ -68,10 +68,13 @@ export interface Activity {
   syncStatus: 'synced' | 'pending';
 }
 
+export type BackgroundColorPalette = 'blue' | 'purple' | 'green' | 'orange' | 'pink' | 'cyan';
+
 export interface AppSettings {
   darkMode: boolean;
   hasSeenIntro: boolean;
   laserBackground: boolean;
+  backgroundColorPalette: BackgroundColorPalette;
 }
 
 export const DEFAULT_CATEGORIES: string[] = ['Cart', 'Freezer', 'Condiments', 'Packing Supply'];
