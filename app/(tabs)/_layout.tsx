@@ -15,6 +15,8 @@ export default function TabLayout() {
   const theme = settings.darkMode ? Colors.dark : Colors.light;
   
   const isInventoryClerk = user?.role === 'inventory_clerk';
+  const tabBarBackground =
+    theme.tabBar.startsWith("#") ? `${theme.tabBar}CC` : theme.tabBar;
 
   return (
     <Tabs
@@ -22,7 +24,7 @@ export default function TabLayout() {
         tabBarActiveTintColor: theme.tabIconSelected,
         tabBarInactiveTintColor: theme.tabIconDefault,
         tabBarStyle: {
-          backgroundColor: theme.tabBar,
+          backgroundColor: tabBarBackground,
           borderTopColor: theme.tabBarBorder,
           borderTopWidth: 1,
           paddingBottom: insets.bottom + 8,
