@@ -16,7 +16,7 @@ import { Colors } from '@/constants/colors';
 
 const { width, height } = Dimensions.get('window');
 
-const videoSource = require('../videos/intro.webm');
+const videoSource = require('../assets/videos/intro.webm');
 
 export default function IntroScreen() {
   const router = useRouter();
@@ -80,7 +80,7 @@ export default function IntroScreen() {
             playsInline
             style={{ width: '100%', height: '100%', objectFit: 'cover' } as React.CSSProperties}
           >
-            <source src="/videos/intro.webm" type="video/webm" />
+            <source src="/assets/videos/intro.webm" type="video/webm" />
           </video>
         </View>
       ) : (
