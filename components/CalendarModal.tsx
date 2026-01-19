@@ -177,7 +177,7 @@ export default function CalendarModal({
               ? styles.selectedDayText
               : withEntry
                 ? [styles.entryDayText, { color: theme.success }]
-                : [styles.noEntryDayText, { color: theme.error }],
+                : [styles.noEntryDayText, { color: '#ffffff' }],
           ]}
         >
           {day}
@@ -240,7 +240,7 @@ export default function CalendarModal({
                 <Text style={[styles.legendText, { color: theme.textSecondary }]}>Has entries</Text>
               </View>
               <View style={styles.legendItem}>
-                <View style={[styles.legendDot, { backgroundColor: theme.error }]} />
+                <View style={[styles.legendDot, { backgroundColor: '#ffffff', borderWidth: 1, borderColor: theme.textSecondary }]} />
                 <Text style={[styles.legendText, { color: theme.textSecondary }]}>No entries</Text>
               </View>
             </View>
