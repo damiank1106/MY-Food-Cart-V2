@@ -11,17 +11,14 @@ import {
   Platform,
   ActivityIndicator,
 } from 'react-native';
-import { useVideoPlayer, VideoView } from 'expo-video';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
-import { ShoppingCart, Lock, Eye, EyeOff, ChevronRight } from 'lucide-react-native';
+import { ShoppingCart, Lock, Eye, EyeOff } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useAuth } from '@/contexts/AuthContext';
 import { Colors } from '@/constants/colors';
 
-const { width, height } = Dimensions.get('window');
-
-const introVideo = require('@/assets/videos/intro.webm');
+const { width } = Dimensions.get('window');
 
 export default function WelcomeScreen() {
   const router = useRouter();
@@ -30,39 +27,12 @@ export default function WelcomeScreen() {
   const [showPin, setShowPin] = useState(false);
   const [error, setError] = useState('');
   const [isLoggingIn, setIsLoggingIn] = useState(false);
-  const [showIntro, setShowIntro] = useState(true);
   
   const shakeAnimation = useRef(new Animated.Value(0)).current;
   const fadeAnimation = useRef(new Animated.Value(0)).current;
   const slideAnimation = useRef(new Animated.Value(50)).current;
-  const introFadeAnimation = useRef(new Animated.Value(1)).current;
 
   const theme = settings.darkMode ? Colors.dark : Colors.light;
-
-  const player = useVideoPlayer(introVideo, player => {
-    player.loop = false;
-    player.play();
-  });
-
-  const handleSkipIntro = useCallback(() => {
-    Animated.timing(introFadeAnimation, {
-      toValue: 0,
-      duration: 300,
-      useNativeDriver: true,
-    }).start(() => {
-      setShowIntro(false);
-    });
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  }, [introFadeAnimation]);
-
-  useEffect(() => {
-    if (player) {
-      const subscription = player.addListener('playToEnd', () => {
-        handleSkipIntro();
-      });
-      return () => subscription.remove();
-    }
-  }, [player, handleSkipIntro]);
 
   useEffect(() => {
     Animated.parallel([
@@ -127,27 +97,6 @@ export default function WelcomeScreen() {
       setError('');
     }
   };
-
-  if (showIntro) {
-    return (
-      <Animated.View style={[styles.introContainer, { opacity: introFadeAnimation }]}>
-        <VideoView
-          player={player}
-          style={styles.introVideo}
-          contentFit="cover"
-          nativeControls={false}
-        />
-        <TouchableOpacity
-          style={styles.skipButton}
-          onPress={handleSkipIntro}
-          activeOpacity={0.8}
-        >
-          <Text style={styles.skipButtonText}>Next</Text>
-          <ChevronRight color="#fff" size={20} />
-        </TouchableOpacity>
-      </Animated.View>
-    );
-  }
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
@@ -246,31 +195,6 @@ export default function WelcomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  introContainer: {
-    flex: 1,
-    backgroundColor: '#000',
-  },
-  introVideo: {
-    width: width,
-    height: height,
-  },
-  skipButton: {
-    position: 'absolute',
-    bottom: 50,
-    right: 24,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 24,
-  },
-  skipButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600' as const,
-    marginRight: 4,
-  },
   container: {
     flex: 1,
   },
