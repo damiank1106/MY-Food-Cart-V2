@@ -16,6 +16,10 @@ import { Colors } from '@/constants/colors';
 
 const { width, height } = Dimensions.get('window');
 
+// For bigger screens, make video taller while keeping width
+const isLargeScreen = width >= 768;
+const videoHeight = isLargeScreen ? height * 1.2 : height;
+
 const videoSource = require('../assets/videos/intro.webm');
 
 export default function IntroScreen() {
@@ -113,7 +117,7 @@ const styles = StyleSheet.create({
   },
   video: {
     width: width,
-    height: height,
+    height: videoHeight,
     position: 'absolute',
   },
   webVideoContainer: {
