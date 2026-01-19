@@ -11,7 +11,7 @@ export default function NotFoundScreen() {
       <View style={[styles.container, { backgroundColor: theme.background }]}>
         <Text style={[styles.title, { color: theme.text }]}>Page not found</Text>
 
-        <Link href="/home" style={styles.link}>
+        <Link href="/(tabs)/home" style={styles.link}>
           <Text style={[styles.linkText, { color: theme.primary }]}>Go to home screen</Text>
         </Link>
       </View>

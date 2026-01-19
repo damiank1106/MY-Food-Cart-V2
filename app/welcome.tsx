@@ -51,7 +51,7 @@ export default function WelcomeScreen() {
 
   useEffect(() => {
     if (isInitialized && user) {
-      router.replace('/home');
+      router.replace('/(tabs)/home' as any);
     }
   }, [isInitialized, user, router]);
 
@@ -79,7 +79,7 @@ export default function WelcomeScreen() {
     
     if (result.success) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      router.replace('/home');
+      router.replace('/(tabs)/home' as any);
     } else {
       setError('Invalid PIN. Please try again.');
       shake();

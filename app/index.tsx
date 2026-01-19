@@ -1,15 +1,14 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect } from 'react';
 import { 
   View, 
   StyleSheet, 
   TouchableOpacity, 
   Dimensions,
   ActivityIndicator,
-  Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Video, ResizeMode } from 'expo-av';
-import { Asset } from 'expo-asset';
+
+
 import { ChevronRight } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '@/contexts/AuthContext';
@@ -24,37 +23,16 @@ const videoHeight = isLargeScreen ? height * 1.8 : height;
 export default function IntroScreen() {
   const router = useRouter();
   const { isLoading, isInitialized, settings, markIntroSeen, user } = useAuth();
-  const videoRef = useRef<Video>(null);
-  const [videoUri, setVideoUri] = useState<string | null>(null);
-  const [videoError, setVideoError] = useState(false);
 
   const theme = settings.darkMode ? Colors.dark : Colors.light;
-
-  useEffect(() => {
-    const loadVideo = async () => {
-      try {
-        if (Platform.OS === 'web') {
-          setVideoUri('/assets/videos/intro.webm');
-        } else {
-          const asset = Asset.fromModule(require('../assets/videos/intro.webm'));
-          await asset.downloadAsync();
-          setVideoUri(asset.localUri || asset.uri);
-        }
-      } catch (error) {
-        console.log('Video loading error:', error);
-        setVideoError(true);
-      }
-    };
-    loadVideo();
-  }, []);
 
   useEffect(() => {
     if (!isLoading && isInitialized) {
       if (settings.hasSeenIntro) {
         if (user) {
-          router.replace('/home');
+          router.replace('/(tabs)/home' as any);
         } else {
-          router.replace('/welcome');
+          router.replace('/welcome' as any);
         }
       }
     }
@@ -62,7 +40,7 @@ export default function IntroScreen() {
 
   const handleNext = async () => {
     await markIntroSeen();
-    router.replace('/welcome');
+    router.replace('/welcome' as any);
   };
 
   if (isLoading || !isInitialized) {
@@ -89,23 +67,7 @@ export default function IntroScreen() {
       />
       
       <View style={styles.nativeVideoContainer}>
-        {videoUri && !videoError ? (
-          <Video
-            ref={videoRef}
-            source={{ uri: videoUri }}
-            style={styles.video}
-            resizeMode={ResizeMode.COVER}
-            shouldPlay
-            isLooping
-            isMuted={false}
-            onError={(e) => {
-              console.log('Video playback error:', e);
-              setVideoError(true);
-            }}
-          />
-        ) : (
-          <View style={[styles.video, { backgroundColor: theme.backgroundGradientEnd }]} />
-        )}
+        <View style={[styles.video, { backgroundColor: theme.backgroundGradientEnd }]} />
       </View>
 
       <TouchableOpacity 
