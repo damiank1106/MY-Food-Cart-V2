@@ -24,7 +24,7 @@ export default function IntroScreen() {
 
   const player = useVideoPlayer(videoSource, (p) => {
     p.loop = true;
-    p.muted = true;
+    p.muted = false;
     p.play();
   });
 
@@ -88,7 +88,7 @@ export default function IntroScreen() {
           <VideoView
               player={player}
               style={styles.video}
-              contentFit="cover"
+              contentFit="contain"
               nativeControls={false}
             />
         </View>
