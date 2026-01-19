@@ -15,13 +15,13 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Lock, Moon, HelpCircle, Info, LogOut, Eye, EyeOff, X, UserPlus, ChevronDown, ChevronRight, RefreshCw, Cloud, CloudOff, Database, AlertTriangle, Wrench, Sparkles, Palette } from 'lucide-react-native';
+import { Lock, Moon, HelpCircle, Info, LogOut, Eye, EyeOff, X, UserPlus, ChevronDown, ChevronRight, RefreshCw, Cloud, CloudOff, Database, AlertTriangle, Wrench, Sparkles, Palette, Zap } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { Colors } from '@/constants/colors';
-import { UserRole, ROLE_DISPLAY_NAMES, BackgroundColorPalette } from '@/types';
+import { UserRole, ROLE_DISPLAY_NAMES, BackgroundColorPalette, BackgroundIntensity } from '@/types';
 import { createUser, isPinTaken, getPendingSummaryAndItems, PendingSummary } from '@/services/database';
 import { useSync } from '@/contexts/SyncContext';
 import { supabase, isSupabaseConfigured } from '@/services/supabase';
@@ -206,6 +206,11 @@ export default function SettingsScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
 
+  const handleIntensityChange = async (intensity: BackgroundIntensity) => {
+    await updateSettings({ backgroundIntensity: intensity });
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  };
+
   const handleLogout = async () => {
     setShowSyncModal(true);
     try {
@@ -298,7 +303,7 @@ export default function SettingsScreen() {
         style={StyleSheet.absoluteFill}
       />
       {settings.laserBackground && (
-        <LaserBackground isDarkMode={settings.darkMode} colorPalette={settings.backgroundColorPalette} />
+        <LaserBackground isDarkMode={settings.darkMode} colorPalette={settings.backgroundColorPalette} intensity={settings.backgroundIntensity} />
       )}
       
       <SafeAreaView style={styles.safeArea} edges={['top']}>
@@ -408,6 +413,39 @@ export default function SettingsScreen() {
                     <View style={[styles.colorCircle, { backgroundColor: colorMap[palette] }]} />
                     <Text style={[styles.colorLabel, { color: isSelected ? theme.text : theme.textMuted }]}>
                       {palette.charAt(0).toUpperCase() + palette.slice(1)}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <View style={styles.intensitySection}>
+              <View style={[styles.settingIcon, { backgroundColor: theme.primary + '20' }]}>
+                <Zap color={theme.primary} size={20} />
+              </View>
+              <Text style={[styles.settingLabel, { color: theme.text }]}>Background Intensity</Text>
+            </View>
+            <View style={styles.intensityGrid}>
+              {(['low', 'medium', 'high'] as BackgroundIntensity[]).map((intensity) => {
+                const isSelected = settings.backgroundIntensity === intensity;
+                const intensityColors = {
+                  low: theme.textMuted,
+                  medium: theme.primary,
+                  high: theme.success,
+                };
+                return (
+                  <TouchableOpacity
+                    key={intensity}
+                    style={[
+                      styles.intensityOption,
+                      { borderColor: isSelected ? intensityColors[intensity] : theme.cardBorder, backgroundColor: isSelected ? intensityColors[intensity] + '20' : 'transparent' },
+                      isSelected && { borderWidth: 3 },
+                    ]}
+                    onPress={() => handleIntensityChange(intensity)}
+                  >
+                    <Zap color={intensityColors[intensity]} size={24} />
+                    <Text style={[styles.intensityLabel, { color: isSelected ? theme.text : theme.textMuted }]}>
+                      {intensity.charAt(0).toUpperCase() + intensity.slice(1)}
                     </Text>
                   </TouchableOpacity>
                 );
@@ -1359,5 +1397,33 @@ const styles = StyleSheet.create({
   colorLabel: {
     fontSize: 12,
     fontWeight: '500' as const,
+  },
+  intensitySection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    paddingBottom: 8,
+    paddingTop: 16,
+  },
+  intensityGrid: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+    gap: 12,
+  },
+  intensityOption: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 8,
+    borderRadius: 12,
+    borderWidth: 2,
+  },
+  intensityLabel: {
+    fontSize: 12,
+    fontWeight: '600' as const,
+    marginTop: 8,
   },
 });

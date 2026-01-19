@@ -197,7 +197,7 @@ export default function HomeScreen() {
         style={StyleSheet.absoluteFill}
       />
       {settings.laserBackground && (
-        <LaserBackground isDarkMode={settings.darkMode} colorPalette={settings.backgroundColorPalette} />
+        <LaserBackground isDarkMode={settings.darkMode} colorPalette={settings.backgroundColorPalette} intensity={settings.backgroundIntensity} />
       )}
       
       <SafeAreaView style={styles.safeArea} edges={['top']}>

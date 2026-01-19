@@ -70,11 +70,14 @@ export interface Activity {
 
 export type BackgroundColorPalette = 'blue' | 'purple' | 'green' | 'orange' | 'pink' | 'cyan';
 
+export type BackgroundIntensity = 'low' | 'medium' | 'high';
+
 export interface AppSettings {
   darkMode: boolean;
   hasSeenIntro: boolean;
   laserBackground: boolean;
   backgroundColorPalette: BackgroundColorPalette;
+  backgroundIntensity: BackgroundIntensity;
 }
 
 export const DEFAULT_CATEGORIES: string[] = ['Cart', 'Freezer', 'Condiments', 'Packing Supply'];
