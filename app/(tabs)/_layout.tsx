@@ -1,13 +1,15 @@
 import { Tabs } from "expo-router";
 import { Home, Package, TrendingUp, User, Settings } from "lucide-react-native";
 import React from "react";
-import { Platform, useWindowDimensions } from "react-native";
+import { useWindowDimensions } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/contexts/AuthContext";
 import { Colors } from "@/constants/colors";
 
 export default function TabLayout() {
   const { user, settings } = useAuth();
   const { width } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const isTablet = width >= 768;
   
   const theme = settings.darkMode ? Colors.dark : Colors.light;
@@ -23,9 +25,9 @@ export default function TabLayout() {
           backgroundColor: theme.tabBar,
           borderTopColor: theme.tabBarBorder,
           borderTopWidth: 1,
-          paddingBottom: Platform.OS === 'ios' ? 16 : 6,
-          paddingTop: 8,
-          height: Platform.OS === 'ios' ? 85 : 60,
+          paddingBottom: Math.max(insets.bottom, 8),
+          paddingTop: 10,
+          height: 56 + Math.max(insets.bottom, 8),
           ...(isTablet && {
             position: 'absolute' as const,
             left: 0,
