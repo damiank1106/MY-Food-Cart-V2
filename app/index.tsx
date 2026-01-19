@@ -16,9 +16,9 @@ import { Colors } from '@/constants/colors';
 
 const { width, height } = Dimensions.get('window');
 
-// For bigger screens, make video taller while keeping width
+// For bigger screens, make video much taller while keeping width
 const isLargeScreen = width >= 768;
-const videoHeight = isLargeScreen ? height * 1.2 : height;
+const videoHeight = isLargeScreen ? height * 1.8 : height;
 
 const videoSource = require('../assets/videos/intro.webm');
 
