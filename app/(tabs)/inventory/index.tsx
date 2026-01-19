@@ -324,7 +324,7 @@ export default function InventoryScreen() {
             <GlassContainer
               key={item.id}
               enabled={settings.glassContainers}
-              intensity={settings.glassIntensity}
+              opacity={settings.glassOpacity}
               darkMode={settings.darkMode}
               style={[styles.itemCard, { backgroundColor: settings.glassContainers ? 'transparent' : theme.card, borderColor: theme.cardBorder }]}
             >

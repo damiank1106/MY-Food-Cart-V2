@@ -314,7 +314,7 @@ export default function SalesScreen() {
         >
           <GlassContainer
             enabled={settings.glassContainers}
-            intensity={settings.glassIntensity}
+            opacity={settings.glassOpacity}
             darkMode={settings.darkMode}
             style={[styles.summaryCard, { backgroundColor: settings.glassContainers ? 'transparent' : theme.card, borderColor: theme.cardBorder }]}
           >
@@ -339,7 +339,7 @@ export default function SalesScreen() {
           {/* Net Sales Split Section */}
           <GlassContainer
             enabled={settings.glassContainers}
-            intensity={settings.glassIntensity}
+            opacity={settings.glassOpacity}
             darkMode={settings.darkMode}
             style={[styles.splitCard, { backgroundColor: settings.glassContainers ? 'transparent' : theme.card, borderColor: theme.cardBorder }]}
           >
@@ -428,7 +428,7 @@ export default function SalesScreen() {
             <GlassContainer
               key={sale.id}
               enabled={settings.glassContainers}
-              intensity={settings.glassIntensity}
+              opacity={settings.glassOpacity}
               darkMode={settings.darkMode}
               style={[styles.itemCard, { backgroundColor: settings.glassContainers ? 'transparent' : theme.card, borderColor: theme.cardBorder }]}
             >
@@ -453,7 +453,7 @@ export default function SalesScreen() {
             <GlassContainer
               key={expense.id}
               enabled={settings.glassContainers}
-              intensity={settings.glassIntensity}
+              opacity={settings.glassOpacity}
               darkMode={settings.darkMode}
               style={[styles.itemCard, { backgroundColor: settings.glassContainers ? 'transparent' : theme.card, borderColor: theme.cardBorder }]}
             >

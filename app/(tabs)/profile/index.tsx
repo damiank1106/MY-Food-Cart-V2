@@ -238,7 +238,7 @@ export default function ProfileScreen() {
 
           <GlassContainer
             enabled={settings.glassContainers}
-            intensity={settings.glassIntensity}
+            opacity={settings.glassOpacity}
             darkMode={settings.darkMode}
             style={[styles.formCard, { backgroundColor: settings.glassContainers ? 'transparent' : theme.card, borderColor: theme.cardBorder }]}
           >
@@ -273,7 +273,7 @@ export default function ProfileScreen() {
 
           <GlassContainer
             enabled={settings.glassContainers}
-            intensity={settings.glassIntensity}
+            opacity={settings.glassOpacity}
             darkMode={settings.darkMode}
             style={[styles.infoCard, { backgroundColor: settings.glassContainers ? 'transparent' : theme.card, borderColor: theme.cardBorder }]}
           >

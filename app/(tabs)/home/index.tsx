@@ -216,7 +216,7 @@ export default function HomeScreen() {
         >
           <GlassContainer
             enabled={settings.glassContainers}
-            intensity={settings.glassIntensity}
+            opacity={settings.glassOpacity}
             darkMode={settings.darkMode}
             style={[styles.welcomeCard, { backgroundColor: settings.glassContainers ? 'transparent' : theme.card, borderColor: theme.cardBorder }]}
           >
@@ -228,7 +228,7 @@ export default function HomeScreen() {
           <View style={styles.row}>
             <GlassContainer
               enabled={settings.glassContainers}
-              intensity={settings.glassIntensity}
+              opacity={settings.glassOpacity}
               darkMode={settings.darkMode}
               style={[styles.dateCard, { backgroundColor: settings.glassContainers ? 'transparent' : theme.card, borderColor: theme.cardBorder }]}
             >
@@ -260,7 +260,7 @@ export default function HomeScreen() {
 
             <GlassContainer
               enabled={settings.glassContainers}
-              intensity={settings.glassIntensity}
+              opacity={settings.glassOpacity}
               darkMode={settings.darkMode}
               style={[styles.chartCard, { backgroundColor: settings.glassContainers ? 'transparent' : theme.card, borderColor: theme.cardBorder }]}
             >
@@ -359,7 +359,7 @@ export default function HomeScreen() {
 
           <GlassContainer
             enabled={settings.glassContainers}
-            intensity={settings.glassIntensity}
+            opacity={settings.glassOpacity}
             darkMode={settings.darkMode}
             style={[styles.updatesCard, { backgroundColor: settings.glassContainers ? 'transparent' : theme.card, borderColor: theme.cardBorder }]}
           >
@@ -370,7 +370,7 @@ export default function HomeScreen() {
                 <GlassContainer
                   key={activity.id}
                   enabled={settings.glassContainers}
-                  intensity={settings.glassIntensity}
+                  opacity={settings.glassOpacity}
                   darkMode={settings.darkMode}
                   style={[styles.updateItem, { backgroundColor: settings.glassContainers ? 'transparent' : theme.cardHighlight, borderColor: theme.cardBorder }]}
                 >

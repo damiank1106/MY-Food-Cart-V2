@@ -72,7 +72,7 @@ export type BackgroundColorPalette = 'blue' | 'purple' | 'green' | 'orange' | 'p
 
 export type BackgroundIntensity = 'low' | 'medium' | 'high';
 
-export type GlassIntensity = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
+export type GlassOpacity = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
 
 export interface AppSettings {
   darkMode: boolean;
@@ -81,7 +81,7 @@ export interface AppSettings {
   backgroundColorPalette: BackgroundColorPalette;
   backgroundIntensity: BackgroundIntensity;
   glassContainers: boolean;
-  glassIntensity: GlassIntensity;
+  glassOpacity: GlassOpacity;
 }
 
 export const DEFAULT_CATEGORIES: string[] = ['Cart', 'Freezer', 'Condiments', 'Packing Supply'];

@@ -18,7 +18,7 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
     backgroundColorPalette: 'blue',
     backgroundIntensity: 'high',
     glassContainers: false,
-    glassIntensity: 5,
+    glassOpacity: 5,
   });
 
   useEffect(() => {

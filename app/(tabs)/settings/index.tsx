@@ -21,7 +21,7 @@ import { useRouter } from 'expo-router';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { Colors } from '@/constants/colors';
-import { UserRole, ROLE_DISPLAY_NAMES, BackgroundColorPalette, BackgroundIntensity, GlassIntensity } from '@/types';
+import { UserRole, ROLE_DISPLAY_NAMES, BackgroundColorPalette, BackgroundIntensity, GlassOpacity } from '@/types';
 import { createUser, isPinTaken, getPendingSummaryAndItems, PendingSummary } from '@/services/database';
 import { useSync } from '@/contexts/SyncContext';
 import { supabase, isSupabaseConfigured } from '@/services/supabase';
@@ -217,8 +217,8 @@ export default function SettingsScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
 
-  const handleGlassIntensityChange = async (intensity: GlassIntensity) => {
-    await updateSettings({ glassIntensity: intensity });
+  const handleGlassOpacityChange = async (opacity: GlassOpacity) => {
+    await updateSettings({ glassOpacity: opacity });
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
 
@@ -329,7 +329,7 @@ export default function SettingsScreen() {
         >
           <GlassContainer
             enabled={settings.glassContainers}
-            intensity={settings.glassIntensity}
+            opacity={settings.glassOpacity}
             darkMode={settings.darkMode}
             style={[styles.section, { backgroundColor: settings.glassContainers ? 'transparent' : theme.card, borderColor: theme.cardBorder }]}
           >
@@ -372,7 +372,7 @@ export default function SettingsScreen() {
 
           <GlassContainer
             enabled={settings.glassContainers}
-            intensity={settings.glassIntensity}
+            opacity={settings.glassOpacity}
             darkMode={settings.darkMode}
             style={[styles.section, { backgroundColor: settings.glassContainers ? 'transparent' : theme.card, borderColor: theme.cardBorder }]}
           >
@@ -486,37 +486,41 @@ export default function SettingsScreen() {
               />
             </View>
 
-            <View style={styles.glassIntensitySection}>
-              <View style={[styles.settingIcon, { backgroundColor: theme.primary + '20' }]}>
-                <Droplet color={theme.primary} size={20} />
-              </View>
-              <Text style={[styles.settingLabel, { color: theme.text }]}>Glass Intensity</Text>
-            </View>
-            <View style={styles.glassIntensityGrid}>
-              {([1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as GlassIntensity[]).map((level) => {
-                const isSelected = settings.glassIntensity === level;
-                return (
-                  <TouchableOpacity
-                    key={level}
-                    style={[
-                      styles.glassIntensityOption,
-                      { borderColor: isSelected ? theme.primary : theme.cardBorder, backgroundColor: isSelected ? theme.primary + '20' : 'transparent' },
-                      isSelected && { borderWidth: 2 },
-                    ]}
-                    onPress={() => handleGlassIntensityChange(level)}
-                  >
-                    <Text style={[styles.glassIntensityLabel, { color: isSelected ? theme.primary : theme.textMuted }]}>
-                      {level}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
+            {settings.glassContainers && (
+              <>
+                <View style={styles.glassOpacitySection}>
+                  <View style={[styles.settingIcon, { backgroundColor: theme.primary + '20' }]}>
+                    <Droplet color={theme.primary} size={20} />
+                  </View>
+                  <Text style={[styles.settingLabel, { color: theme.text }]}>Glass Opacity</Text>
+                </View>
+                <View style={styles.glassOpacityGrid}>
+                  {([1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as GlassOpacity[]).map((level) => {
+                    const isSelected = settings.glassOpacity === level;
+                    return (
+                      <TouchableOpacity
+                        key={level}
+                        style={[
+                          styles.glassOpacityOption,
+                          { borderColor: isSelected ? theme.primary : theme.cardBorder, backgroundColor: isSelected ? theme.primary + '20' : 'transparent' },
+                          isSelected && { borderWidth: 2 },
+                        ]}
+                        onPress={() => handleGlassOpacityChange(level)}
+                      >
+                        <Text style={[styles.glassOpacityLabel, { color: isSelected ? theme.primary : theme.textMuted }]}>
+                          {level}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </>
+            )}
           </GlassContainer>
 
           <GlassContainer
             enabled={settings.glassContainers}
-            intensity={settings.glassIntensity}
+            opacity={settings.glassOpacity}
             darkMode={settings.darkMode}
             style={[styles.section, { backgroundColor: settings.glassContainers ? 'transparent' : theme.card, borderColor: theme.cardBorder }]}
           >
@@ -535,7 +539,7 @@ export default function SettingsScreen() {
 
           <GlassContainer
             enabled={settings.glassContainers}
-            intensity={settings.glassIntensity}
+            opacity={settings.glassOpacity}
             darkMode={settings.darkMode}
             style={[styles.section, { backgroundColor: settings.glassContainers ? 'transparent' : theme.card, borderColor: theme.cardBorder }]}
           >
@@ -564,7 +568,7 @@ export default function SettingsScreen() {
           {isDeveloper && (
             <GlassContainer
               enabled={settings.glassContainers}
-              intensity={settings.glassIntensity}
+              opacity={settings.glassOpacity}
               darkMode={settings.darkMode}
               style={[styles.section, { backgroundColor: settings.glassContainers ? 'transparent' : theme.card, borderColor: theme.cardBorder }]}
             >
@@ -774,7 +778,7 @@ export default function SettingsScreen() {
 
           <GlassContainer
             enabled={settings.glassContainers}
-            intensity={settings.glassIntensity}
+            opacity={settings.glassOpacity}
             darkMode={settings.darkMode}
             style={[styles.section, { backgroundColor: settings.glassContainers ? 'transparent' : theme.card, borderColor: theme.cardBorder }]}
           >
@@ -1513,7 +1517,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 14,
   },
-  glassIntensitySection: {
+  glassOpacitySection: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
@@ -1521,14 +1525,14 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
     paddingTop: 16,
   },
-  glassIntensityGrid: {
+  glassOpacityGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     paddingHorizontal: 16,
     paddingBottom: 16,
     gap: 8,
   },
-  glassIntensityOption: {
+  glassOpacityOption: {
     width: 50,
     height: 50,
     alignItems: 'center',
@@ -1536,7 +1540,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
   },
-  glassIntensityLabel: {
+  glassOpacityLabel: {
     fontSize: 16,
     fontWeight: '700' as const,
   },
