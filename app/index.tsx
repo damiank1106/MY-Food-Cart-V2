@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect } from 'react';
 import { 
   View, 
   StyleSheet, 
@@ -8,7 +8,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Video, ResizeMode } from 'expo-av';
+import { useVideoPlayer, VideoView } from 'expo-video';
 import { ChevronRight } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '@/contexts/AuthContext';
@@ -16,10 +16,40 @@ import { Colors } from '@/constants/colors';
 
 const { width, height } = Dimensions.get('window');
 
+/*
+ * ============================================
+ * VIDEO ASSET INSTRUCTIONS
+ * ============================================
+ * 
+ * To add your intro video:
+ * 
+ * 1. Create the folder: assets/videos/
+ * 2. Add your video file as: assets/videos/intro.mp4
+ *    - For native (iOS/Android): Use .mp4 format for best compatibility
+ *    - For web: You can also add intro.webm for better web performance
+ * 
+ * 3. Once added, update the videoSource below:
+ *    - Change from: null (placeholder)
+ *    - To: require('@/assets/videos/intro.mp4')
+ * 
+ * Note: .webm works on web but has limited native support.
+ *       .mp4 is recommended for cross-platform compatibility.
+ * ============================================
+ */
+
+// PLACEHOLDER: Replace null with your video source once added
+// Example: const videoSource = require('@/assets/videos/intro.mp4');
+const videoSource: string | null = null;
+
 export default function IntroScreen() {
   const router = useRouter();
   const { isLoading, isInitialized, settings, markIntroSeen, user } = useAuth();
-  const videoRef = useRef<Video>(null);
+
+  const player = useVideoPlayer(videoSource, (p) => {
+    p.loop = true;
+    p.muted = true;
+    p.play();
+  });
 
   const theme = settings.darkMode ? Colors.dark : Colors.light;
 
@@ -65,12 +95,7 @@ export default function IntroScreen() {
       
       {Platform.OS === 'web' ? (
         <View style={styles.webVideoContainer}>
-          {/* 
-            PLACEHOLDER: Replace the src below with your local video path.
-            To use a local video:
-            1. Add your video file to: assets/videos/intro.webm
-            2. Update the source src to: src="/assets/videos/intro.webm"
-          */}
+          {/* Web: Uses HTML5 video element for better compatibility */}
           <video
             autoPlay
             loop
@@ -78,28 +103,24 @@ export default function IntroScreen() {
             playsInline
             style={{ width: '100%', height: '100%', objectFit: 'cover' } as React.CSSProperties}
           >
-            <source src="/assets/videos/intro.webm" type="video/mp4" />
+            <source src="/assets/videos/intro.webm" type="video/webm" />
+            <source src="/assets/videos/intro.mp4" type="video/mp4" />
           </video>
         </View>
       ) : (
         <View style={styles.nativeVideoContainer}>
-          {/* 
-            PLACEHOLDER: Replace the URI below with your local video file.
-            To use a local video:
-            1. Add your video file to: assets/videos/intro.mp4
-            2. Replace the source line with: source={require('@/assets/videos/intro.mp4')}
-            Note: Use .mp4 format for best iOS/Android compatibility
-          */}
-          <Video
-            ref={videoRef}
-            source={{ uri: "/assets/videos/intro.webm" }}
-            style={styles.video}
-            resizeMode={ResizeMode.COVER}
-            shouldPlay
-            isLooping
-            isMuted
-            onError={(e) => console.log('Video error:', e)}
-          />
+          {videoSource ? (
+            <VideoView
+              player={player}
+              style={styles.video}
+              contentFit="cover"
+              nativeControls={false}
+            />
+          ) : (
+            <View style={[styles.placeholderContainer, { backgroundColor: theme.backgroundGradientStart }]}>
+              {/* Video placeholder - video file not yet added */}
+            </View>
+          )}
         </View>
       )}
 
@@ -131,7 +152,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  webVideoPlaceholder: {
+  placeholderContainer: {
+    flex: 1,
     width: '100%',
     height: '100%',
   },
