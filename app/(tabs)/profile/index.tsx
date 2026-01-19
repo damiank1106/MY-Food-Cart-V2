@@ -84,30 +84,60 @@ export default function ProfileScreen() {
     }
   };
 
+  const handleRemovePhoto = () => {
+    setProfileImage(null);
+    setHasChanges(true);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  };
+
   const showImagePickerOptions = () => {
+    const hasPhoto = !!profileImage;
+    
     if (Platform.OS === 'ios') {
+      const options = hasPhoto 
+        ? ['Cancel', 'Take Photo', 'Choose from Library', 'Remove Photo']
+        : ['Cancel', 'Take Photo', 'Choose from Library'];
+      const destructiveButtonIndex = hasPhoto ? 3 : undefined;
+      
       ActionSheetIOS.showActionSheetWithOptions(
         {
-          options: ['Cancel', 'Take Photo', 'Choose from Library'],
+          options,
           cancelButtonIndex: 0,
+          destructiveButtonIndex,
         },
         (buttonIndex) => {
           if (buttonIndex === 1) {
             handlePickImage(true);
           } else if (buttonIndex === 2) {
             handlePickImage(false);
+          } else if (buttonIndex === 3 && hasPhoto) {
+            handleRemovePhoto();
           }
         }
       );
     } else {
+      const buttons: {
+        text: string;
+        onPress?: () => void;
+        style?: 'default' | 'cancel' | 'destructive';
+      }[] = [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Take Photo', onPress: () => handlePickImage(true) },
+        { text: 'Choose from Library', onPress: () => handlePickImage(false) },
+      ];
+      
+      if (hasPhoto) {
+        buttons.push({
+          text: 'Remove Photo',
+          onPress: () => handleRemovePhoto(),
+          style: 'destructive',
+        });
+      }
+      
       Alert.alert(
         'Change Profile Photo',
         'Select an option',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Take Photo', onPress: () => handlePickImage(true) },
-          { text: 'Choose from Library', onPress: () => handlePickImage(false) },
-        ],
+        buttons,
         { cancelable: true }
       );
     }
