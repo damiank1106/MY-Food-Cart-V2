@@ -25,9 +25,9 @@ export default function TabLayout() {
           backgroundColor: theme.tabBar,
           borderTopColor: theme.tabBarBorder,
           borderTopWidth: 1,
-          paddingBottom: Math.max(insets.bottom, 8),
-          paddingTop: 10,
-          height: 56 + Math.max(insets.bottom, 8),
+          paddingBottom: insets.bottom + 8,
+          paddingTop: 8,
+          height: 60 + insets.bottom + 8,
           ...(isTablet && {
             position: 'absolute' as const,
             left: 0,
