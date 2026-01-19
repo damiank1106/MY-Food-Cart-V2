@@ -6,12 +6,13 @@ import {
   TouchableOpacity,
   Image,
 } from 'react-native';
-import { User, Camera } from 'lucide-react-native';
+import { User, Camera, Trash2 } from 'lucide-react-native';
 
 interface ProfileAvatarGlowProps {
   imageUri?: string | null;
   size?: number;
   onPressCamera?: () => void;
+  onPressAvatar?: () => void;
   fallbackText?: string;
   glowColor?: string;
   primaryColor?: string;
@@ -24,6 +25,7 @@ export default function ProfileAvatarGlow({
   imageUri,
   size = 120,
   onPressCamera,
+  onPressAvatar,
   fallbackText,
   glowColor = 'rgba(74, 144, 217, 0.6)',
   primaryColor = '#4a90d9',
@@ -91,7 +93,7 @@ export default function ProfileAvatarGlow({
         })}
       </View>
       
-      <View
+      <TouchableOpacity
         style={[
           styles.avatarContainer,
           {
@@ -102,6 +104,9 @@ export default function ProfileAvatarGlow({
             borderColor: borderColor,
           },
         ]}
+        onPress={onPressAvatar}
+        disabled={!onPressAvatar}
+        activeOpacity={onPressAvatar ? 0.8 : 1}
       >
         {imageUri ? (
           <Image source={{ uri: imageUri }} style={styles.avatar} />
@@ -119,7 +124,15 @@ export default function ProfileAvatarGlow({
         ) : (
           <User color={iconColor} size={size * 0.5} />
         )}
-      </View>
+        
+        {imageUri && onPressAvatar && (
+          <View style={styles.trashOverlay}>
+            <View style={[styles.trashButton, { backgroundColor: '#ef4444' }]}>
+              <Trash2 color="#fff" size={24} />
+            </View>
+          </View>
+        )}
+      </TouchableOpacity>
 
       {onPressCamera && (
         <TouchableOpacity
@@ -189,5 +202,23 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 4,
     elevation: 5,
+  },
+  trashOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  trashButton: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 6,
   },
 });
