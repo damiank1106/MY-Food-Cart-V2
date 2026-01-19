@@ -360,7 +360,7 @@ export default function SettingsScreen() {
               <View style={[styles.settingIcon, { backgroundColor: theme.primary + '20' }]}>
                 <Sparkles color={theme.primary} size={20} />
               </View>
-              <Text style={[styles.settingLabel, { color: theme.text }]}>Animated Lasers</Text>
+              <Text style={[styles.settingLabel, { color: theme.text }]}>Animated Background</Text>
               <Switch
                 value={settings.laserBackground}
                 onValueChange={handleLaserToggle}

@@ -1,87 +1,57 @@
 import React, { useEffect, useRef } from 'react';
-import { View, StyleSheet, Animated, Dimensions } from 'react-native';
-
-const { width, height } = Dimensions.get('window');
+import { View, StyleSheet, Animated } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 
 interface LaserBackgroundProps {
   isDarkMode: boolean;
 }
 
 export default function LaserBackground({ isDarkMode }: LaserBackgroundProps) {
-  const numLasers = 5;
-  const laserAnimations = useRef(
-    Array.from({ length: numLasers }, () => new Animated.Value(0))
-  ).current;
+  const glowAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    const animations = laserAnimations.map((anim, index) => {
-      return Animated.loop(
-        Animated.sequence([
-          Animated.delay(index * 800),
-          Animated.timing(anim, {
-            toValue: 1,
-            duration: 4000,
-            useNativeDriver: true,
-          }),
-          Animated.timing(anim, {
-            toValue: 0,
-            duration: 0,
-            useNativeDriver: true,
-          }),
-        ])
-      );
-    });
+    const animation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(glowAnim, {
+          toValue: 1,
+          duration: 4000,
+          useNativeDriver: true,
+        }),
+        Animated.timing(glowAnim, {
+          toValue: 0,
+          duration: 4000,
+          useNativeDriver: true,
+        }),
+      ])
+    );
 
-    animations.forEach((anim) => anim.start());
+    animation.start();
 
     return () => {
-      animations.forEach((anim) => anim.stop());
+      animation.stop();
     };
-  }, [laserAnimations]);
+  }, [glowAnim]);
 
-  const laserColor = isDarkMode ? 'rgba(59, 130, 246, 0.15)' : 'rgba(59, 130, 246, 0.08)';
-  const laserGlow = isDarkMode ? 'rgba(59, 130, 246, 0.3)' : 'rgba(59, 130, 246, 0.15)';
+  const opacity = glowAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.4, 0.7],
+  });
+
+  const darkColors = ['rgba(30, 58, 138, 0.4)', 'rgba(37, 99, 235, 0.3)', 'rgba(59, 130, 246, 0.4)', 'rgba(37, 99, 235, 0.3)', 'rgba(30, 58, 138, 0.4)'] as const;
+  const lightColors = ['rgba(191, 219, 254, 0.3)', 'rgba(147, 197, 253, 0.4)', 'rgba(96, 165, 250, 0.5)', 'rgba(147, 197, 253, 0.4)', 'rgba(191, 219, 254, 0.3)'] as const;
+  const colors = isDarkMode ? darkColors : lightColors;
 
   return (
     <View style={styles.container} pointerEvents="none">
-      {laserAnimations.map((anim, index) => {
-        const translateY = anim.interpolate({
-          inputRange: [0, 1],
-          outputRange: [-height, height * 2],
-        });
-
-        const opacity = anim.interpolate({
-          inputRange: [0, 0.2, 0.8, 1],
-          outputRange: [0, 1, 1, 0],
-        });
-
-        const rotation = -35 + (index % 3) * 15;
-        const leftPosition = (index / numLasers) * width;
-
-        return (
-          <Animated.View
-            key={index}
-            style={[
-              styles.laser,
-              {
-                left: leftPosition,
-                transform: [{ translateY }, { rotate: `${rotation}deg` }],
-                opacity,
-              },
-            ]}
-          >
-            <View
-              style={[
-                styles.laserBeam,
-                {
-                  backgroundColor: laserColor,
-                  shadowColor: laserGlow,
-                },
-              ]}
-            />
-          </Animated.View>
-        );
-      })}
+      <Animated.View style={[styles.glowContainer, { opacity }]}>
+        <LinearGradient
+          colors={colors}
+          locations={[0, 0.25, 0.5, 0.75, 1]}
+          style={styles.gradient}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+        />
+      </Animated.View>
     </View>
   );
 }
@@ -91,18 +61,10 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     overflow: 'hidden',
   },
-  laser: {
-    position: 'absolute',
-    width: 150,
-    height: height * 1.5,
-    top: -height,
+  glowContainer: {
+    flex: 1,
   },
-  laserBeam: {
-    width: '100%',
-    height: '100%',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 1,
-    shadowRadius: 40,
-    elevation: 5,
+  gradient: {
+    flex: 1,
   },
 });
