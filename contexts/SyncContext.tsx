@@ -16,6 +16,7 @@ import {
   upsertSalesFromServer,
   upsertExpensesFromServer,
   upsertActivitiesFromServer,
+  repairDuplicateCategories,
 } from '@/services/database';
 import {
   isSupabaseConfigured,
@@ -88,6 +89,9 @@ export const [SyncProvider, useSync] = createContextHook(() => {
     setSyncStatus('syncing');
 
     try {
+      console.log('Running pre-sync database repair...');
+      await repairDuplicateCategories();
+
       console.log('Processing pending deletions...');
       for (const deletion of pendingDeletions.current) {
         await deleteFromSupabase(deletion.table, deletion.id);

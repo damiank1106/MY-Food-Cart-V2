@@ -821,6 +821,118 @@ export async function upsertExpensesFromServer(serverExpenses: Expense[]): Promi
   }
 }
 
+export async function repairDuplicateCategories(): Promise<void> {
+  console.log('Running duplicate categories repair...');
+
+  if (Platform.OS === 'web') {
+    const categories = await getFromStorage<Category[]>(STORAGE_KEYS.categories, []);
+    const inventory = await getFromStorage<InventoryItem[]>(STORAGE_KEYS.inventory, []);
+    
+    const groupedByNorm = new Map<string, Category[]>();
+    for (const cat of categories) {
+      const norm = cat.name.trim().toLowerCase();
+      if (!groupedByNorm.has(norm)) {
+        groupedByNorm.set(norm, []);
+      }
+      groupedByNorm.get(norm)!.push(cat);
+    }
+
+    const idsToDelete = new Set<string>();
+    const idRemapping = new Map<string, string>();
+
+    for (const [, group] of groupedByNorm) {
+      if (group.length <= 1) continue;
+
+      group.sort((a, b) => {
+        if (a.syncStatus === 'synced' && b.syncStatus !== 'synced') return -1;
+        if (b.syncStatus === 'synced' && a.syncStatus !== 'synced') return 1;
+        const aTime = new Date(a.createdAt).getTime();
+        const bTime = new Date(b.createdAt).getTime();
+        return aTime - bTime;
+      });
+
+      const canonical = group[0];
+      for (let i = 1; i < group.length; i++) {
+        const dup = group[i];
+        idsToDelete.add(dup.id);
+        idRemapping.set(dup.id, canonical.id);
+        console.log(`Duplicate category found: "${dup.name}" (${dup.id}) -> canonical "${canonical.name}" (${canonical.id})`);
+      }
+    }
+
+    if (idsToDelete.size === 0) {
+      console.log('No duplicate categories found');
+      return;
+    }
+
+    const updatedInventory = inventory.map(item => {
+      if (item.categoryId && idRemapping.has(item.categoryId)) {
+        return { ...item, categoryId: idRemapping.get(item.categoryId)! };
+      }
+      return item;
+    });
+
+    const filteredCategories = categories.filter(c => !idsToDelete.has(c.id));
+
+    await setToStorage(STORAGE_KEYS.inventory, updatedInventory);
+    await setToStorage(STORAGE_KEYS.categories, filteredCategories);
+
+    console.log(`Repaired ${idsToDelete.size} duplicate categories`);
+    return;
+  }
+
+  if (!db) return;
+
+  const categories = await db.getAllAsync<Category>('SELECT * FROM categories');
+  
+  const groupedByNorm = new Map<string, Category[]>();
+  for (const cat of categories) {
+    const norm = cat.name.trim().toLowerCase();
+    if (!groupedByNorm.has(norm)) {
+      groupedByNorm.set(norm, []);
+    }
+    groupedByNorm.get(norm)!.push(cat);
+  }
+
+  const idsToDelete: string[] = [];
+  const idRemapping = new Map<string, string>();
+
+  for (const [, group] of groupedByNorm) {
+    if (group.length <= 1) continue;
+
+    group.sort((a, b) => {
+      if (a.syncStatus === 'synced' && b.syncStatus !== 'synced') return -1;
+      if (b.syncStatus === 'synced' && a.syncStatus !== 'synced') return 1;
+      const aTime = new Date(a.createdAt).getTime();
+      const bTime = new Date(b.createdAt).getTime();
+      return aTime - bTime;
+    });
+
+    const canonical = group[0];
+    for (let i = 1; i < group.length; i++) {
+      const dup = group[i];
+      idsToDelete.push(dup.id);
+      idRemapping.set(dup.id, canonical.id);
+      console.log(`Duplicate category found: "${dup.name}" (${dup.id}) -> canonical "${canonical.name}" (${canonical.id})`);
+    }
+  }
+
+  if (idsToDelete.length === 0) {
+    console.log('No duplicate categories found');
+    return;
+  }
+
+  for (const [dupId, canonicalId] of idRemapping) {
+    await db.runAsync('UPDATE inventory SET categoryId = ? WHERE categoryId = ?', [canonicalId, dupId]);
+  }
+
+  for (const id of idsToDelete) {
+    await db.runAsync('DELETE FROM categories WHERE id = ?', [id]);
+  }
+
+  console.log(`Repaired ${idsToDelete.length} duplicate categories`);
+}
+
 export async function upsertActivitiesFromServer(serverActivities: Activity[]): Promise<void> {
   if (serverActivities.length === 0) return;
   console.log(`Upserting ${serverActivities.length} activities from server`);
