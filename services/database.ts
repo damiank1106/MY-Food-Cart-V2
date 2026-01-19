@@ -978,6 +978,184 @@ export async function repairDuplicateCategories(): Promise<void> {
   console.log(`Repaired ${idsToDelete.length} duplicate categories`);
 }
 
+interface ServerUser {
+  id: string;
+  pin: string;
+  role?: string;
+  name?: string;
+}
+
+export async function migrateLocalUserIdsToServerIds(serverUsers: ServerUser[]): Promise<void> {
+  if (serverUsers.length === 0) {
+    console.log('No server users to migrate to');
+    return;
+  }
+  console.log(`Running user ID migration with ${serverUsers.length} server users...`);
+
+  if (Platform.OS === 'web') {
+    const localUsers = await getFromStorage<User[]>(STORAGE_KEYS.users, []);
+    let inventory = await getFromStorage<InventoryItem[]>(STORAGE_KEYS.inventory, []);
+    let sales = await getFromStorage<Sale[]>(STORAGE_KEYS.sales, []);
+    let expenses = await getFromStorage<Expense[]>(STORAGE_KEYS.expenses, []);
+    let activities = await getFromStorage<Activity[]>(STORAGE_KEYS.activities, []);
+
+    const idRemapping = new Map<string, string>();
+    const localIdsToRemove = new Set<string>();
+
+    for (const localUser of localUsers) {
+      const matchingServer = serverUsers.find(su => su.pin === localUser.pin);
+      if (matchingServer && matchingServer.id !== localUser.id) {
+        console.log(`Found matching user by PIN: local "${localUser.id}" -> server "${matchingServer.id}"`);
+        idRemapping.set(localUser.id, matchingServer.id);
+        localIdsToRemove.add(localUser.id);
+      }
+    }
+
+    if (idRemapping.size === 0) {
+      console.log('No user ID migrations needed');
+      return;
+    }
+
+    inventory = inventory.map(item => {
+      if (item.createdBy && idRemapping.has(item.createdBy)) {
+        return { ...item, createdBy: idRemapping.get(item.createdBy)! };
+      }
+      return item;
+    });
+
+    sales = sales.map(s => {
+      if (s.createdBy && idRemapping.has(s.createdBy)) {
+        return { ...s, createdBy: idRemapping.get(s.createdBy)! };
+      }
+      return s;
+    });
+
+    expenses = expenses.map(e => {
+      if (e.createdBy && idRemapping.has(e.createdBy)) {
+        return { ...e, createdBy: idRemapping.get(e.createdBy)! };
+      }
+      return e;
+    });
+
+    activities = activities.map(a => {
+      if (a.userId && idRemapping.has(a.userId)) {
+        return { ...a, userId: idRemapping.get(a.userId)! };
+      }
+      return a;
+    });
+
+    const updatedUsers = localUsers.filter(u => !localIdsToRemove.has(u.id));
+    for (const serverUser of serverUsers) {
+      const existsInUpdated = updatedUsers.some(u => u.id === serverUser.id);
+      if (!existsInUpdated) {
+        const matchedLocal = localUsers.find(u => u.pin === serverUser.pin);
+        updatedUsers.push({
+          id: serverUser.id,
+          name: matchedLocal?.name || serverUser.name || '',
+          pin: serverUser.pin,
+          role: (serverUser.role as User['role']) || matchedLocal?.role || 'worker',
+          bio: matchedLocal?.bio,
+          profilePicture: matchedLocal?.profilePicture,
+          createdAt: matchedLocal?.createdAt || new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          syncStatus: 'synced',
+        });
+      }
+    }
+
+    await setToStorage(STORAGE_KEYS.users, updatedUsers);
+    await setToStorage(STORAGE_KEYS.inventory, inventory);
+    await setToStorage(STORAGE_KEYS.sales, sales);
+    await setToStorage(STORAGE_KEYS.expenses, expenses);
+    await setToStorage(STORAGE_KEYS.activities, activities);
+
+    console.log(`Migrated ${idRemapping.size} user IDs`);
+    return;
+  }
+
+  if (!db) return;
+
+  const localUsers = await db.getAllAsync<User>('SELECT * FROM users');
+  const idRemapping = new Map<string, string>();
+  const localIdsToRemove: string[] = [];
+
+  for (const localUser of localUsers) {
+    const matchingServer = serverUsers.find(su => su.pin === localUser.pin);
+    if (matchingServer && matchingServer.id !== localUser.id) {
+      console.log(`Found matching user by PIN: local "${localUser.id}" -> server "${matchingServer.id}"`);
+      idRemapping.set(localUser.id, matchingServer.id);
+      localIdsToRemove.push(localUser.id);
+    }
+  }
+
+  if (idRemapping.size === 0) {
+    console.log('No user ID migrations needed');
+    return;
+  }
+
+  for (const [localId, serverId] of idRemapping) {
+    console.log(`Updating FK references from ${localId} to ${serverId}`);
+    await db.runAsync('UPDATE inventory SET createdBy = ? WHERE createdBy = ?', [serverId, localId]);
+    await db.runAsync('UPDATE sales SET createdBy = ? WHERE createdBy = ?', [serverId, localId]);
+    await db.runAsync('UPDATE expenses SET createdBy = ? WHERE createdBy = ?', [serverId, localId]);
+    await db.runAsync('UPDATE activities SET userId = ? WHERE userId = ?', [serverId, localId]);
+  }
+
+  for (const localId of localIdsToRemove) {
+    await db.runAsync('DELETE FROM users WHERE id = ?', [localId]);
+  }
+
+  for (const serverUser of serverUsers) {
+    const exists = await db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM users WHERE id = ?', [serverUser.id]);
+    if (!exists || exists.count === 0) {
+      const matchedLocal = localUsers.find(u => u.pin === serverUser.pin);
+      const now = new Date().toISOString();
+      await db.runAsync(
+        'INSERT INTO users (id, name, pin, role, bio, profilePicture, createdAt, updatedAt, syncStatus) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [
+          serverUser.id,
+          matchedLocal?.name || serverUser.name || '',
+          serverUser.pin,
+          serverUser.role || matchedLocal?.role || 'worker',
+          matchedLocal?.bio || null,
+          matchedLocal?.profilePicture || null,
+          matchedLocal?.createdAt || now,
+          now,
+          'synced'
+        ]
+      );
+    }
+  }
+
+  const orphanedInventory = await db.getAllAsync<{ id: string; createdBy: string }>(
+    'SELECT id, createdBy FROM inventory WHERE createdBy NOT IN (SELECT id FROM users)'
+  );
+  if (orphanedInventory.length > 0) {
+    console.log(`Found ${orphanedInventory.length} orphaned inventory items, will attempt to fix`);
+    const firstUser = await db.getFirstAsync<{ id: string }>('SELECT id FROM users LIMIT 1');
+    if (firstUser) {
+      for (const item of orphanedInventory) {
+        await db.runAsync('UPDATE inventory SET createdBy = ? WHERE id = ?', [firstUser.id, item.id]);
+      }
+    }
+  }
+
+  const orphanedActivities = await db.getAllAsync<{ id: string; userId: string }>(
+    'SELECT id, userId FROM activities WHERE userId NOT IN (SELECT id FROM users)'
+  );
+  if (orphanedActivities.length > 0) {
+    console.log(`Found ${orphanedActivities.length} orphaned activities, will attempt to fix`);
+    const firstUser = await db.getFirstAsync<{ id: string }>('SELECT id FROM users LIMIT 1');
+    if (firstUser) {
+      for (const activity of orphanedActivities) {
+        await db.runAsync('UPDATE activities SET userId = ? WHERE id = ?', [firstUser.id, activity.id]);
+      }
+    }
+  }
+
+  console.log(`Migrated ${idRemapping.size} user IDs`);
+}
+
 export async function upsertActivitiesFromServer(serverActivities: Activity[]): Promise<void> {
   if (serverActivities.length === 0) return;
   console.log(`Upserting ${serverActivities.length} activities from server`);

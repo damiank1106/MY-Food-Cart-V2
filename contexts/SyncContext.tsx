@@ -17,6 +17,7 @@ import {
   upsertExpensesFromServer,
   upsertActivitiesFromServer,
   repairDuplicateCategories,
+  migrateLocalUserIdsToServerIds,
 } from '@/services/database';
 import {
   isSupabaseConfigured,
@@ -89,6 +90,16 @@ export const [SyncProvider, useSync] = createContextHook(() => {
     setSyncStatus('syncing');
 
     try {
+      console.log('Fetching server users first for ID migration...');
+      const serverUsers = await fetchUsersFromSupabase();
+      
+      if (serverUsers && serverUsers.length > 0) {
+        console.log(`Running user ID migration with ${serverUsers.length} server users...`);
+        await migrateLocalUserIdsToServerIds(
+          serverUsers.map(u => ({ id: u.id, pin: u.pin, role: u.role, name: u.name }))
+        );
+      }
+
       console.log('Running pre-sync database repair...');
       await repairDuplicateCategories();
 
@@ -117,28 +128,54 @@ export const [SyncProvider, useSync] = createContextHook(() => {
 
       console.log(`Pushing pending changes: ${pendingUsers.length} users, ${pendingCategories.length} categories, ${pendingInventory.length} inventory, ${pendingSales.length} sales, ${pendingExpenses.length} expenses, ${pendingActivities.length} activities`);
 
-      const pushResults = await Promise.all([
-        pendingUsers.length > 0 ? syncUsersToSupabase(pendingUsers) : true,
-        pendingCategories.length > 0 ? syncCategoriesToSupabase(pendingCategories) : true,
-        pendingInventory.length > 0 ? syncInventoryToSupabase(pendingInventory) : true,
-        pendingSales.length > 0 ? syncSalesToSupabase(pendingSales) : true,
-        pendingExpenses.length > 0 ? syncExpensesToSupabase(pendingExpenses) : true,
-        pendingActivities.length > 0 ? syncActivitiesToSupabase(pendingActivities) : true,
-      ]);
+      let pushSuccess = true;
 
-      const pushSuccess = pushResults.every(r => r);
+      if (pendingUsers.length > 0) {
+        console.log('Pushing users...');
+        const result = await syncUsersToSupabase(pendingUsers);
+        if (!result) pushSuccess = false;
+      }
+
+      if (pendingCategories.length > 0) {
+        console.log('Pushing categories...');
+        const result = await syncCategoriesToSupabase(pendingCategories);
+        if (!result) pushSuccess = false;
+      }
+
+      if (pendingInventory.length > 0) {
+        console.log('Pushing inventory...');
+        const result = await syncInventoryToSupabase(pendingInventory);
+        if (!result) pushSuccess = false;
+      }
+
+      if (pendingSales.length > 0) {
+        console.log('Pushing sales...');
+        const result = await syncSalesToSupabase(pendingSales);
+        if (!result) pushSuccess = false;
+      }
+
+      if (pendingExpenses.length > 0) {
+        console.log('Pushing expenses...');
+        const result = await syncExpensesToSupabase(pendingExpenses);
+        if (!result) pushSuccess = false;
+      }
+
+      if (pendingActivities.length > 0) {
+        console.log('Pushing activities...');
+        const result = await syncActivitiesToSupabase(pendingActivities);
+        if (!result) pushSuccess = false;
+      }
+
       console.log(`Push completed: ${pushSuccess ? 'success' : 'some failures'}`);
 
       console.log('Pulling data from Supabase...');
       const [
-        serverUsers,
         serverCategories,
         serverInventory,
         serverSales,
         serverExpenses,
         serverActivities,
       ] = await Promise.all([
-        fetchUsersFromSupabase(),
         fetchCategoriesFromSupabase(),
         fetchInventoryFromSupabase(),
         fetchSalesFromSupabase(),
@@ -148,14 +185,12 @@ export const [SyncProvider, useSync] = createContextHook(() => {
 
       console.log(`Pulled from server: ${serverUsers?.length || 0} users, ${serverCategories?.length || 0} categories, ${serverInventory?.length || 0} inventory, ${serverSales?.length || 0} sales, ${serverExpenses?.length || 0} expenses, ${serverActivities?.length || 0} activities`);
 
-      await Promise.all([
-        serverUsers ? upsertUsersFromServer(serverUsers) : Promise.resolve(),
-        serverCategories ? upsertCategoriesFromServer(serverCategories) : Promise.resolve(),
-        serverInventory ? upsertInventoryFromServer(serverInventory) : Promise.resolve(),
-        serverSales ? upsertSalesFromServer(serverSales) : Promise.resolve(),
-        serverExpenses ? upsertExpensesFromServer(serverExpenses) : Promise.resolve(),
-        serverActivities ? upsertActivitiesFromServer(serverActivities) : Promise.resolve(),
-      ]);
+      if (serverUsers) await upsertUsersFromServer(serverUsers);
+      if (serverCategories) await upsertCategoriesFromServer(serverCategories);
+      if (serverInventory) await upsertInventoryFromServer(serverInventory);
+      if (serverSales) await upsertSalesFromServer(serverSales);
+      if (serverExpenses) await upsertExpensesFromServer(serverExpenses);
+      if (serverActivities) await upsertActivitiesFromServer(serverActivities);
 
       if (pushSuccess) {
         await markAllSynced();
