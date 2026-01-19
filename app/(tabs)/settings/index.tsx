@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Lock, Moon, HelpCircle, Info, LogOut, Eye, EyeOff, X, UserPlus, ChevronDown, RefreshCw, Cloud, CloudOff } from 'lucide-react-native';
+import { Lock, Moon, HelpCircle, Info, LogOut, Eye, EyeOff, X, UserPlus, ChevronDown, RefreshCw, Cloud, CloudOff, Database } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -23,6 +23,7 @@ import { Colors } from '@/constants/colors';
 import { UserRole, ROLE_DISPLAY_NAMES } from '@/types';
 import { createUser, isPinTaken } from '@/services/database';
 import { useSync } from '@/contexts/SyncContext';
+import { supabase, isSupabaseConfigured } from '@/services/supabase';
 
 const APP_VERSION = '1.0.0';
 const PRIVACY_POLICY_GITHUB_URL = 'https://github.com/user/myfoodcart-privacy-policy';
@@ -48,6 +49,9 @@ export default function SettingsScreen() {
   const [showRolePicker, setShowRolePicker] = useState(false);
   const [createUserError, setCreateUserError] = useState('');
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
+  const [showConnectionTestModal, setShowConnectionTestModal] = useState(false);
+  const [connectionTestResult, setConnectionTestResult] = useState<'connected' | 'not_connected' | null>(null);
+  const [isTestingConnection, setIsTestingConnection] = useState(false);
 
   const isDeveloper = user?.role === 'developer';
 
@@ -186,6 +190,35 @@ export default function SettingsScreen() {
 
   const roles: UserRole[] = ['general_manager', 'operation_manager', 'inventory_clerk', 'developer'];
 
+  const handleSupabaseConnectionTest = async () => {
+    setIsTestingConnection(true);
+    setConnectionTestResult(null);
+    setShowConnectionTestModal(true);
+    
+    try {
+      if (!isSupabaseConfigured() || !supabase) {
+        console.log('Supabase not configured');
+        setConnectionTestResult('not_connected');
+        return;
+      }
+      
+      const { error } = await supabase.from('users').select('id').limit(1);
+      
+      if (error) {
+        console.log('Supabase connection test failed');
+        setConnectionTestResult('not_connected');
+      } else {
+        console.log('Supabase connection test successful');
+        setConnectionTestResult('connected');
+      }
+    } catch {
+      console.log('Supabase connection test error');
+      setConnectionTestResult('not_connected');
+    } finally {
+      setIsTestingConnection(false);
+    }
+  };
+
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       <LinearGradient
@@ -225,6 +258,18 @@ export default function SettingsScreen() {
                   <UserPlus color={theme.success} size={20} />
                 </View>
                 <Text style={[styles.settingLabel, { color: theme.text }]}>Create New User</Text>
+              </TouchableOpacity>
+            )}
+
+            {isDeveloper && (
+              <TouchableOpacity
+                style={styles.settingRow}
+                onPress={handleSupabaseConnectionTest}
+              >
+                <View style={[styles.settingIcon, { backgroundColor: theme.primary + '20' }]}>
+                  <Database color={theme.primary} size={20} />
+                </View>
+                <Text style={[styles.settingLabel, { color: theme.text }]}>Supabase Connection Test</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -545,6 +590,53 @@ export default function SettingsScreen() {
           </View>
         </View>
       </Modal>
+
+      <Modal visible={showConnectionTestModal} transparent animationType="fade">
+        <View style={[styles.modalOverlay, { backgroundColor: theme.modalOverlay }]}>
+          <View style={[styles.connectionTestModal, { backgroundColor: theme.card }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: theme.text }]}>Connection Test</Text>
+              <TouchableOpacity onPress={() => setShowConnectionTestModal(false)}>
+                <X color={theme.textMuted} size={24} />
+              </TouchableOpacity>
+            </View>
+            
+            <View style={styles.connectionTestBody}>
+              {isTestingConnection ? (
+                <>
+                  <RefreshCw color={theme.primary} size={48} />
+                  <Text style={[styles.connectionTestText, { color: theme.textSecondary }]}>Testing connection...</Text>
+                </>
+              ) : connectionTestResult === 'connected' ? (
+                <>
+                  <View style={[styles.connectionStatusIcon, { backgroundColor: theme.success + '20' }]}>
+                    <Cloud color={theme.success} size={48} />
+                  </View>
+                  <Text style={[styles.connectionTestResult, { color: theme.success }]}>Connected</Text>
+                  <Text style={[styles.connectionTestText, { color: theme.textSecondary }]}>Supabase is configured correctly</Text>
+                </>
+              ) : (
+                <>
+                  <View style={[styles.connectionStatusIcon, { backgroundColor: theme.error + '20' }]}>
+                    <CloudOff color={theme.error} size={48} />
+                  </View>
+                  <Text style={[styles.connectionTestResult, { color: theme.error }]}>Not Connected</Text>
+                  <Text style={[styles.connectionTestText, { color: theme.textSecondary }]}>Check your Supabase configuration</Text>
+                </>
+              )}
+            </View>
+            
+            <View style={styles.modalFooter}>
+              <TouchableOpacity
+                style={[styles.submitButton, { backgroundColor: theme.primary }]}
+                onPress={() => setShowConnectionTestModal(false)}
+              >
+                <Text style={styles.submitButtonText}>Close</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -766,5 +858,34 @@ const styles = StyleSheet.create({
   githubLinkText: {
     fontSize: 14,
     fontWeight: '600' as const,
+  },
+  connectionTestModal: {
+    width: '100%',
+    maxWidth: 320,
+    borderRadius: 20,
+    overflow: 'hidden',
+  },
+  connectionTestBody: {
+    padding: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 180,
+  },
+  connectionStatusIcon: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  connectionTestResult: {
+    fontSize: 20,
+    fontWeight: '700' as const,
+    marginBottom: 8,
+  },
+  connectionTestText: {
+    fontSize: 14,
+    textAlign: 'center',
   },
 });
