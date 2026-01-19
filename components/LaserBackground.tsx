@@ -37,6 +37,7 @@ const COLOR_PALETTES = {
 
 export default function LaserBackground({ isDarkMode, colorPalette }: LaserBackgroundProps) {
   const glowAnim = useRef(new Animated.Value(0)).current;
+  const safeColorPalette = colorPalette && COLOR_PALETTES[colorPalette] ? colorPalette : 'blue';
 
   useEffect(() => {
     const animation = Animated.loop(
@@ -66,7 +67,7 @@ export default function LaserBackground({ isDarkMode, colorPalette }: LaserBackg
     outputRange: [0.4, 0.7],
   });
 
-  const colors = isDarkMode ? COLOR_PALETTES[colorPalette].dark : COLOR_PALETTES[colorPalette].light;
+  const colors = isDarkMode ? COLOR_PALETTES[safeColorPalette].dark : COLOR_PALETTES[safeColorPalette].light;
 
   return (
     <View style={styles.container} pointerEvents="none">
