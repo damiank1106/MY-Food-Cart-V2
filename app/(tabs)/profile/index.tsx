@@ -213,7 +213,7 @@ export default function ProfileScreen() {
               imageUri={profileImage}
               size={120}
               onPressCamera={showImagePickerOptions}
-              onPressAvatar={profileImage ? handleRemovePhoto : undefined}
+              onPressRemove={handleRemovePhoto}
               fallbackText={displayName || user?.name}
               glowColor={settings.darkMode ? 'rgba(74, 144, 217, 0.4)' : 'rgba(59, 130, 246, 0.35)'}
               primaryColor={theme.primary}

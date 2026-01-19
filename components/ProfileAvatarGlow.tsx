@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   StyleSheet,
@@ -12,7 +12,7 @@ interface ProfileAvatarGlowProps {
   imageUri?: string | null;
   size?: number;
   onPressCamera?: () => void;
-  onPressAvatar?: () => void;
+  onPressRemove?: () => void;
   fallbackText?: string;
   glowColor?: string;
   primaryColor?: string;
@@ -25,7 +25,7 @@ export default function ProfileAvatarGlow({
   imageUri,
   size = 120,
   onPressCamera,
-  onPressAvatar,
+  onPressRemove,
   fallbackText,
   glowColor = 'rgba(74, 144, 217, 0.6)',
   primaryColor = '#4a90d9',
@@ -33,6 +33,7 @@ export default function ProfileAvatarGlow({
   borderColor = '#1e3a5f',
   iconColor = '#5a7a9a',
 }: ProfileAvatarGlowProps) {
+  const [showTrash, setShowTrash] = useState(false);
   const numLasers = 8;
   const laserRotations = useRef(
     Array.from({ length: numLasers }, () => new Animated.Value(0))
@@ -104,9 +105,9 @@ export default function ProfileAvatarGlow({
             borderColor: borderColor,
           },
         ]}
-        onPress={onPressAvatar}
-        disabled={!onPressAvatar}
-        activeOpacity={onPressAvatar ? 0.8 : 1}
+        onPress={() => imageUri && onPressRemove && setShowTrash(!showTrash)}
+        disabled={!imageUri || !onPressRemove}
+        activeOpacity={imageUri && onPressRemove ? 0.8 : 1}
       >
         {imageUri ? (
           <Image source={{ uri: imageUri }} style={styles.avatar} />
@@ -124,15 +125,23 @@ export default function ProfileAvatarGlow({
         ) : (
           <User color={iconColor} size={size * 0.5} />
         )}
-        
-        {imageUri && onPressAvatar && (
-          <View style={styles.trashOverlay}>
-            <View style={[styles.trashButton, { backgroundColor: '#ef4444' }]}>
-              <Trash2 color="#fff" size={24} />
-            </View>
-          </View>
-        )}
       </TouchableOpacity>
+
+      {imageUri && onPressRemove && showTrash && (
+        <TouchableOpacity
+          style={[
+            styles.trashButton,
+            {
+              top: 0,
+              right: -10,
+            },
+          ]}
+          onPress={onPressRemove}
+          activeOpacity={0.8}
+        >
+          <Trash2 color="#fff" size={12} />
+        </TouchableOpacity>
+      )}
 
       {onPressCamera && (
         <TouchableOpacity
@@ -203,16 +212,12 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 5,
   },
-  trashOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
   trashButton: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    position: 'absolute',
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: '#ef4444',
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
