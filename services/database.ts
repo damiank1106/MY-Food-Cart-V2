@@ -1405,6 +1405,133 @@ export async function repairOrphanAuthors(fallbackUserId: string): Promise<Orpha
   return result;
 }
 
+export interface PendingSummary {
+  totals: {
+    users: number;
+    categories: number;
+    inventory: number;
+    sales: number;
+    expenses: number;
+    activities: number;
+    deletions: number;
+    total: number;
+  };
+  itemsByTable: {
+    users: { id: string; pin: string; name: string; role: string; syncStatus: string; updatedAt: string }[];
+    categories: { id: string; name: string; syncStatus: string; updatedAt: string }[];
+    inventory: { id: string; name: string; createdBy: string; categoryId: string; syncStatus: string; updatedAt: string }[];
+    sales: { id: string; name: string; total: number; createdBy: string; date: string; syncStatus: string; updatedAt: string }[];
+    expenses: { id: string; name: string; total: number; createdBy: string; date: string; syncStatus: string; updatedAt: string }[];
+    activities: { id: string; type: string; description: string; userId: string; syncStatus: string; createdAt: string }[];
+  };
+}
+
+export async function getPendingSummaryAndItems(limitPerTable = 50): Promise<PendingSummary> {
+  const result: PendingSummary = {
+    totals: { users: 0, categories: 0, inventory: 0, sales: 0, expenses: 0, activities: 0, deletions: 0, total: 0 },
+    itemsByTable: { users: [], categories: [], inventory: [], sales: [], expenses: [], activities: [] },
+  };
+
+  try {
+    if (Platform.OS === 'web') {
+      const users = await getFromStorage<User[]>(STORAGE_KEYS.users, []);
+      const categories = await getFromStorage<Category[]>(STORAGE_KEYS.categories, []);
+      const inventory = await getFromStorage<InventoryItem[]>(STORAGE_KEYS.inventory, []);
+      const sales = await getFromStorage<Sale[]>(STORAGE_KEYS.sales, []);
+      const expenses = await getFromStorage<Expense[]>(STORAGE_KEYS.expenses, []);
+      const activities = await getFromStorage<Activity[]>(STORAGE_KEYS.activities, []);
+
+      const pendingUsers = users.filter(u => u.syncStatus === 'pending');
+      const pendingCategories = categories.filter(c => c.syncStatus === 'pending');
+      const pendingInventory = inventory.filter(i => i.syncStatus === 'pending');
+      const pendingSales = sales.filter(s => s.syncStatus === 'pending');
+      const pendingExpenses = expenses.filter(e => e.syncStatus === 'pending');
+      const pendingActivities = activities.filter(a => a.syncStatus === 'pending');
+
+      result.totals.users = pendingUsers.length;
+      result.totals.categories = pendingCategories.length;
+      result.totals.inventory = pendingInventory.length;
+      result.totals.sales = pendingSales.length;
+      result.totals.expenses = pendingExpenses.length;
+      result.totals.activities = pendingActivities.length;
+      result.totals.total = pendingUsers.length + pendingCategories.length + pendingInventory.length + pendingSales.length + pendingExpenses.length + pendingActivities.length;
+
+      result.itemsByTable.users = pendingUsers.slice(0, limitPerTable).map(u => ({
+        id: u.id, pin: u.pin, name: u.name, role: u.role, syncStatus: u.syncStatus || 'pending', updatedAt: u.updatedAt,
+      }));
+      result.itemsByTable.categories = pendingCategories.slice(0, limitPerTable).map(c => ({
+        id: c.id, name: c.name, syncStatus: c.syncStatus || 'pending', updatedAt: c.updatedAt,
+      }));
+      result.itemsByTable.inventory = pendingInventory.slice(0, limitPerTable).map(i => ({
+        id: i.id, name: i.name, createdBy: i.createdBy, categoryId: i.categoryId || '', syncStatus: i.syncStatus || 'pending', updatedAt: i.updatedAt,
+      }));
+      result.itemsByTable.sales = pendingSales.slice(0, limitPerTable).map(s => ({
+        id: s.id, name: s.name, total: s.total, createdBy: s.createdBy, date: s.date, syncStatus: s.syncStatus || 'pending', updatedAt: s.updatedAt,
+      }));
+      result.itemsByTable.expenses = pendingExpenses.slice(0, limitPerTable).map(e => ({
+        id: e.id, name: e.name, total: e.total, createdBy: e.createdBy, date: e.date, syncStatus: e.syncStatus || 'pending', updatedAt: e.updatedAt,
+      }));
+      result.itemsByTable.activities = pendingActivities.slice(0, limitPerTable).map(a => ({
+        id: a.id, type: a.type, description: a.description, userId: a.userId, syncStatus: a.syncStatus || 'pending', createdAt: a.createdAt,
+      }));
+
+      return result;
+    }
+
+    if (!db) return result;
+
+    const [usersCount, categoriesCount, inventoryCount, salesCount, expensesCount, activitiesCount] = await Promise.all([
+      db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM users WHERE syncStatus = ?', ['pending']),
+      db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM categories WHERE syncStatus = ?', ['pending']),
+      db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM inventory WHERE syncStatus = ?', ['pending']),
+      db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM sales WHERE syncStatus = ?', ['pending']),
+      db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM expenses WHERE syncStatus = ?', ['pending']),
+      db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM activities WHERE syncStatus = ?', ['pending']),
+    ]);
+
+    result.totals.users = usersCount?.count || 0;
+    result.totals.categories = categoriesCount?.count || 0;
+    result.totals.inventory = inventoryCount?.count || 0;
+    result.totals.sales = salesCount?.count || 0;
+    result.totals.expenses = expensesCount?.count || 0;
+    result.totals.activities = activitiesCount?.count || 0;
+    result.totals.total = result.totals.users + result.totals.categories + result.totals.inventory + result.totals.sales + result.totals.expenses + result.totals.activities;
+
+    const [pendingUsers, pendingCategories, pendingInventory, pendingSales, pendingExpenses, pendingActivities] = await Promise.all([
+      db.getAllAsync<User>(`SELECT * FROM users WHERE syncStatus = 'pending' LIMIT ?`, [limitPerTable]),
+      db.getAllAsync<Category>(`SELECT * FROM categories WHERE syncStatus = 'pending' LIMIT ?`, [limitPerTable]),
+      db.getAllAsync<InventoryItem>(`SELECT * FROM inventory WHERE syncStatus = 'pending' LIMIT ?`, [limitPerTable]),
+      db.getAllAsync<Sale>(`SELECT * FROM sales WHERE syncStatus = 'pending' LIMIT ?`, [limitPerTable]),
+      db.getAllAsync<Expense>(`SELECT * FROM expenses WHERE syncStatus = 'pending' LIMIT ?`, [limitPerTable]),
+      db.getAllAsync<Activity>(`SELECT * FROM activities WHERE syncStatus = 'pending' LIMIT ?`, [limitPerTable]),
+    ]);
+
+    result.itemsByTable.users = pendingUsers.map(u => ({
+      id: u.id, pin: u.pin, name: u.name, role: u.role, syncStatus: u.syncStatus || 'pending', updatedAt: u.updatedAt,
+    }));
+    result.itemsByTable.categories = pendingCategories.map(c => ({
+      id: c.id, name: c.name, syncStatus: c.syncStatus || 'pending', updatedAt: c.updatedAt,
+    }));
+    result.itemsByTable.inventory = pendingInventory.map(i => ({
+      id: i.id, name: i.name, createdBy: i.createdBy, categoryId: i.categoryId || '', syncStatus: i.syncStatus || 'pending', updatedAt: i.updatedAt,
+    }));
+    result.itemsByTable.sales = pendingSales.map(s => ({
+      id: s.id, name: s.name, total: s.total, createdBy: s.createdBy, date: s.date, syncStatus: s.syncStatus || 'pending', updatedAt: s.updatedAt,
+    }));
+    result.itemsByTable.expenses = pendingExpenses.map(e => ({
+      id: e.id, name: e.name, total: e.total, createdBy: e.createdBy, date: e.date, syncStatus: e.syncStatus || 'pending', updatedAt: e.updatedAt,
+    }));
+    result.itemsByTable.activities = pendingActivities.map(a => ({
+      id: a.id, type: a.type, description: a.description, userId: a.userId, syncStatus: a.syncStatus || 'pending', createdAt: a.createdAt,
+    }));
+
+    return result;
+  } catch (error) {
+    console.log('Error getting pending summary:', error);
+    return result;
+  }
+}
+
 export async function upsertActivitiesFromServer(serverActivities: Activity[]): Promise<void> {
   if (serverActivities.length === 0) return;
   console.log(`Upserting ${serverActivities.length} activities from server`);

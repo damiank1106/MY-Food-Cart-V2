@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -11,17 +11,18 @@ import {
   Alert,
   Platform,
   Linking,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Lock, Moon, HelpCircle, Info, LogOut, Eye, EyeOff, X, UserPlus, ChevronDown, RefreshCw, Cloud, CloudOff, Database } from 'lucide-react-native';
+import { Lock, Moon, HelpCircle, Info, LogOut, Eye, EyeOff, X, UserPlus, ChevronDown, ChevronRight, RefreshCw, Cloud, CloudOff, Database, AlertTriangle, Wrench } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { Colors } from '@/constants/colors';
 import { UserRole, ROLE_DISPLAY_NAMES } from '@/types';
-import { createUser, isPinTaken } from '@/services/database';
+import { createUser, isPinTaken, getPendingSummaryAndItems, PendingSummary } from '@/services/database';
 import { useSync } from '@/contexts/SyncContext';
 import { supabase, isSupabaseConfigured } from '@/services/supabase';
 import SyncProgressModal from '@/components/SyncProgressModal';
@@ -54,8 +55,56 @@ export default function SettingsScreen() {
   const [connectionTestResult, setConnectionTestResult] = useState<'connected' | 'not_connected' | null>(null);
   const [isTestingConnection, setIsTestingConnection] = useState(false);
   const [showSyncModal, setShowSyncModal] = useState(false);
+  const [pendingSummary, setPendingSummary] = useState<PendingSummary | null>(null);
+  const [expandedTables, setExpandedTables] = useState<Record<string, boolean>>({});
+  const [isLoadingPending, setIsLoadingPending] = useState(false);
+  const [isFixingSyncing, setIsFixingSyncing] = useState(false);
 
   const isDeveloper = user?.role === 'developer';
+
+  const loadPendingSummary = useCallback(async () => {
+    if (!isDeveloper) return;
+    setIsLoadingPending(true);
+    try {
+      const summary = await getPendingSummaryAndItems(50);
+      setPendingSummary(summary);
+      console.log('Pending summary loaded:', summary.totals);
+    } catch (error) {
+      console.log('Error loading pending summary:', error);
+    } finally {
+      setIsLoadingPending(false);
+    }
+  }, [isDeveloper]);
+
+  useEffect(() => {
+    if (isDeveloper) {
+      loadPendingSummary();
+    }
+  }, [isDeveloper, loadPendingSummary, pendingCount]);
+
+  const toggleTableExpanded = (table: string) => {
+    setExpandedTables(prev => ({ ...prev, [table]: !prev[table] }));
+  };
+
+  const handleFixAndSync = async () => {
+    setIsFixingSyncing(true);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    try {
+      console.log('Starting fix and sync...');
+      await triggerSync();
+      await loadPendingSummary();
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (error) {
+      console.log('Fix and sync error:', error);
+    } finally {
+      setIsFixingSyncing(false);
+    }
+  };
+
+  const truncateId = (id: string) => {
+    if (id.length <= 16) return id;
+    return `${id.substring(0, 8)}...${id.substring(id.length - 4)}`;
+  };
 
   const createUserMutation = useMutation({
     mutationFn: async (data: { name: string; pin: string; role: UserRole }) => {
@@ -339,6 +388,212 @@ export default function SettingsScreen() {
               <Text style={[styles.settingLabel, { color: theme.text }]}>Sync Now</Text>
             </TouchableOpacity>
           </View>
+
+          {isDeveloper && (
+            <View style={[styles.section, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
+              <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>Pending Sync Items (Developer)</Text>
+              
+              {isLoadingPending ? (
+                <View style={styles.loadingContainer}>
+                  <ActivityIndicator size="small" color={theme.primary} />
+                  <Text style={[styles.loadingText, { color: theme.textMuted }]}>Loading...</Text>
+                </View>
+              ) : pendingSummary ? (
+                <>
+                  <View style={styles.pendingTotalRow}>
+                    <AlertTriangle color={theme.warning} size={18} />
+                    <Text style={[styles.pendingTotalText, { color: theme.text }]}>
+                      Total Pending: {pendingSummary.totals.total}
+                    </Text>
+                  </View>
+
+                  {pendingSummary.totals.users > 0 && (
+                    <View style={styles.tableGroup}>
+                      <TouchableOpacity
+                        style={styles.tableHeader}
+                        onPress={() => toggleTableExpanded('users')}
+                      >
+                        {expandedTables.users ? (
+                          <ChevronDown color={theme.textMuted} size={16} />
+                        ) : (
+                          <ChevronRight color={theme.textMuted} size={16} />
+                        )}
+                        <Text style={[styles.tableTitle, { color: theme.text }]}>
+                          Users ({pendingSummary.totals.users})
+                        </Text>
+                      </TouchableOpacity>
+                      {expandedTables.users && pendingSummary.itemsByTable.users.map(item => (
+                        <View key={item.id} style={[styles.pendingItem, { borderColor: theme.divider }]}>
+                          <Text style={[styles.pendingItemName, { color: theme.text }]}>{item.name}</Text>
+                          <Text style={[styles.pendingItemId, { color: theme.textMuted }]}>ID: {truncateId(item.id)}</Text>
+                          <Text style={[styles.pendingItemMeta, { color: theme.textMuted }]}>PIN: {item.pin} | Role: {item.role}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+
+                  {pendingSummary.totals.categories > 0 && (
+                    <View style={styles.tableGroup}>
+                      <TouchableOpacity
+                        style={styles.tableHeader}
+                        onPress={() => toggleTableExpanded('categories')}
+                      >
+                        {expandedTables.categories ? (
+                          <ChevronDown color={theme.textMuted} size={16} />
+                        ) : (
+                          <ChevronRight color={theme.textMuted} size={16} />
+                        )}
+                        <Text style={[styles.tableTitle, { color: theme.text }]}>
+                          Categories ({pendingSummary.totals.categories})
+                        </Text>
+                      </TouchableOpacity>
+                      {expandedTables.categories && pendingSummary.itemsByTable.categories.map(item => (
+                        <View key={item.id} style={[styles.pendingItem, { borderColor: theme.divider }]}>
+                          <Text style={[styles.pendingItemName, { color: theme.text }]}>{item.name}</Text>
+                          <Text style={[styles.pendingItemId, { color: theme.textMuted }]}>ID: {truncateId(item.id)}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+
+                  {pendingSummary.totals.inventory > 0 && (
+                    <View style={styles.tableGroup}>
+                      <TouchableOpacity
+                        style={styles.tableHeader}
+                        onPress={() => toggleTableExpanded('inventory')}
+                      >
+                        {expandedTables.inventory ? (
+                          <ChevronDown color={theme.textMuted} size={16} />
+                        ) : (
+                          <ChevronRight color={theme.textMuted} size={16} />
+                        )}
+                        <Text style={[styles.tableTitle, { color: theme.text }]}>
+                          Inventory ({pendingSummary.totals.inventory})
+                        </Text>
+                      </TouchableOpacity>
+                      {expandedTables.inventory && pendingSummary.itemsByTable.inventory.map(item => (
+                        <View key={item.id} style={[styles.pendingItem, { borderColor: theme.divider }]}>
+                          <Text style={[styles.pendingItemName, { color: theme.text }]}>{item.name}</Text>
+                          <Text style={[styles.pendingItemId, { color: theme.textMuted }]}>ID: {truncateId(item.id)}</Text>
+                          <Text style={[styles.pendingItemMeta, { color: theme.warning }]}>created_by: {truncateId(item.createdBy)}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+
+                  {pendingSummary.totals.sales > 0 && (
+                    <View style={styles.tableGroup}>
+                      <TouchableOpacity
+                        style={styles.tableHeader}
+                        onPress={() => toggleTableExpanded('sales')}
+                      >
+                        {expandedTables.sales ? (
+                          <ChevronDown color={theme.textMuted} size={16} />
+                        ) : (
+                          <ChevronRight color={theme.textMuted} size={16} />
+                        )}
+                        <Text style={[styles.tableTitle, { color: theme.text }]}>
+                          Sales ({pendingSummary.totals.sales})
+                        </Text>
+                      </TouchableOpacity>
+                      {expandedTables.sales && pendingSummary.itemsByTable.sales.map(item => (
+                        <View key={item.id} style={[styles.pendingItem, { borderColor: theme.divider }]}>
+                          <Text style={[styles.pendingItemName, { color: theme.text }]}>{item.name} - ₱{item.total.toFixed(2)}</Text>
+                          <Text style={[styles.pendingItemId, { color: theme.textMuted }]}>ID: {truncateId(item.id)}</Text>
+                          <Text style={[styles.pendingItemMeta, { color: theme.warning }]}>created_by: {truncateId(item.createdBy)}</Text>
+                          <Text style={[styles.pendingItemMeta, { color: theme.textMuted }]}>Date: {item.date}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+
+                  {pendingSummary.totals.expenses > 0 && (
+                    <View style={styles.tableGroup}>
+                      <TouchableOpacity
+                        style={styles.tableHeader}
+                        onPress={() => toggleTableExpanded('expenses')}
+                      >
+                        {expandedTables.expenses ? (
+                          <ChevronDown color={theme.textMuted} size={16} />
+                        ) : (
+                          <ChevronRight color={theme.textMuted} size={16} />
+                        )}
+                        <Text style={[styles.tableTitle, { color: theme.text }]}>
+                          Expenses ({pendingSummary.totals.expenses})
+                        </Text>
+                      </TouchableOpacity>
+                      {expandedTables.expenses && pendingSummary.itemsByTable.expenses.map(item => (
+                        <View key={item.id} style={[styles.pendingItem, { borderColor: theme.divider }]}>
+                          <Text style={[styles.pendingItemName, { color: theme.text }]}>{item.name} - ₱{item.total.toFixed(2)}</Text>
+                          <Text style={[styles.pendingItemId, { color: theme.textMuted }]}>ID: {truncateId(item.id)}</Text>
+                          <Text style={[styles.pendingItemMeta, { color: theme.warning }]}>created_by: {truncateId(item.createdBy)}</Text>
+                          <Text style={[styles.pendingItemMeta, { color: theme.textMuted }]}>Date: {item.date}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+
+                  {pendingSummary.totals.activities > 0 && (
+                    <View style={styles.tableGroup}>
+                      <TouchableOpacity
+                        style={styles.tableHeader}
+                        onPress={() => toggleTableExpanded('activities')}
+                      >
+                        {expandedTables.activities ? (
+                          <ChevronDown color={theme.textMuted} size={16} />
+                        ) : (
+                          <ChevronRight color={theme.textMuted} size={16} />
+                        )}
+                        <Text style={[styles.tableTitle, { color: theme.text }]}>
+                          Activities ({pendingSummary.totals.activities})
+                        </Text>
+                      </TouchableOpacity>
+                      {expandedTables.activities && pendingSummary.itemsByTable.activities.map(item => (
+                        <View key={item.id} style={[styles.pendingItem, { borderColor: theme.divider }]}>
+                          <Text style={[styles.pendingItemName, { color: theme.text }]}>{item.type}: {item.description}</Text>
+                          <Text style={[styles.pendingItemId, { color: theme.textMuted }]}>ID: {truncateId(item.id)}</Text>
+                          <Text style={[styles.pendingItemMeta, { color: theme.warning }]}>user_id: {truncateId(item.userId)}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+
+                  {pendingSummary.totals.total === 0 && (
+                    <View style={styles.allSyncedContainer}>
+                      <Cloud color={theme.success} size={24} />
+                      <Text style={[styles.allSyncedText, { color: theme.success }]}>All items synced!</Text>
+                    </View>
+                  )}
+
+                  <TouchableOpacity
+                    style={[styles.fixSyncButton, { backgroundColor: theme.warning }]}
+                    onPress={handleFixAndSync}
+                    disabled={isFixingSyncing || syncStatus === 'syncing'}
+                  >
+                    {isFixingSyncing ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <Wrench color="#fff" size={18} />
+                    )}
+                    <Text style={styles.fixSyncButtonText}>
+                      {isFixingSyncing ? 'Fixing & Syncing...' : 'Attempt Fix + Sync Now'}
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.refreshButton, { borderColor: theme.primary }]}
+                    onPress={loadPendingSummary}
+                    disabled={isLoadingPending}
+                  >
+                    <RefreshCw color={theme.primary} size={16} />
+                    <Text style={[styles.refreshButtonText, { color: theme.primary }]}>Refresh List</Text>
+                  </TouchableOpacity>
+                </>
+              ) : (
+                <Text style={[styles.noDataText, { color: theme.textMuted }]}>No pending data available</Text>
+              )}
+            </View>
+          )}
 
           <View style={[styles.section, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
             <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>About</Text>
@@ -904,5 +1159,109 @@ const styles = StyleSheet.create({
   connectionTestText: {
     fontSize: 14,
     textAlign: 'center',
+  },
+  loadingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20,
+    gap: 8,
+  },
+  loadingText: {
+    fontSize: 14,
+  },
+  pendingTotalRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    gap: 8,
+  },
+  pendingTotalText: {
+    fontSize: 16,
+    fontWeight: '600' as const,
+  },
+  tableGroup: {
+    marginBottom: 8,
+  },
+  tableHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    gap: 6,
+  },
+  tableTitle: {
+    fontSize: 14,
+    fontWeight: '500' as const,
+  },
+  pendingItem: {
+    marginLeft: 32,
+    marginRight: 16,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderLeftWidth: 2,
+    marginBottom: 4,
+  },
+  pendingItemName: {
+    fontSize: 13,
+    fontWeight: '500' as const,
+  },
+  pendingItemId: {
+    fontSize: 11,
+    marginTop: 2,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
+  pendingItemMeta: {
+    fontSize: 11,
+    marginTop: 2,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
+  allSyncedContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20,
+    gap: 8,
+  },
+  allSyncedText: {
+    fontSize: 16,
+    fontWeight: '600' as const,
+  },
+  fixSyncButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginHorizontal: 16,
+    marginTop: 12,
+    paddingVertical: 12,
+    borderRadius: 10,
+    gap: 8,
+  },
+  fixSyncButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600' as const,
+  },
+  refreshButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginHorizontal: 16,
+    marginTop: 8,
+    marginBottom: 16,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    gap: 6,
+  },
+  refreshButtonText: {
+    fontSize: 13,
+    fontWeight: '500' as const,
+  },
+  noDataText: {
+    fontSize: 14,
+    textAlign: 'center',
+    padding: 20,
   },
 });
