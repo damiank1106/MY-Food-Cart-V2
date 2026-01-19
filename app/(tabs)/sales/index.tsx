@@ -52,6 +52,7 @@ export default function SalesScreen() {
   const [tempOperationPercent, setTempOperationPercent] = useState(65);
   const [tempGeneralPercent, setTempGeneralPercent] = useState(25);
   const [tempFoodCartPercent, setTempFoodCartPercent] = useState(10);
+  const [includeExpenses, setIncludeExpenses] = useState(true);
   
 
   useEffect(() => {
@@ -62,13 +63,14 @@ export default function SalesScreen() {
     try {
       const stored = await AsyncStorage.getItem('netSalesSplit');
       if (stored) {
-        const { operation, general, foodCart } = JSON.parse(stored);
+        const { operation, general, foodCart, includeExp } = JSON.parse(stored);
         setOperationManagerPercent(operation);
         setGeneralManagerPercent(general);
         setFoodCartPercent(foodCart);
         setTempOperationPercent(operation);
         setTempGeneralPercent(general);
         setTempFoodCartPercent(foodCart);
+        if (includeExp !== undefined) setIncludeExpenses(includeExp);
       }
     } catch (error) {
       console.log('Error loading split percentages:', error);
@@ -91,8 +93,9 @@ export default function SalesScreen() {
   const totalExpenses = expenses.reduce((sum, e) => sum + e.total, 0);
 
   const netSales = totalSales - totalExpenses;
-  const isNegativeNet = netSales < 0;
-  const effectiveNetSales = isNegativeNet ? 0 : netSales;
+  const splitBase = includeExpenses ? netSales : totalSales;
+  const isNegativeNet = splitBase < 0;
+  const effectiveNetSales = isNegativeNet ? 0 : splitBase;
   const operationManagerAmount = (effectiveNetSales * operationManagerPercent) / 100;
   const generalManagerAmount = (effectiveNetSales * generalManagerPercent) / 100;
   const foodCartAmount = (effectiveNetSales * foodCartPercent) / 100;
@@ -108,6 +111,7 @@ export default function SalesScreen() {
         operation: tempOperationPercent,
         general: tempGeneralPercent,
         foodCart: tempFoodCartPercent,
+        includeExp: includeExpenses,
       }));
       setOperationManagerPercent(tempOperationPercent);
       setGeneralManagerPercent(tempGeneralPercent);
@@ -333,11 +337,26 @@ export default function SalesScreen() {
               </TouchableOpacity>
             </View>
 
+            <TouchableOpacity
+              style={[styles.includeExpensesButton, { backgroundColor: includeExpenses ? theme.error + '20' : theme.success + '20' }]}
+              onPress={() => {
+                setIncludeExpenses(!includeExpenses);
+                Haptics.selectionAsync();
+              }}
+            >
+              <Text style={[styles.includeExpensesText, { color: includeExpenses ? theme.error : theme.success }]}>
+                {includeExpenses ? 'Expenses Included' : 'Expenses Excluded'}
+              </Text>
+              <Text style={[styles.includeExpensesHint, { color: theme.textMuted }]}>
+                Tap to {includeExpenses ? 'exclude' : 'include'} expenses from split
+              </Text>
+            </TouchableOpacity>
+
             {isNegativeNet && (
               <View style={[styles.warningBanner, { backgroundColor: theme.warning + '20' }]}>
                 <AlertCircle color={theme.warning} size={16} />
                 <Text style={[styles.warningText, { color: theme.warning }]}>
-                  Net sales are negative. Split calculation requires positive Total Sales.
+                  {includeExpenses ? 'Net sales are negative. Split calculation requires positive Total Sales.' : 'Total sales are negative. Split calculation requires positive Total Sales.'}
                 </Text>
               </View>
             )}
@@ -438,7 +457,7 @@ export default function SalesScreen() {
             <View style={styles.calendarContent}>
               <Text style={[styles.pickerLabel, { color: theme.textSecondary }]}>Year</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.pickerScroll}>
-                {Array.from({ length: 10 }, (_, i) => 2020 + i).map(year => (
+                {Array.from({ length: 40 }, (_, i) => 2020 + i).map(year => (
                   <TouchableOpacity
                     key={year}
                     style={[
@@ -1099,5 +1118,19 @@ const styles = StyleSheet.create({
   previewLabel: {
     fontSize: 12,
     marginBottom: 8,
+  },
+  includeExpensesButton: {
+    padding: 12,
+    borderRadius: 10,
+    marginBottom: 12,
+    alignItems: 'center',
+  },
+  includeExpensesText: {
+    fontSize: 14,
+    fontWeight: '600' as const,
+  },
+  includeExpensesHint: {
+    fontSize: 11,
+    marginTop: 4,
   },
 });

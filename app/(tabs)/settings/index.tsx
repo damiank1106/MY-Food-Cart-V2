@@ -25,7 +25,7 @@ import { createUser, isPinTaken } from '@/services/database';
 import { useSync } from '@/contexts/SyncContext';
 
 const APP_VERSION = '1.0.0';
-const PRIVACY_POLICY_URL = 'https://example.com/privacy-policy';
+const PRIVACY_POLICY_GITHUB_URL = 'https://github.com/user/myfoodcart-privacy-policy';
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -47,6 +47,7 @@ export default function SettingsScreen() {
   const [newUserRole, setNewUserRole] = useState<UserRole>('inventory_clerk');
   const [showRolePicker, setShowRolePicker] = useState(false);
   const [createUserError, setCreateUserError] = useState('');
+  const [showPrivacyModal, setShowPrivacyModal] = useState(false);
 
   const isDeveloper = user?.role === 'developer';
 
@@ -176,7 +177,11 @@ export default function SettingsScreen() {
   const syncStatusDisplay = getSyncStatusDisplay();
 
   const handlePrivacyPolicy = () => {
-    Linking.openURL(PRIVACY_POLICY_URL);
+    setShowPrivacyModal(true);
+  };
+
+  const openGitHubPrivacyPolicy = () => {
+    Linking.openURL(PRIVACY_POLICY_GITHUB_URL);
   };
 
   const roles: UserRole[] = ['general_manager', 'operation_manager', 'inventory_clerk', 'developer'];
@@ -482,6 +487,64 @@ export default function SettingsScreen() {
           </View>
         </View>
       </Modal>
+
+      <Modal visible={showPrivacyModal} transparent animationType="fade">
+        <View style={[styles.modalOverlay, { backgroundColor: theme.modalOverlay }]}>
+          <View style={[styles.modalContent, { backgroundColor: theme.card }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: theme.text }]}>Privacy Policy</Text>
+              <TouchableOpacity onPress={() => setShowPrivacyModal(false)}>
+                <X color={theme.textMuted} size={24} />
+              </TouchableOpacity>
+            </View>
+            
+            <ScrollView style={styles.privacyBody} showsVerticalScrollIndicator={false}>
+              <Text style={[styles.privacySection, { color: theme.text }]}>Data Collection</Text>
+              <Text style={[styles.privacyText, { color: theme.textSecondary }]}>
+                MY Food Cart collects and stores data locally on your device including sales records, inventory items, expenses, and user profiles. This data is used solely for the purpose of managing your food cart business operations.
+              </Text>
+
+              <Text style={[styles.privacySection, { color: theme.text }]}>Data Storage</Text>
+              <Text style={[styles.privacyText, { color: theme.textSecondary }]}>
+                Your data is stored locally on your device and may be synced to our secure cloud servers to enable data backup and multi-device access. We use industry-standard encryption to protect your data.
+              </Text>
+
+              <Text style={[styles.privacySection, { color: theme.text }]}>Data Sharing</Text>
+              <Text style={[styles.privacyText, { color: theme.textSecondary }]}>
+                We do not sell, trade, or share your personal data with third parties. Your business information remains confidential and is only accessible by authorized users within your organization.
+              </Text>
+
+              <Text style={[styles.privacySection, { color: theme.text }]}>User Rights</Text>
+              <Text style={[styles.privacyText, { color: theme.textSecondary }]}>
+                You have the right to access, modify, or delete your data at any time. You can export your data or request complete deletion by contacting support.
+              </Text>
+
+              <Text style={[styles.privacySection, { color: theme.text }]}>Contact</Text>
+              <Text style={[styles.privacyText, { color: theme.textSecondary }]}>
+                For questions about this privacy policy or your data, please contact us through the app or visit our GitHub page.
+              </Text>
+
+              <TouchableOpacity
+                style={[styles.githubLink, { backgroundColor: theme.primary + '20' }]}
+                onPress={openGitHubPrivacyPolicy}
+              >
+                <Text style={[styles.githubLinkText, { color: theme.primary }]}>
+                  View Full Privacy Policy on GitHub
+                </Text>
+              </TouchableOpacity>
+            </ScrollView>
+            
+            <View style={styles.modalFooter}>
+              <TouchableOpacity
+                style={[styles.submitButton, { backgroundColor: theme.primary }]}
+                onPress={() => setShowPrivacyModal(false)}
+              >
+                <Text style={styles.submitButtonText}>Close</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -677,6 +740,31 @@ const styles = StyleSheet.create({
   submitButtonText: {
     color: '#fff',
     fontSize: 16,
+    fontWeight: '600' as const,
+  },
+  privacyBody: {
+    padding: 20,
+    maxHeight: 400,
+  },
+  privacySection: {
+    fontSize: 16,
+    fontWeight: '600' as const,
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  privacyText: {
+    fontSize: 14,
+    lineHeight: 22,
+  },
+  githubLink: {
+    marginTop: 24,
+    marginBottom: 8,
+    padding: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  githubLinkText: {
+    fontSize: 14,
     fontWeight: '600' as const,
   },
 });

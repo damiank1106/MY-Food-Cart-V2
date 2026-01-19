@@ -27,7 +27,7 @@ export default function ProfileScreen() {
   const { user, settings, updateCurrentUser } = useAuth();
   const theme = settings.darkMode ? Colors.dark : Colors.light;
   
-  const [displayName, setDisplayName] = useState(user?.name || '');
+  const [displayName, setDisplayName] = useState('');
   const [bio, setBio] = useState('');
   const [profileImage, setProfileImage] = useState<string | null>(user?.profilePicture || null);
   const [hasChanges, setHasChanges] = useState(false);
@@ -50,7 +50,6 @@ export default function ProfileScreen() {
 
   useEffect(() => {
     if (user) {
-      setDisplayName(user.name);
       setProfileImage(user.profilePicture || null);
     }
   }, [user]);
@@ -236,11 +235,6 @@ export default function ProfileScreen() {
 
           <View style={[styles.infoCard, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
             <Text style={[styles.infoTitle, { color: theme.text }]}>Account Info</Text>
-            
-            <View style={styles.infoRow}>
-              <Text style={[styles.infoLabel, { color: theme.textSecondary }]}>User ID</Text>
-              <Text style={[styles.infoValue, { color: theme.text }]}>{user?.id?.slice(0, 12)}...</Text>
-            </View>
             
             <View style={styles.infoRow}>
               <Text style={[styles.infoLabel, { color: theme.textSecondary }]}>Created</Text>
