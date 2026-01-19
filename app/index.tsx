@@ -16,30 +16,7 @@ import { Colors } from '@/constants/colors';
 
 const { width, height } = Dimensions.get('window');
 
-/*
- * ============================================
- * VIDEO ASSET INSTRUCTIONS
- * ============================================
- * 
- * To add your intro video:
- * 
- * 1. Create the folder: assets/videos/
- * 2. Add your video file as: assets/videos/intro.mp4
- *    - For native (iOS/Android): Use .mp4 format for best compatibility
- *    - For web: You can also add intro.webm for better web performance
- * 
- * 3. Once added, update the videoSource below:
- *    - Change from: null (placeholder)
- *    - To: require('@/assets/videos/intro.mp4')
- * 
- * Note: .webm works on web but has limited native support.
- *       .mp4 is recommended for cross-platform compatibility.
- * ============================================
- */
-
-// PLACEHOLDER: Replace null with your video source once added
-// Example: const videoSource = require('@/assets/videos/intro.mp4');
-const videoSource: string | null = null;
+const videoSource = require('../videos/intro.webm');
 
 export default function IntroScreen() {
   const router = useRouter();
@@ -103,24 +80,17 @@ export default function IntroScreen() {
             playsInline
             style={{ width: '100%', height: '100%', objectFit: 'cover' } as React.CSSProperties}
           >
-            <source src="/assets/videos/intro.webm" type="video/webm" />
-            <source src="/assets/videos/intro.mp4" type="video/mp4" />
+            <source src="/videos/intro.webm" type="video/webm" />
           </video>
         </View>
       ) : (
         <View style={styles.nativeVideoContainer}>
-          {videoSource ? (
-            <VideoView
+          <VideoView
               player={player}
               style={styles.video}
               contentFit="cover"
               nativeControls={false}
             />
-          ) : (
-            <View style={[styles.placeholderContainer, { backgroundColor: theme.backgroundGradientStart }]}>
-              {/* Video placeholder - video file not yet added */}
-            </View>
-          )}
         </View>
       )}
 
