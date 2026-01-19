@@ -20,6 +20,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Colors } from '@/constants/colors';
 import { ROLE_DISPLAY_NAMES } from '@/types';
 import ProfileAvatarGlow from '@/components/ProfileAvatarGlow';
+import AnimatedLaserBackground from '@/components/AnimatedLaserBackground';
 
 const BIO_STORAGE_KEY = '@myfoodcart_user_bio';
 
@@ -185,6 +186,7 @@ export default function ProfileScreen() {
         colors={[theme.backgroundGradientStart, theme.backgroundGradientEnd]}
         style={StyleSheet.absoluteFill}
       />
+      <AnimatedLaserBackground isDarkMode={settings.darkMode} />
       
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         <View style={[styles.header, { borderBottomColor: theme.divider }]}>
@@ -215,7 +217,6 @@ export default function ProfileScreen() {
               onPressCamera={showImagePickerOptions}
               onPressRemove={handleRemovePhoto}
               fallbackText={displayName || user?.name}
-              glowColor={settings.darkMode ? 'rgba(74, 144, 217, 0.4)' : 'rgba(59, 130, 246, 0.35)'}
               primaryColor={theme.primary}
               backgroundColor={theme.card}
               borderColor={theme.cardBorder}
