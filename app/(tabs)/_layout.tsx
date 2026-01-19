@@ -39,6 +39,7 @@ export default function TabLayout() {
           height: 60 + insets.bottom + 8,
           elevation: settings.glassContainers ? 0 : undefined,
           shadowOpacity: settings.glassContainers ? 0 : undefined,
+          height: 52 + insets.bottom + 8,
           ...(isTablet && {
             position: 'absolute' as const,
             left: 0,
