@@ -15,8 +15,8 @@ import { Package, ShoppingCart, User, Settings, ChevronRight } from 'lucide-reac
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { Colors } from '@/constants/colors';
-import { formatDate } from '@/types';
-import { getSalesByDateRange, getExpensesByDateRange, getActivities } from '@/services/database';
+import { formatDate, ROLE_DISPLAY_NAMES, UserRole } from '@/types';
+import { getSalesByDateRange, getExpensesByDateRange, getActivities, getUsers } from '@/services/database';
 import Svg, { Path, Circle, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
 
 const { width } = Dimensions.get('window');
@@ -77,8 +77,10 @@ function getRelativeTime(dateString: string): string {
   return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
 }
 
+const AUTHOR_VISIBLE_ROLES: UserRole[] = ['general_manager', 'operation_manager', 'developer'];
+
 export default function HomeScreen() {
-  const { settings } = useAuth();
+  const { settings, user: currentUser } = useAuth();
   const theme = settings.darkMode ? Colors.dark : Colors.light;
   const [selectedWeek, setSelectedWeek] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
@@ -114,6 +116,30 @@ export default function HomeScreen() {
     queryFn: getActivities,
   });
 
+  const { data: users = [], refetch: refetchUsers } = useQuery({
+    queryKey: ['users'],
+    queryFn: getUsers,
+  });
+
+  const userMap = useMemo(() => {
+    const map = new Map<string, { name: string; role: UserRole }>();
+    for (const u of users) {
+      map.set(u.id, { name: u.name, role: u.role });
+    }
+    return map;
+  }, [users]);
+
+  const getAuthorDisplayName = useCallback((userId: string): string => {
+    const author = userMap.get(userId);
+    if (!author) return 'Unknown';
+    if (author.name && author.name.trim() !== '') {
+      return author.name;
+    }
+    return ROLE_DISPLAY_NAMES[author.role] || 'Unknown';
+  }, [userMap]);
+
+  const canViewAuthor = currentUser && AUTHOR_VISIBLE_ROLES.includes(currentUser.role);
+
   const chartData = useMemo(() => {
     const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
     const data = days.map((day, index) => {
@@ -141,9 +167,9 @@ export default function HomeScreen() {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await Promise.all([refetchSales(), refetchExpenses(), refetchActivities()]);
+    await Promise.all([refetchSales(), refetchExpenses(), refetchActivities(), refetchUsers()]);
     setRefreshing(false);
-  }, [refetchSales, refetchExpenses, refetchActivities]);
+  }, [refetchSales, refetchExpenses, refetchActivities, refetchUsers]);
 
   const pathData = chartData.map((point, index) => {
     const x = index * stepX;
@@ -325,6 +351,11 @@ export default function HomeScreen() {
                     <Text style={[styles.updateTitle, { color: theme.text }]} numberOfLines={1}>
                       {activity.description}
                     </Text>
+                    {canViewAuthor && (
+                      <Text style={[styles.updateAuthor, { color: theme.textSecondary }]} numberOfLines={1}>
+                        Posted by: {getAuthorDisplayName(activity.userId)}
+                      </Text>
+                    )}
                     <Text style={[styles.updateTime, { color: theme.textMuted }]}>
                       {getRelativeTime(activity.createdAt)}
                     </Text>
@@ -511,6 +542,10 @@ const styles = StyleSheet.create({
   },
   updateTime: {
     fontSize: 12,
+  },
+  updateAuthor: {
+    fontSize: 12,
+    marginTop: 2,
   },
   emptyUpdates: {
     padding: 20,
