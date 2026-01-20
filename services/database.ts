@@ -7,6 +7,8 @@ import {
 } from '@/types';
 
 let db: SQLite.SQLiteDatabase | null = null;
+let dbInitPromise: Promise<void> | null = null;
+let dbInitialized = false;
 
 const STORAGE_KEYS = {
   users: '@myfoodcart_users',
@@ -36,18 +38,42 @@ async function setToStorage<T>(key: string, value: T): Promise<void> {
   }
 }
 
+async function ensureDb(): Promise<SQLite.SQLiteDatabase | null> {
+  if (Platform.OS === 'web') return null;
+  if (db && dbInitialized) return db;
+  if (dbInitPromise) {
+    await dbInitPromise;
+    return db;
+  }
+  return null;
+}
+
 export async function initDatabase(): Promise<void> {
   console.log('Initializing database...');
   
   if (Platform.OS === 'web') {
     console.log('Using AsyncStorage for web platform');
     await initWebDatabase();
+    dbInitialized = true;
     return;
   }
 
-  try {
-    db = await SQLite.openDatabaseAsync('myfoodcart.db');
-    console.log('SQLite database opened');
+  if (dbInitialized && db) {
+    console.log('Database already initialized');
+    return;
+  }
+
+  if (dbInitPromise) {
+    console.log('Database initialization in progress, waiting...');
+    await dbInitPromise;
+    return;
+  }
+
+  dbInitPromise = (async () => {
+    try {
+      console.log('Opening SQLite database...');
+      db = await SQLite.openDatabaseAsync('myfoodcart.db');
+      console.log('SQLite database opened');
 
     await db.execAsync(`
       CREATE TABLE IF NOT EXISTS users (
@@ -115,12 +141,19 @@ export async function initDatabase(): Promise<void> {
       );
     `);
 
-    console.log('Database tables created');
-    await seedDefaultData();
-  } catch (error) {
-    console.log('Error initializing SQLite database:', error);
-    throw error;
-  }
+      console.log('Database tables created');
+      await seedDefaultData();
+      dbInitialized = true;
+      console.log('Database initialization complete');
+    } catch (error) {
+      console.log('Error initializing SQLite database:', error);
+      db = null;
+      dbInitPromise = null;
+      throw error;
+    }
+  })();
+
+  await dbInitPromise;
 }
 
 async function initWebDatabase(): Promise<void> {
@@ -191,8 +224,14 @@ export async function getUsers(): Promise<User[]> {
   if (Platform.OS === 'web') {
     return getFromStorage<User[]>(STORAGE_KEYS.users, []);
   }
-  if (!db) return [];
-  return db.getAllAsync<User>('SELECT * FROM users ORDER BY name');
+  const database = await ensureDb();
+  if (!database) return [];
+  try {
+    return await database.getAllAsync<User>('SELECT * FROM users ORDER BY name');
+  } catch (error) {
+    console.log('Error getting users:', error);
+    return [];
+  }
 }
 
 export async function getUserByPin(pin: string): Promise<User | null> {
@@ -200,9 +239,15 @@ export async function getUserByPin(pin: string): Promise<User | null> {
     const users = await getFromStorage<User[]>(STORAGE_KEYS.users, []);
     return users.find(u => u.pin === pin) || null;
   }
-  if (!db) return null;
-  const users = await db.getAllAsync<User>('SELECT * FROM users WHERE pin = ?', [pin]);
-  return users[0] || null;
+  const database = await ensureDb();
+  if (!database) return null;
+  try {
+    const users = await database.getAllAsync<User>('SELECT * FROM users WHERE pin = ?', [pin]);
+    return users[0] || null;
+  } catch (error) {
+    console.log('Error getting user by PIN:', error);
+    return null;
+  }
 }
 
 export async function updateUser(user: User): Promise<void> {
@@ -216,11 +261,16 @@ export async function updateUser(user: User): Promise<void> {
     }
     return;
   }
-  if (!db) return;
-  await db.runAsync(
-    'UPDATE users SET name = ?, pin = ?, bio = ?, profilePicture = ?, updatedAt = ?, syncStatus = ? WHERE id = ?',
-    [user.name, user.pin, user.bio || null, user.profilePicture || null, now, 'pending', user.id]
-  );
+  const database = await ensureDb();
+  if (!database) return;
+  try {
+    await database.runAsync(
+      'UPDATE users SET name = ?, pin = ?, bio = ?, profilePicture = ?, updatedAt = ?, syncStatus = ? WHERE id = ?',
+      [user.name, user.pin, user.bio || null, user.profilePicture || null, now, 'pending', user.id]
+    );
+  } catch (error) {
+    console.log('Error updating user:', error);
+  }
 }
 
 export async function createUser(user: Omit<User, 'id' | 'createdAt' | 'updatedAt' | 'syncStatus'>): Promise<User> {
@@ -240,8 +290,9 @@ export async function createUser(user: Omit<User, 'id' | 'createdAt' | 'updatedA
     return newUser;
   }
 
-  if (!db) throw new Error('Database not initialized');
-  await db.runAsync(
+  const database = await ensureDb();
+  if (!database) throw new Error('Database not initialized');
+  await database.runAsync(
     'INSERT INTO users (id, name, pin, role, bio, profilePicture, createdAt, updatedAt, syncStatus) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
     [newUser.id, newUser.name, newUser.pin, newUser.role, newUser.bio || null, newUser.profilePicture || null, now, now, 'pending']
   );
@@ -254,8 +305,9 @@ export async function deleteUser(id: string): Promise<void> {
     await setToStorage(STORAGE_KEYS.users, users.filter(u => u.id !== id));
     return;
   }
-  if (!db) return;
-  await db.runAsync('DELETE FROM users WHERE id = ?', [id]);
+  const database = await ensureDb();
+  if (!database) return;
+  await database.runAsync('DELETE FROM users WHERE id = ?', [id]);
 }
 
 export async function isPinTaken(pin: string, excludeUserId?: string): Promise<boolean> {
@@ -263,21 +315,33 @@ export async function isPinTaken(pin: string, excludeUserId?: string): Promise<b
     const users = await getFromStorage<User[]>(STORAGE_KEYS.users, []);
     return users.some(u => u.pin === pin && u.id !== excludeUserId);
   }
-  if (!db) return false;
-  const query = excludeUserId 
-    ? 'SELECT COUNT(*) as count FROM users WHERE pin = ? AND id != ?'
-    : 'SELECT COUNT(*) as count FROM users WHERE pin = ?';
-  const params = excludeUserId ? [pin, excludeUserId] : [pin];
-  const result = await db.getFirstAsync<{ count: number }>(query, params);
-  return (result?.count || 0) > 0;
+  const database = await ensureDb();
+  if (!database) return false;
+  try {
+    const query = excludeUserId 
+      ? 'SELECT COUNT(*) as count FROM users WHERE pin = ? AND id != ?'
+      : 'SELECT COUNT(*) as count FROM users WHERE pin = ?';
+    const params = excludeUserId ? [pin, excludeUserId] : [pin];
+    const result = await database.getFirstAsync<{ count: number }>(query, params);
+    return (result?.count || 0) > 0;
+  } catch (error) {
+    console.log('Error checking PIN:', error);
+    return false;
+  }
 }
 
 export async function getCategories(): Promise<Category[]> {
   if (Platform.OS === 'web') {
     return getFromStorage<Category[]>(STORAGE_KEYS.categories, []);
   }
-  if (!db) return [];
-  return db.getAllAsync<Category>('SELECT * FROM categories ORDER BY name');
+  const database = await ensureDb();
+  if (!database) return [];
+  try {
+    return await database.getAllAsync<Category>('SELECT * FROM categories ORDER BY name');
+  } catch (error) {
+    console.log('Error getting categories:', error);
+    return [];
+  }
 }
 
 export async function createCategory(name: string): Promise<Category> {
@@ -297,8 +361,9 @@ export async function createCategory(name: string): Promise<Category> {
     return newCategory;
   }
 
-  if (!db) throw new Error('Database not initialized');
-  await db.runAsync(
+  const database = await ensureDb();
+  if (!database) throw new Error('Database not initialized');
+  await database.runAsync(
     'INSERT INTO categories (id, name, createdAt, updatedAt, syncStatus) VALUES (?, ?, ?, ?, ?)',
     [newCategory.id, newCategory.name, now, now, 'pending']
   );
@@ -316,8 +381,9 @@ export async function updateCategory(id: string, name: string): Promise<void> {
     }
     return;
   }
-  if (!db) return;
-  await db.runAsync('UPDATE categories SET name = ?, updatedAt = ?, syncStatus = ? WHERE id = ?', [name, now, 'pending', id]);
+  const database = await ensureDb();
+  if (!database) return;
+  await database.runAsync('UPDATE categories SET name = ?, updatedAt = ?, syncStatus = ? WHERE id = ?', [name, now, 'pending', id]);
 }
 
 export async function deleteCategory(id: string): Promise<void> {
@@ -326,8 +392,9 @@ export async function deleteCategory(id: string): Promise<void> {
     await setToStorage(STORAGE_KEYS.categories, categories.filter(c => c.id !== id));
     return;
   }
-  if (!db) return;
-  await db.runAsync('DELETE FROM categories WHERE id = ?', [id]);
+  const database = await ensureDb();
+  if (!database) return;
+  await database.runAsync('DELETE FROM categories WHERE id = ?', [id]);
 }
 
 export async function getCategoryItemCount(categoryId: string): Promise<number> {
@@ -335,17 +402,29 @@ export async function getCategoryItemCount(categoryId: string): Promise<number> 
     const inventory = await getFromStorage<InventoryItem[]>(STORAGE_KEYS.inventory, []);
     return inventory.filter(i => i.categoryId === categoryId).length;
   }
-  if (!db) return 0;
-  const result = await db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM inventory WHERE categoryId = ?', [categoryId]);
-  return result?.count || 0;
+  const database = await ensureDb();
+  if (!database) return 0;
+  try {
+    const result = await database.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM inventory WHERE categoryId = ?', [categoryId]);
+    return result?.count || 0;
+  } catch (error) {
+    console.log('Error getting category item count:', error);
+    return 0;
+  }
 }
 
 export async function getInventory(): Promise<InventoryItem[]> {
   if (Platform.OS === 'web') {
     return getFromStorage<InventoryItem[]>(STORAGE_KEYS.inventory, []);
   }
-  if (!db) return [];
-  return db.getAllAsync<InventoryItem>('SELECT * FROM inventory ORDER BY name');
+  const database = await ensureDb();
+  if (!database) return [];
+  try {
+    return await database.getAllAsync<InventoryItem>('SELECT * FROM inventory ORDER BY name');
+  } catch (error) {
+    console.log('Error getting inventory:', error);
+    return [];
+  }
 }
 
 export async function getInventoryByCategory(categoryId: string | null): Promise<InventoryItem[]> {
@@ -353,11 +432,17 @@ export async function getInventoryByCategory(categoryId: string | null): Promise
     const inventory = await getFromStorage<InventoryItem[]>(STORAGE_KEYS.inventory, []);
     return categoryId ? inventory.filter(i => i.categoryId === categoryId) : inventory;
   }
-  if (!db) return [];
-  if (categoryId) {
-    return db.getAllAsync<InventoryItem>('SELECT * FROM inventory WHERE categoryId = ? ORDER BY name', [categoryId]);
+  const database = await ensureDb();
+  if (!database) return [];
+  try {
+    if (categoryId) {
+      return await database.getAllAsync<InventoryItem>('SELECT * FROM inventory WHERE categoryId = ? ORDER BY name', [categoryId]);
+    }
+    return await database.getAllAsync<InventoryItem>('SELECT * FROM inventory ORDER BY name');
+  } catch (error) {
+    console.log('Error getting inventory by category:', error);
+    return [];
   }
-  return db.getAllAsync<InventoryItem>('SELECT * FROM inventory ORDER BY name');
 }
 
 export async function createInventoryItem(item: Omit<InventoryItem, 'id' | 'createdAt' | 'updatedAt' | 'syncStatus'>): Promise<InventoryItem> {
@@ -377,8 +462,9 @@ export async function createInventoryItem(item: Omit<InventoryItem, 'id' | 'crea
     return newItem;
   }
 
-  if (!db) throw new Error('Database not initialized');
-  await db.runAsync(
+  const database = await ensureDb();
+  if (!database) throw new Error('Database not initialized');
+  await database.runAsync(
     'INSERT INTO inventory (id, name, categoryId, unit, price, quantity, createdAt, updatedAt, createdBy, syncStatus) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
     [newItem.id, newItem.name, newItem.categoryId, newItem.unit, newItem.price, newItem.quantity, now, now, newItem.createdBy, 'pending']
   );
@@ -396,8 +482,9 @@ export async function updateInventoryItem(item: InventoryItem): Promise<void> {
     }
     return;
   }
-  if (!db) return;
-  await db.runAsync(
+  const database = await ensureDb();
+  if (!database) return;
+  await database.runAsync(
     'UPDATE inventory SET name = ?, categoryId = ?, unit = ?, price = ?, quantity = ?, updatedAt = ?, syncStatus = ? WHERE id = ?',
     [item.name, item.categoryId, item.unit, item.price, item.quantity, now, 'pending', item.id]
   );
@@ -409,16 +496,23 @@ export async function deleteInventoryItem(id: string): Promise<void> {
     await setToStorage(STORAGE_KEYS.inventory, inventory.filter(i => i.id !== id));
     return;
   }
-  if (!db) return;
-  await db.runAsync('DELETE FROM inventory WHERE id = ?', [id]);
+  const database = await ensureDb();
+  if (!database) return;
+  await database.runAsync('DELETE FROM inventory WHERE id = ?', [id]);
 }
 
 export async function getSales(): Promise<Sale[]> {
   if (Platform.OS === 'web') {
     return getFromStorage<Sale[]>(STORAGE_KEYS.sales, []);
   }
-  if (!db) return [];
-  return db.getAllAsync<Sale>('SELECT * FROM sales ORDER BY date DESC, createdAt DESC');
+  const database = await ensureDb();
+  if (!database) return [];
+  try {
+    return await database.getAllAsync<Sale>('SELECT * FROM sales ORDER BY date DESC, createdAt DESC');
+  } catch (error) {
+    console.log('Error getting sales:', error);
+    return [];
+  }
 }
 
 export async function getSalesByDate(date: string): Promise<Sale[]> {
@@ -426,8 +520,14 @@ export async function getSalesByDate(date: string): Promise<Sale[]> {
     const sales = await getFromStorage<Sale[]>(STORAGE_KEYS.sales, []);
     return sales.filter(s => s.date === date);
   }
-  if (!db) return [];
-  return db.getAllAsync<Sale>('SELECT * FROM sales WHERE date = ? ORDER BY createdAt DESC', [date]);
+  const database = await ensureDb();
+  if (!database) return [];
+  try {
+    return await database.getAllAsync<Sale>('SELECT * FROM sales WHERE date = ? ORDER BY createdAt DESC', [date]);
+  } catch (error) {
+    console.log('Error getting sales by date:', error);
+    return [];
+  }
 }
 
 export async function getSalesByDateRange(startDate: string, endDate: string): Promise<Sale[]> {
@@ -435,8 +535,14 @@ export async function getSalesByDateRange(startDate: string, endDate: string): P
     const sales = await getFromStorage<Sale[]>(STORAGE_KEYS.sales, []);
     return sales.filter(s => s.date >= startDate && s.date <= endDate);
   }
-  if (!db) return [];
-  return db.getAllAsync<Sale>('SELECT * FROM sales WHERE date >= ? AND date <= ? ORDER BY date DESC', [startDate, endDate]);
+  const database = await ensureDb();
+  if (!database) return [];
+  try {
+    return await database.getAllAsync<Sale>('SELECT * FROM sales WHERE date >= ? AND date <= ? ORDER BY date DESC', [startDate, endDate]);
+  } catch (error) {
+    console.log('Error getting sales by date range:', error);
+    return [];
+  }
 }
 
 export async function createSale(sale: Omit<Sale, 'id' | 'createdAt' | 'updatedAt' | 'syncStatus'>): Promise<Sale> {
@@ -456,8 +562,9 @@ export async function createSale(sale: Omit<Sale, 'id' | 'createdAt' | 'updatedA
     return newSale;
   }
 
-  if (!db) throw new Error('Database not initialized');
-  await db.runAsync(
+  const database = await ensureDb();
+  if (!database) throw new Error('Database not initialized');
+  await database.runAsync(
     'INSERT INTO sales (id, name, total, date, createdBy, createdAt, updatedAt, syncStatus) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
     [newSale.id, newSale.name, newSale.total, newSale.date, newSale.createdBy, now, now, 'pending']
   );
@@ -470,16 +577,23 @@ export async function deleteSale(id: string): Promise<void> {
     await setToStorage(STORAGE_KEYS.sales, sales.filter(s => s.id !== id));
     return;
   }
-  if (!db) return;
-  await db.runAsync('DELETE FROM sales WHERE id = ?', [id]);
+  const database = await ensureDb();
+  if (!database) return;
+  await database.runAsync('DELETE FROM sales WHERE id = ?', [id]);
 }
 
 export async function getExpenses(): Promise<Expense[]> {
   if (Platform.OS === 'web') {
     return getFromStorage<Expense[]>(STORAGE_KEYS.expenses, []);
   }
-  if (!db) return [];
-  return db.getAllAsync<Expense>('SELECT * FROM expenses ORDER BY date DESC, createdAt DESC');
+  const database = await ensureDb();
+  if (!database) return [];
+  try {
+    return await database.getAllAsync<Expense>('SELECT * FROM expenses ORDER BY date DESC, createdAt DESC');
+  } catch (error) {
+    console.log('Error getting expenses:', error);
+    return [];
+  }
 }
 
 export async function getExpensesByDate(date: string): Promise<Expense[]> {
@@ -487,8 +601,14 @@ export async function getExpensesByDate(date: string): Promise<Expense[]> {
     const expenses = await getFromStorage<Expense[]>(STORAGE_KEYS.expenses, []);
     return expenses.filter(e => e.date === date);
   }
-  if (!db) return [];
-  return db.getAllAsync<Expense>('SELECT * FROM expenses WHERE date = ? ORDER BY createdAt DESC', [date]);
+  const database = await ensureDb();
+  if (!database) return [];
+  try {
+    return await database.getAllAsync<Expense>('SELECT * FROM expenses WHERE date = ? ORDER BY createdAt DESC', [date]);
+  } catch (error) {
+    console.log('Error getting expenses by date:', error);
+    return [];
+  }
 }
 
 export async function getExpensesByDateRange(startDate: string, endDate: string): Promise<Expense[]> {
@@ -496,8 +616,14 @@ export async function getExpensesByDateRange(startDate: string, endDate: string)
     const expenses = await getFromStorage<Expense[]>(STORAGE_KEYS.expenses, []);
     return expenses.filter(e => e.date >= startDate && e.date <= endDate);
   }
-  if (!db) return [];
-  return db.getAllAsync<Expense>('SELECT * FROM expenses WHERE date >= ? AND date <= ? ORDER BY date DESC', [startDate, endDate]);
+  const database = await ensureDb();
+  if (!database) return [];
+  try {
+    return await database.getAllAsync<Expense>('SELECT * FROM expenses WHERE date >= ? AND date <= ? ORDER BY date DESC', [startDate, endDate]);
+  } catch (error) {
+    console.log('Error getting expenses by date range:', error);
+    return [];
+  }
 }
 
 export async function createExpense(expense: Omit<Expense, 'id' | 'createdAt' | 'updatedAt' | 'syncStatus'>): Promise<Expense> {
@@ -517,8 +643,9 @@ export async function createExpense(expense: Omit<Expense, 'id' | 'createdAt' | 
     return newExpense;
   }
 
-  if (!db) throw new Error('Database not initialized');
-  await db.runAsync(
+  const database = await ensureDb();
+  if (!database) throw new Error('Database not initialized');
+  await database.runAsync(
     'INSERT INTO expenses (id, name, total, date, createdBy, createdAt, updatedAt, syncStatus) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
     [newExpense.id, newExpense.name, newExpense.total, newExpense.date, newExpense.createdBy, now, now, 'pending']
   );
@@ -531,8 +658,9 @@ export async function deleteExpense(id: string): Promise<void> {
     await setToStorage(STORAGE_KEYS.expenses, expenses.filter(e => e.id !== id));
     return;
   }
-  if (!db) return;
-  await db.runAsync('DELETE FROM expenses WHERE id = ?', [id]);
+  const database = await ensureDb();
+  if (!database) return;
+  await database.runAsync('DELETE FROM expenses WHERE id = ?', [id]);
 }
 
 export async function getActivities(): Promise<Activity[]> {
@@ -540,8 +668,14 @@ export async function getActivities(): Promise<Activity[]> {
     const activities = await getFromStorage<Activity[]>(STORAGE_KEYS.activities, []);
     return activities.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }
-  if (!db) return [];
-  return db.getAllAsync<Activity>('SELECT * FROM activities ORDER BY createdAt DESC LIMIT 50');
+  const database = await ensureDb();
+  if (!database) return [];
+  try {
+    return await database.getAllAsync<Activity>('SELECT * FROM activities ORDER BY createdAt DESC LIMIT 50');
+  } catch (error) {
+    console.log('Error getting activities:', error);
+    return [];
+  }
 }
 
 export async function createActivity(activity: Omit<Activity, 'id' | 'createdAt' | 'syncStatus'>): Promise<Activity> {
@@ -560,8 +694,9 @@ export async function createActivity(activity: Omit<Activity, 'id' | 'createdAt'
     return newActivity;
   }
 
-  if (!db) throw new Error('Database not initialized');
-  await db.runAsync(
+  const database = await ensureDb();
+  if (!database) throw new Error('Database not initialized');
+  await database.runAsync(
     'INSERT INTO activities (id, type, description, userId, createdAt, syncStatus) VALUES (?, ?, ?, ?, ?, ?)',
     [newActivity.id, newActivity.type, newActivity.description, newActivity.userId, now, 'pending']
   );
