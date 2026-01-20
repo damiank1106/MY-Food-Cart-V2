@@ -1,11 +1,10 @@
 import { Tabs } from "expo-router";
 import { Home, Package, TrendingUp, User, Settings } from "lucide-react-native";
 import React from "react";
-import { useWindowDimensions, View, StyleProp, ViewStyle } from "react-native";
+import { useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/contexts/AuthContext";
 import { Colors } from "@/constants/colors";
-import GlassContainer from "@/components/GlassContainer";
 
 export default function TabLayout() {
   const { user, settings } = useAuth();
@@ -16,24 +15,6 @@ export default function TabLayout() {
   const theme = settings.darkMode ? Colors.dark : Colors.light;
   
   const isInventoryClerk = user?.role === 'inventory_clerk';
-  const tabBarBackground = settings.glassContainers
-    ? "transparent"
-    : theme.tabBar;
-  const tabBarBorderColor = settings.glassContainers
-    ? "transparent"
-    : theme.tabBarBorder;
-  const tabBarBackgroundComponent = settings.glassContainers
-    ? ({ style }: { style?: StyleProp<ViewStyle> } = {}) => (
-        <GlassContainer
-          enabled={settings.glassContainers}
-          opacity={settings.glassOpacity}
-          darkMode={settings.darkMode}
-          style={[style, { backgroundColor: "transparent" }]}
-        >
-          <View style={{ flex: 1 }} />
-        </GlassContainer>
-      )
-    : undefined;
 
   return (
     <Tabs
@@ -41,15 +22,12 @@ export default function TabLayout() {
         tabBarActiveTintColor: theme.tabIconSelected,
         tabBarInactiveTintColor: theme.tabIconDefault,
         tabBarStyle: {
-          backgroundColor: tabBarBackground,
-          borderTopColor: tabBarBorderColor,
+          backgroundColor: theme.tabBar,
+          borderTopColor: theme.tabBarBorder,
           borderTopWidth: 1,
           paddingBottom: insets.bottom + 8,
           paddingTop: 8,
           height: 60 + insets.bottom + 8,
-          elevation: settings.glassContainers ? 0 : undefined,
-          shadowOpacity: settings.glassContainers ? 0 : undefined,
-          height: 52 + insets.bottom + 8,
           ...(isTablet && {
             position: 'absolute' as const,
             left: 0,
@@ -59,13 +37,12 @@ export default function TabLayout() {
             height: '100%',
             flexDirection: 'column' as const,
             paddingTop: 60,
-            paddingBottom: 18,
+            paddingBottom: 28,
             borderTopWidth: 0,
             borderRightWidth: 1,
-            borderRightColor: tabBarBorderColor,
+            borderRightColor: theme.tabBarBorder,
           }),
         },
-        tabBarBackground: tabBarBackgroundComponent,
         tabBarLabelStyle: {
           fontSize: 11,
           fontWeight: '500' as const,

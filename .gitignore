@@ -41,4 +41,4 @@ yarn-error.*
 .rork
 
 .env
-rork-eslint.config.js.idea/
+rork-eslint.config.js

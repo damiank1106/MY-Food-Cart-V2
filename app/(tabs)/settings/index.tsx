@@ -15,19 +15,18 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Lock, Moon, HelpCircle, Info, LogOut, Eye, EyeOff, X, UserPlus, ChevronDown, ChevronRight, RefreshCw, Cloud, CloudOff, Database, AlertTriangle, Wrench, Sparkles, Palette, Zap, Droplet } from 'lucide-react-native';
+import { Lock, Moon, HelpCircle, Info, LogOut, Eye, EyeOff, X, UserPlus, ChevronDown, ChevronRight, RefreshCw, Cloud, CloudOff, Database, AlertTriangle, Wrench, Sparkles, Palette, Zap } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { Colors } from '@/constants/colors';
-import { UserRole, ROLE_DISPLAY_NAMES, BackgroundColorPalette, BackgroundIntensity, GlassOpacity } from '@/types';
+import { UserRole, ROLE_DISPLAY_NAMES, BackgroundColorPalette, BackgroundIntensity } from '@/types';
 import { createUser, isPinTaken, getPendingSummaryAndItems, PendingSummary } from '@/services/database';
 import { useSync } from '@/contexts/SyncContext';
 import { supabase, isSupabaseConfigured } from '@/services/supabase';
 import SyncProgressModal from '@/components/SyncProgressModal';
 import LaserBackground from '@/components/LaserBackground';
-import GlassContainer from '@/components/GlassContainer';
 
 const APP_VERSION = '1.0.0';
 const PRIVACY_POLICY_GITHUB_URL = 'https://github.com/user/myfoodcart-privacy-policy';
@@ -212,16 +211,6 @@ export default function SettingsScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
 
-  const handleGlassToggle = async (value: boolean) => {
-    await updateSettings({ glassContainers: value });
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  };
-
-  const handleGlassOpacityChange = async (opacity: GlassOpacity) => {
-    await updateSettings({ glassOpacity: opacity });
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  };
-
   const handleLogout = async () => {
     setShowSyncModal(true);
     try {
@@ -327,12 +316,7 @@ export default function SettingsScreen() {
           contentContainerStyle={styles.contentContainer}
           showsVerticalScrollIndicator={false}
         >
-          <GlassContainer
-            enabled={settings.glassContainers}
-            opacity={settings.glassOpacity}
-            darkMode={settings.darkMode}
-            style={[styles.section, { backgroundColor: settings.glassContainers ? 'transparent' : theme.card, borderColor: theme.cardBorder }]}
-          >
+          <View style={[styles.section, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
             <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>Account</Text>
             
             <TouchableOpacity
@@ -368,14 +352,9 @@ export default function SettingsScreen() {
                 <Text style={[styles.settingLabel, { color: theme.text }]}>Supabase Connection Test</Text>
               </TouchableOpacity>
             )}
-          </GlassContainer>
+          </View>
 
-          <GlassContainer
-            enabled={settings.glassContainers}
-            opacity={settings.glassOpacity}
-            darkMode={settings.darkMode}
-            style={[styles.section, { backgroundColor: settings.glassContainers ? 'transparent' : theme.card, borderColor: theme.cardBorder }]}
-          >
+          <View style={[styles.section, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
             <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>Preferences</Text>
             
             <View style={styles.settingRow}>
@@ -472,64 +451,9 @@ export default function SettingsScreen() {
                 );
               })}
             </View>
+          </View>
 
-            <View style={styles.glassSection}>
-              <View style={[styles.settingIcon, { backgroundColor: theme.primary + '20' }]}>
-                <Droplet color={theme.primary} size={20} />
-              </View>
-              <Text style={[styles.settingLabel, { color: theme.text }]}>Glass Containers</Text>
-              <Switch
-                value={settings.glassContainers}
-                onValueChange={handleGlassToggle}
-                trackColor={{ false: theme.inputBorder, true: theme.primary + '60' }}
-                thumbColor={settings.glassContainers ? theme.primary : theme.textMuted}
-              />
-            </View>
-
-            {settings.glassContainers && (
-              <>
-                <View style={styles.glassOpacitySection}>
-                  <View style={[styles.settingIcon, { backgroundColor: theme.primary + '20' }]}>
-                    <Droplet color={theme.primary} size={20} />
-                  </View>
-                  <Text style={[styles.settingLabel, { color: theme.text }]}>Glass Opacity</Text>
-                </View>
-                <View style={styles.glassOpacityGrid}>
-                  {(['low', 'medium', 'high'] as GlassOpacity[]).map((level) => {
-                    const isSelected = settings.glassOpacity === level;
-                    const levelColors = {
-                      low: theme.textMuted,
-                      medium: theme.primary,
-                      high: theme.success,
-                    };
-                    return (
-                      <TouchableOpacity
-                        key={level}
-                        style={[
-                          styles.glassOpacityOption,
-                          { borderColor: isSelected ? levelColors[level] : theme.cardBorder, backgroundColor: isSelected ? levelColors[level] + '20' : 'transparent' },
-                          isSelected && { borderWidth: 3 },
-                        ]}
-                        onPress={() => handleGlassOpacityChange(level)}
-                      >
-                        <Droplet color={levelColors[level]} size={24} />
-                        <Text style={[styles.glassOpacityLabel, { color: isSelected ? theme.text : theme.textMuted }]}>
-                          {level.charAt(0).toUpperCase() + level.slice(1)}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              </>
-            )}
-          </GlassContainer>
-
-          <GlassContainer
-            enabled={settings.glassContainers}
-            opacity={settings.glassOpacity}
-            darkMode={settings.darkMode}
-            style={[styles.section, { backgroundColor: settings.glassContainers ? 'transparent' : theme.card, borderColor: theme.cardBorder }]}
-          >
+          <View style={[styles.section, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
             <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>Help & Legal</Text>
             
             <TouchableOpacity
@@ -541,14 +465,9 @@ export default function SettingsScreen() {
               </View>
               <Text style={[styles.settingLabel, { color: theme.text }]}>Privacy Policy</Text>
             </TouchableOpacity>
-          </GlassContainer>
+          </View>
 
-          <GlassContainer
-            enabled={settings.glassContainers}
-            opacity={settings.glassOpacity}
-            darkMode={settings.darkMode}
-            style={[styles.section, { backgroundColor: settings.glassContainers ? 'transparent' : theme.card, borderColor: theme.cardBorder }]}
-          >
+          <View style={[styles.section, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
             <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>Sync Status</Text>
             
             <View style={styles.settingRow}>
@@ -569,15 +488,10 @@ export default function SettingsScreen() {
               </View>
               <Text style={[styles.settingLabel, { color: theme.text }]}>Sync Now</Text>
             </TouchableOpacity>
-          </GlassContainer>
+          </View>
 
           {isDeveloper && (
-            <GlassContainer
-              enabled={settings.glassContainers}
-              opacity={settings.glassOpacity}
-              darkMode={settings.darkMode}
-              style={[styles.section, { backgroundColor: settings.glassContainers ? 'transparent' : theme.card, borderColor: theme.cardBorder }]}
-            >
+            <View style={[styles.section, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
               <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>Pending Sync Items (Developer)</Text>
               
               {isLoadingPending ? (
@@ -779,15 +693,10 @@ export default function SettingsScreen() {
               ) : (
                 <Text style={[styles.noDataText, { color: theme.textMuted }]}>No pending data available</Text>
               )}
-            </GlassContainer>
+            </View>
           )}
 
-          <GlassContainer
-            enabled={settings.glassContainers}
-            opacity={settings.glassOpacity}
-            darkMode={settings.darkMode}
-            style={[styles.section, { backgroundColor: settings.glassContainers ? 'transparent' : theme.card, borderColor: theme.cardBorder }]}
-          >
+          <View style={[styles.section, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
             <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>About</Text>
             
             <View style={styles.settingRow}>
@@ -797,7 +706,7 @@ export default function SettingsScreen() {
               <Text style={[styles.settingLabel, { color: theme.text }]}>App Version</Text>
               <Text style={[styles.settingValue, { color: theme.textMuted }]}>{APP_VERSION}</Text>
             </View>
-          </GlassContainer>
+          </View>
 
           <TouchableOpacity
             style={[styles.logoutButton, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}
@@ -1513,40 +1422,6 @@ const styles = StyleSheet.create({
     borderWidth: 2,
   },
   intensityLabel: {
-    fontSize: 12,
-    fontWeight: '600' as const,
-    marginTop: 8,
-  },
-  glassSection: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-  },
-  glassOpacitySection: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    paddingBottom: 8,
-    paddingTop: 16,
-  },
-  glassOpacityGrid: {
-    flexDirection: 'row',
-    paddingHorizontal: 16,
-    paddingBottom: 16,
-    gap: 12,
-  },
-  glassOpacityOption: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 16,
-    paddingHorizontal: 8,
-    borderRadius: 12,
-    borderWidth: 2,
-  },
-  glassOpacityLabel: {
     fontSize: 12,
     fontWeight: '600' as const,
     marginTop: 8,

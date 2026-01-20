@@ -21,7 +21,6 @@ import { Colors } from '@/constants/colors';
 import { ROLE_DISPLAY_NAMES } from '@/types';
 import ProfileAvatarGlow from '@/components/ProfileAvatarGlow';
 import LaserBackground from '@/components/LaserBackground';
-import GlassContainer from '@/components/GlassContainer';
 
 const BIO_STORAGE_KEY = '@myfoodcart_user_bio';
 
@@ -236,12 +235,7 @@ export default function ProfileScreen() {
             )}
           </View>
 
-          <GlassContainer
-            enabled={settings.glassContainers}
-            opacity={settings.glassOpacity}
-            darkMode={settings.darkMode}
-            style={[styles.formCard, { backgroundColor: settings.glassContainers ? 'transparent' : theme.card, borderColor: theme.cardBorder }]}
-          >
+          <View style={[styles.formCard, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
             <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Display Name</Text>
             <TextInput
               style={[styles.input, { backgroundColor: theme.inputBackground, borderColor: theme.inputBorder, color: theme.text }]}
@@ -269,14 +263,9 @@ export default function ProfileScreen() {
             <Text style={[styles.helperText, { color: theme.textMuted }]}>
               {"Bio is stored locally and won't sync to cloud"}
             </Text>
-          </GlassContainer>
+          </View>
 
-          <GlassContainer
-            enabled={settings.glassContainers}
-            opacity={settings.glassOpacity}
-            darkMode={settings.darkMode}
-            style={[styles.infoCard, { backgroundColor: settings.glassContainers ? 'transparent' : theme.card, borderColor: theme.cardBorder }]}
-          >
+          <View style={[styles.infoCard, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
             <Text style={[styles.infoTitle, { color: theme.text }]}>Account Info</Text>
             
             <View style={styles.infoRow}>
@@ -294,7 +283,7 @@ export default function ProfileScreen() {
                 </Text>
               </View>
             )}
-          </GlassContainer>
+          </View>
         </ScrollView>
       </SafeAreaView>
     </View>

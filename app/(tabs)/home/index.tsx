@@ -20,7 +20,6 @@ import { formatDate, ROLE_DISPLAY_NAMES, UserRole } from '@/types';
 import { getSalesByDateRange, getExpensesByDateRange, getActivities, getUsers } from '@/services/database';
 import Svg, { Path, Circle, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
 import LaserBackground from '@/components/LaserBackground';
-import GlassContainer from '@/components/GlassContainer';
 
 const { width } = Dimensions.get('window');
 
@@ -214,24 +213,14 @@ export default function HomeScreen() {
             />
           }
         >
-          <GlassContainer
-            enabled={settings.glassContainers}
-            opacity={settings.glassOpacity}
-            darkMode={settings.darkMode}
-            style={[styles.welcomeCard, { backgroundColor: settings.glassContainers ? 'transparent' : theme.card, borderColor: theme.cardBorder }]}
-          >
+          <View style={[styles.welcomeCard, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
             <Text style={[styles.welcomeText, { color: theme.text, fontSize: welcomeFontSize }]} numberOfLines={1} adjustsFontSizeToFit>
               Welcome to MY Food Cart
             </Text>
-          </GlassContainer>
+          </View>
 
           <View style={styles.row}>
-            <GlassContainer
-              enabled={settings.glassContainers}
-              opacity={settings.glassOpacity}
-              darkMode={settings.darkMode}
-              style={[styles.dateCard, { backgroundColor: settings.glassContainers ? 'transparent' : theme.card, borderColor: theme.cardBorder }]}
-            >
+            <View style={[styles.dateCard, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
               <Text style={[styles.dateLabel, { color: theme.textSecondary }]}>Date</Text>
               <Text style={[styles.dateText, { color: theme.text }]}>{formatDate(new Date())}</Text>
               
@@ -256,14 +245,9 @@ export default function HomeScreen() {
                   </TouchableOpacity>
                 ))}
               </View>
-            </GlassContainer>
+            </View>
 
-            <GlassContainer
-              enabled={settings.glassContainers}
-              opacity={settings.glassOpacity}
-              darkMode={settings.darkMode}
-              style={[styles.chartCard, { backgroundColor: settings.glassContainers ? 'transparent' : theme.card, borderColor: theme.cardBorder }]}
-            >
+            <View style={[styles.chartCard, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
               <Text style={[styles.sectionTitle, { color: theme.text }]}>{"Today's Overview"}</Text>
               
               <View style={styles.chartLegend}>
@@ -354,25 +338,17 @@ export default function HomeScreen() {
                   </Text>
                 ))}
               </View>
-            </GlassContainer>
+            </View>
           </View>
 
-          <GlassContainer
-            enabled={settings.glassContainers}
-            opacity={settings.glassOpacity}
-            darkMode={settings.darkMode}
-            style={[styles.updatesCard, { backgroundColor: settings.glassContainers ? 'transparent' : theme.card, borderColor: theme.cardBorder }]}
-          >
+          <View style={[styles.updatesCard, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
             <Text style={[styles.sectionTitle, { color: theme.text }]}>Latest Updates</Text>
             
             <View style={styles.updatesGrid}>
               {activities.slice(0, 4).map((activity) => (
-                <GlassContainer
+                <View
                   key={activity.id}
-                  enabled={settings.glassContainers}
-                  opacity={settings.glassOpacity}
-                  darkMode={settings.darkMode}
-                  style={[styles.updateItem, { backgroundColor: settings.glassContainers ? 'transparent' : theme.cardHighlight, borderColor: theme.cardBorder }]}
+                  style={[styles.updateItem, { backgroundColor: theme.cardHighlight, borderColor: theme.cardBorder }]}
                 >
                   <View style={[styles.updateIcon, { backgroundColor: theme.primary + '20' }]}>
                     {getActivityIcon(activity.type, theme.primary)}
@@ -390,7 +366,7 @@ export default function HomeScreen() {
                       {getRelativeTime(activity.createdAt)}
                     </Text>
                   </View>
-                </GlassContainer>
+                </View>
               ))}
               
               {activities.length === 0 && (
@@ -401,7 +377,7 @@ export default function HomeScreen() {
                 </View>
               )}
             </View>
-          </GlassContainer>
+          </View>
         </ScrollView>
       </SafeAreaView>
     </View>

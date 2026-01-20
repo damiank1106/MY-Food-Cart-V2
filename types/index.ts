@@ -72,16 +72,12 @@ export type BackgroundColorPalette = 'blue' | 'purple' | 'green' | 'orange' | 'p
 
 export type BackgroundIntensity = 'low' | 'medium' | 'high';
 
-export type GlassOpacity = 'low' | 'medium' | 'high';
-
 export interface AppSettings {
   darkMode: boolean;
   hasSeenIntro: boolean;
   laserBackground: boolean;
   backgroundColorPalette: BackgroundColorPalette;
   backgroundIntensity: BackgroundIntensity;
-  glassContainers: boolean;
-  glassOpacity: GlassOpacity;
 }
 
 export const DEFAULT_CATEGORIES: string[] = ['Cart', 'Freezer', 'Condiments', 'Packing Supply'];
