@@ -1753,7 +1753,7 @@ export async function getWeeklySalesTotals(startDate: string, endDate: string): 
   
   try {
     const rows = await database.getAllAsync<{ day: string; total: number }>(
-      `SELECT substr(date, 1, 10) as day, SUM(total) as total FROM sales WHERE date >= ? AND date <= ? GROUP BY substr(date, 1, 10)`,
+      `SELECT substr(date, 1, 10) as day, SUM(CAST(total as REAL)) as total FROM sales WHERE substr(date, 1, 10) BETWEEN ? AND ? GROUP BY substr(date, 1, 10)`,
       [startDate, endDate]
     );
     for (const row of rows) {
@@ -1786,7 +1786,7 @@ export async function getWeeklyExpenseTotals(startDate: string, endDate: string)
   
   try {
     const rows = await database.getAllAsync<{ day: string; total: number }>(
-      `SELECT substr(date, 1, 10) as day, SUM(total) as total FROM expenses WHERE date >= ? AND date <= ? GROUP BY substr(date, 1, 10)`,
+      `SELECT substr(date, 1, 10) as day, SUM(CAST(total as REAL)) as total FROM expenses WHERE substr(date, 1, 10) BETWEEN ? AND ? GROUP BY substr(date, 1, 10)`,
       [startDate, endDate]
     );
     for (const row of rows) {

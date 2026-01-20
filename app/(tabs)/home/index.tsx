@@ -121,7 +121,7 @@ export default function HomeScreen() {
   const startDateStr = formatLocalDate(currentWeek.start);
   const endDateStr = formatLocalDate(currentWeek.end);
 
-  const todayStr = formatLocalDate(new Date());
+
 
   const { data: salesTotalsMap = {}, refetch: refetchSales } = useQuery({
     queryKey: ['weeklySalesTotals', startDateStr, endDateStr],
@@ -179,12 +179,12 @@ export default function HomeScreen() {
     return data;
   }, [salesTotalsMap, expensesTotalsMap, currentWeek]);
 
-  const todayTotals = useMemo(() => {
-    const sales = salesTotalsMap[todayStr] ?? 0;
-    const expenses = expensesTotalsMap[todayStr] ?? 0;
-    console.log(`Today's totals (${todayStr}): Sales=₱${sales}, Expenses=₱${expenses}`);
-    return { sales, expenses, net: sales - expenses };
-  }, [salesTotalsMap, expensesTotalsMap, todayStr]);
+  const weekTotals = useMemo(() => {
+    const salesTotal = Object.values(salesTotalsMap).reduce((sum, val) => sum + (Number(val) || 0), 0);
+    const expensesTotal = Object.values(expensesTotalsMap).reduce((sum, val) => sum + (Number(val) || 0), 0);
+    console.log(`Week totals (${startDateStr} to ${endDateStr}): Sales=₱${salesTotal}, Expenses=₱${expensesTotal}`);
+    return { sales: salesTotal, expenses: expensesTotal, net: salesTotal - expensesTotal };
+  }, [salesTotalsMap, expensesTotalsMap, startDateStr, endDateStr]);
 
   const rawMaxValue = Math.max(...chartData.map(d => Math.max(d.sales, d.expenses)), 100);
   
@@ -206,21 +206,9 @@ export default function HomeScreen() {
   const yAxisConfig = getYAxisConfig(rawMaxValue);
   const maxValue = yAxisConfig.max;
   
-  const yAxisLabels = useMemo(() => {
-    const labels: number[] = [];
-    for (let i = yAxisConfig.max; i >= 0; i -= yAxisConfig.step) {
-      labels.push(i);
-    }
-    return labels;
-  }, [yAxisConfig]);
 
-  const formatYAxisLabel = (value: number): string => {
-    if (value >= 1000000) return `₱${(value / 1000000).toFixed(1)}M`;
-    if (value >= 1000) return `₱${(value / 1000).toFixed(0)}K`;
-    return `₱${value}`;
-  };
   const chartHeight = 150;
-  const chartWidth = width - 100;
+  const chartWidth = width - 80;
   const stepX = chartWidth / 6;
 
   const onRefresh = useCallback(async () => {
@@ -303,19 +291,19 @@ export default function HomeScreen() {
             </View>
 
             <View style={[styles.chartCard, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
-              <Text style={[styles.sectionTitle, { color: theme.text }]}>{"Today's Overview"}</Text>
+              <Text style={[styles.sectionTitle, { color: theme.text }]}>Weekly Overview</Text>
               
-              <View style={styles.todayTotalsRow}>
-                <View style={[styles.todayTotalCard, { backgroundColor: theme.chartLine + '15' }]}>
-                  <Text style={[styles.todayTotalLabel, { color: theme.textSecondary }]}>Today's Sales</Text>
-                  <Text style={[styles.todayTotalValue, { color: theme.chartLine }]}>
-                    ₱{todayTotals.sales.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              <View style={styles.weekTotalsRow}>
+                <View style={[styles.weekTotalCard, { backgroundColor: theme.chartLine + '15' }]}>
+                  <Text style={[styles.weekTotalLabel, { color: theme.textSecondary }]}>Sales</Text>
+                  <Text style={[styles.weekTotalValue, { color: theme.chartLine }]}>
+                    ₱{weekTotals.sales.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </Text>
                 </View>
-                <View style={[styles.todayTotalCard, { backgroundColor: theme.error + '15' }]}>
-                  <Text style={[styles.todayTotalLabel, { color: theme.textSecondary }]}>Today's Expenses</Text>
-                  <Text style={[styles.todayTotalValue, { color: theme.error }]}>
-                    ₱{todayTotals.expenses.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                <View style={[styles.weekTotalCard, { backgroundColor: theme.error + '15' }]}>
+                  <Text style={[styles.weekTotalLabel, { color: theme.textSecondary }]}>Expenses</Text>
+                  <Text style={[styles.weekTotalValue, { color: theme.error }]}>
+                    ₱{weekTotals.expenses.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </Text>
                 </View>
               </View>
@@ -346,15 +334,7 @@ export default function HomeScreen() {
               </View>
               
               <View style={styles.chartContainer}>
-                <View style={styles.yAxis}>
-                  {yAxisLabels.map((val, i) => (
-                    <Text key={i} style={[styles.yAxisLabel, { color: theme.textMuted }]}>
-                      {formatYAxisLabel(val)}
-                    </Text>
-                  ))}
-                </View>
-                
-                <Svg width={chartWidth} height={chartHeight + 30} style={styles.chart}>
+                <Svg width={chartWidth + 48} height={chartHeight + 30} style={styles.chart}>
                   <Defs>
                     <SvgLinearGradient id="areaGradient" x1="0" y1="0" x2="0" y2="1">
                       <Stop offset="0" stopColor={theme.chartLine} stopOpacity="0.3" />
@@ -529,27 +509,16 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   chartContainer: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-  },
-  yAxis: {
-    width: 40,
-    height: 150,
-    justifyContent: 'space-between',
-    paddingRight: 8,
-  },
-  yAxisLabel: {
-    fontSize: 10,
-    textAlign: 'right',
+    alignItems: 'center',
   },
   chart: {
-    marginLeft: 8,
+    marginLeft: 0,
   },
   xAxis: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginTop: 8,
-    paddingLeft: 48,
+    paddingHorizontal: 24,
   },
   xAxisLabel: {
     fontSize: 10,
@@ -629,22 +598,22 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 14,
   },
-  todayTotalsRow: {
+  weekTotalsRow: {
     flexDirection: 'row',
     gap: 8,
     marginBottom: 12,
   },
-  todayTotalCard: {
+  weekTotalCard: {
     flex: 1,
     paddingVertical: 10,
     paddingHorizontal: 12,
     borderRadius: 10,
   },
-  todayTotalLabel: {
+  weekTotalLabel: {
     fontSize: 11,
     marginBottom: 2,
   },
-  todayTotalValue: {
+  weekTotalValue: {
     fontSize: 16,
     fontWeight: '700' as const,
   },
