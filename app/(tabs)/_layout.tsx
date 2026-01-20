@@ -1,7 +1,7 @@
 import { Tabs } from "expo-router";
 import { Home, Package, TrendingUp, User, Settings } from "lucide-react-native";
 import React from "react";
-import { useWindowDimensions } from "react-native";
+import { useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/contexts/AuthContext";
 import { Colors } from "@/constants/colors";
@@ -22,7 +22,7 @@ export default function TabLayout() {
     ? "transparent"
     : theme.tabBarBorder;
   const tabBarBackgroundComponent = settings.glassContainers
-    ? () => null
+    ? () => <View style={{ flex: 1, backgroundColor: "transparent" }} />
     : undefined;
 
   return (
