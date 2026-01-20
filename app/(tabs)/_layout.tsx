@@ -23,7 +23,7 @@ export default function TabLayout() {
     ? "transparent"
     : theme.tabBarBorder;
   const tabBarBackgroundComponent = settings.glassContainers
-    ? ({ style }: { style?: StyleProp<ViewStyle> }) => (
+    ? ({ style }: { style?: StyleProp<ViewStyle> } = {}) => (
         <GlassContainer
           enabled={settings.glassContainers}
           opacity={settings.glassOpacity}
