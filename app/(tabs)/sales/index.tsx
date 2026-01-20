@@ -24,7 +24,7 @@ import { Colors } from '@/constants/colors';
 import { formatCurrency, formatDate } from '@/types';
 import { 
   getSalesByDate, getExpensesByDate, createSale, createExpense,
-  deleteSale, deleteExpense, createActivity
+  deleteSale, deleteExpense, createActivity, formatLocalDate
 } from '@/services/database';
 import LaserBackground from '@/components/LaserBackground';
 
@@ -79,7 +79,7 @@ export default function SalesScreen() {
     }
   };
 
-  const dateStr = selectedDate.toISOString().split('T')[0];
+  const dateStr = formatLocalDate(selectedDate);
 
   const { data: sales = [], refetch: refetchSales } = useQuery({
     queryKey: ['sales', dateStr],

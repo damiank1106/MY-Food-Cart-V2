@@ -518,12 +518,15 @@ export async function getSales(): Promise<Sale[]> {
 export async function getSalesByDate(date: string): Promise<Sale[]> {
   if (Platform.OS === 'web') {
     const sales = await getFromStorage<Sale[]>(STORAGE_KEYS.sales, []);
-    return sales.filter(s => s.date === date);
+    return sales.filter(s => {
+      const normalizedDate = s.date ? s.date.substring(0, 10) : '';
+      return normalizedDate === date;
+    });
   }
   const database = await ensureDb();
   if (!database) return [];
   try {
-    return await database.getAllAsync<Sale>('SELECT * FROM sales WHERE date = ? ORDER BY createdAt DESC', [date]);
+    return await database.getAllAsync<Sale>('SELECT * FROM sales WHERE substr(date, 1, 10) = ? ORDER BY createdAt DESC', [date]);
   } catch (error) {
     console.log('Error getting sales by date:', error);
     return [];
@@ -599,12 +602,15 @@ export async function getExpenses(): Promise<Expense[]> {
 export async function getExpensesByDate(date: string): Promise<Expense[]> {
   if (Platform.OS === 'web') {
     const expenses = await getFromStorage<Expense[]>(STORAGE_KEYS.expenses, []);
-    return expenses.filter(e => e.date === date);
+    return expenses.filter(e => {
+      const normalizedDate = e.date ? e.date.substring(0, 10) : '';
+      return normalizedDate === date;
+    });
   }
   const database = await ensureDb();
   if (!database) return [];
   try {
-    return await database.getAllAsync<Expense>('SELECT * FROM expenses WHERE date = ? ORDER BY createdAt DESC', [date]);
+    return await database.getAllAsync<Expense>('SELECT * FROM expenses WHERE substr(date, 1, 10) = ? ORDER BY createdAt DESC', [date]);
   } catch (error) {
     console.log('Error getting expenses by date:', error);
     return [];
@@ -1733,10 +1739,12 @@ export async function getWeeklySalesTotals(startDate: string, endDate: string): 
   if (Platform.OS === 'web') {
     const sales = await getFromStorage<Sale[]>(STORAGE_KEYS.sales, []);
     for (const sale of sales) {
-      if (sale.date >= startDate && sale.date <= endDate) {
-        result[sale.date] = (result[sale.date] || 0) + sale.total;
+      const normalizedDate = sale.date ? sale.date.substring(0, 10) : '';
+      if (normalizedDate >= startDate && normalizedDate <= endDate) {
+        result[normalizedDate] = (result[normalizedDate] || 0) + Number(sale.total);
       }
     }
+    console.log(`Web weekly sales totals (${startDate} to ${endDate}):`, result);
     return result;
   }
   
@@ -1764,10 +1772,12 @@ export async function getWeeklyExpenseTotals(startDate: string, endDate: string)
   if (Platform.OS === 'web') {
     const expenses = await getFromStorage<Expense[]>(STORAGE_KEYS.expenses, []);
     for (const expense of expenses) {
-      if (expense.date >= startDate && expense.date <= endDate) {
-        result[expense.date] = (result[expense.date] || 0) + expense.total;
+      const normalizedDate = expense.date ? expense.date.substring(0, 10) : '';
+      if (normalizedDate >= startDate && normalizedDate <= endDate) {
+        result[normalizedDate] = (result[normalizedDate] || 0) + Number(expense.total);
       }
     }
+    console.log(`Web weekly expense totals (${startDate} to ${endDate}):`, result);
     return result;
   }
   
