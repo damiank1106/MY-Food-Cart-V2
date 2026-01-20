@@ -1720,6 +1720,75 @@ export async function getEntryDaysForMonth(year: number, month: number): Promise
   }
 }
 
+export function formatLocalDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+export async function getWeeklySalesTotals(startDate: string, endDate: string): Promise<Record<string, number>> {
+  const result: Record<string, number> = {};
+  
+  if (Platform.OS === 'web') {
+    const sales = await getFromStorage<Sale[]>(STORAGE_KEYS.sales, []);
+    for (const sale of sales) {
+      if (sale.date >= startDate && sale.date <= endDate) {
+        result[sale.date] = (result[sale.date] || 0) + sale.total;
+      }
+    }
+    return result;
+  }
+  
+  const database = await ensureDb();
+  if (!database) return result;
+  
+  try {
+    const rows = await database.getAllAsync<{ day: string; total: number }>(
+      `SELECT substr(date, 1, 10) as day, SUM(total) as total FROM sales WHERE date >= ? AND date <= ? GROUP BY substr(date, 1, 10)`,
+      [startDate, endDate]
+    );
+    for (const row of rows) {
+      result[row.day] = row.total || 0;
+    }
+  } catch (error) {
+    console.log('Error getting weekly sales totals:', error);
+  }
+  
+  return result;
+}
+
+export async function getWeeklyExpenseTotals(startDate: string, endDate: string): Promise<Record<string, number>> {
+  const result: Record<string, number> = {};
+  
+  if (Platform.OS === 'web') {
+    const expenses = await getFromStorage<Expense[]>(STORAGE_KEYS.expenses, []);
+    for (const expense of expenses) {
+      if (expense.date >= startDate && expense.date <= endDate) {
+        result[expense.date] = (result[expense.date] || 0) + expense.total;
+      }
+    }
+    return result;
+  }
+  
+  const database = await ensureDb();
+  if (!database) return result;
+  
+  try {
+    const rows = await database.getAllAsync<{ day: string; total: number }>(
+      `SELECT substr(date, 1, 10) as day, SUM(total) as total FROM expenses WHERE date >= ? AND date <= ? GROUP BY substr(date, 1, 10)`,
+      [startDate, endDate]
+    );
+    for (const row of rows) {
+      result[row.day] = row.total || 0;
+    }
+  } catch (error) {
+    console.log('Error getting weekly expense totals:', error);
+  }
+  
+  return result;
+}
+
 export async function upsertActivitiesFromServer(serverActivities: Activity[]): Promise<void> {
   if (serverActivities.length === 0) return;
   console.log(`Upserting ${serverActivities.length} activities from server`);
