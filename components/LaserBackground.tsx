@@ -94,12 +94,12 @@ export default function LaserBackground({ isDarkMode, colorPalette, intensity }:
       Animated.sequence([
         Animated.timing(glowAnim, {
           toValue: 1,
-          duration: 2500,
+          duration: 3000,
           useNativeDriver: true,
         }),
         Animated.timing(glowAnim, {
           toValue: 0,
-          duration: 2500,
+          duration: 3000,
           useNativeDriver: true,
         }),
       ])
@@ -115,13 +115,13 @@ export default function LaserBackground({ isDarkMode, colorPalette, intensity }:
   const getOpacityRange = () => {
     switch (safeIntensity) {
       case 'low':
-        return [0.3, 0.75];
+        return [0.2, 0.75];
       case 'medium':
         return [0.5, 0.95];
       case 'high':
         return [0.75, 1.0];
       default:
-        return [0.7, 1.0];
+        return [0.6, 1.0];
     }
   };
 
