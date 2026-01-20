@@ -115,7 +115,7 @@ export default function LaserBackground({ isDarkMode, colorPalette, intensity }:
   const getOpacityRange = () => {
     switch (safeIntensity) {
       case 'low':
-        return [0.2, 0.75];
+        return [0.2, 0.55];
       case 'medium':
         return [0.5, 0.95];
       case 'high':
