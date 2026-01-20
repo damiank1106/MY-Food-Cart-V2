@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -16,6 +16,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { Colors } from '@/constants/colors';
 
+import { useRouter } from 'expo-router';
 import { formatDate, ROLE_DISPLAY_NAMES, UserRole } from '@/types';
 import { getSalesByDateRange, getExpensesByDateRange, getActivities, getUsers } from '@/services/database';
 import Svg, { Path, Circle, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
@@ -82,8 +83,20 @@ function getRelativeTime(dateString: string): string {
 const AUTHOR_VISIBLE_ROLES: UserRole[] = ['general_manager', 'operation_manager', 'developer'];
 
 export default function HomeScreen() {
+  const router = useRouter();
   const { settings, user: currentUser } = useAuth();
   const theme = settings.darkMode ? Colors.dark : Colors.light;
+
+  useEffect(() => {
+    if (currentUser?.role === 'inventory_clerk') {
+      console.log('Inventory clerk detected on Home screen, redirecting to Inventory');
+      router.replace('/(tabs)/inventory');
+    }
+  }, [currentUser, router]);
+
+  if (currentUser?.role === 'inventory_clerk') {
+    return null;
+  }
   const [selectedWeek, setSelectedWeek] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const [showSales, setShowSales] = useState(true);

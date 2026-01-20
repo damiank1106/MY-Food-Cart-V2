@@ -50,7 +50,7 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
     }
   };
 
-  const login = useCallback(async (pin: string): Promise<{ success: boolean; error?: string }> => {
+  const login = useCallback(async (pin: string): Promise<{ success: boolean; error?: string; user?: User }> => {
     console.log('Attempting login with PIN...');
     try {
       const foundUser = await getUserByPin(pin);
@@ -58,7 +58,7 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
         setUser(foundUser);
         await AsyncStorage.setItem(CURRENT_USER_KEY, JSON.stringify(foundUser));
         console.log('Login successful for:', foundUser.name);
-        return { success: true };
+        return { success: true, user: foundUser };
       }
       console.log('Invalid PIN');
       return { success: false, error: 'Invalid PIN' };

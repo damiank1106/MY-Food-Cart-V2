@@ -38,7 +38,8 @@ export default function IntroScreen() {
     if (!isLoading && isInitialized) {
       if (settings.hasSeenIntro) {
         if (user) {
-          router.replace('/home');
+          const targetRoute = user.role === 'inventory_clerk' ? '/(tabs)/inventory' : '/home';
+          router.replace(targetRoute);
         } else {
           router.replace('/welcome');
         }

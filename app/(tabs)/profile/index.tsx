@@ -179,6 +179,7 @@ export default function ProfileScreen() {
   };
 
   const isDeveloper = user?.role === 'developer';
+  const shouldShowBlankIfEmpty = ['inventory_clerk', 'general_manager', 'operation_manager'].includes(user?.role || '');
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
@@ -218,7 +219,7 @@ export default function ProfileScreen() {
               size={120}
               onPressCamera={showImagePickerOptions}
               onPressRemove={handleRemovePhoto}
-              fallbackText={displayName || user?.name}
+              fallbackText={shouldShowBlankIfEmpty ? (displayName.trim() || undefined) : (displayName || user?.name)}
               glowColor={settings.darkMode ? 'rgba(74, 144, 217, 0.4)' : 'rgba(59, 130, 246, 0.35)'}
               primaryColor={theme.primary}
               backgroundColor={theme.card}

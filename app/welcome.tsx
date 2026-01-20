@@ -56,7 +56,8 @@ export default function WelcomeScreen() {
 
   useEffect(() => {
     if (isInitialized && user) {
-      router.replace('/home');
+      const targetRoute = user.role === 'inventory_clerk' ? '/(tabs)/inventory' : '/home';
+      router.replace(targetRoute);
     }
   }, [isInitialized, user, router]);
 
@@ -98,7 +99,8 @@ export default function WelcomeScreen() {
       }
       
       setShowSyncModal(false);
-      router.replace('/home');
+      const targetRoute = result.user?.role === 'inventory_clerk' ? '/(tabs)/inventory' : '/home';
+      router.replace(targetRoute);
     } else {
       setError('Invalid PIN. Please try again.');
       shake();
