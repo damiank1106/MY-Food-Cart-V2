@@ -18,7 +18,7 @@ import { Colors } from '@/constants/colors';
 
 import { useRouter } from 'expo-router';
 import { formatDate, ROLE_DISPLAY_NAMES, UserRole } from '@/types';
-import { getSalesByDateRange, getExpensesByDateRange, getActivities, getUsers } from '@/services/database';
+import { getWeeklySalesTotals, getWeeklyExpenseTotals, getActivities, getUsers, formatLocalDate } from '@/services/database';
 import Svg, { Path, Circle, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
 import LaserBackground from '@/components/LaserBackground';
 
@@ -27,11 +27,15 @@ const { width } = Dimensions.get('window');
 function getWeekDates(weeksAgo: number = 0) {
   const today = new Date();
   const dayOfWeek = today.getDay();
+  const diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+  
   const monday = new Date(today);
-  monday.setDate(today.getDate() - dayOfWeek + 1 - (weeksAgo * 7));
+  monday.setDate(today.getDate() + diffToMonday - (weeksAgo * 7));
+  monday.setHours(0, 0, 0, 0);
   
   const sunday = new Date(monday);
   sunday.setDate(monday.getDate() + 6);
+  sunday.setHours(23, 59, 59, 999);
   
   return { start: monday, end: sunday };
 }
@@ -114,17 +118,19 @@ export default function HomeScreen() {
   }, []);
 
   const currentWeek = weeks[selectedWeek];
-  const startDateStr = currentWeek.start.toISOString().split('T')[0];
-  const endDateStr = currentWeek.end.toISOString().split('T')[0];
+  const startDateStr = formatLocalDate(currentWeek.start);
+  const endDateStr = formatLocalDate(currentWeek.end);
 
-  const { data: salesData = [], refetch: refetchSales } = useQuery({
-    queryKey: ['sales', startDateStr, endDateStr],
-    queryFn: () => getSalesByDateRange(startDateStr, endDateStr),
+  const todayStr = formatLocalDate(new Date());
+
+  const { data: salesTotalsMap = {}, refetch: refetchSales } = useQuery({
+    queryKey: ['weeklySalesTotals', startDateStr, endDateStr],
+    queryFn: () => getWeeklySalesTotals(startDateStr, endDateStr),
   });
 
-  const { data: expensesData = [], refetch: refetchExpenses } = useQuery({
-    queryKey: ['expenses', startDateStr, endDateStr],
-    queryFn: () => getExpensesByDateRange(startDateStr, endDateStr),
+  const { data: expensesTotalsMap = {}, refetch: refetchExpenses } = useQuery({
+    queryKey: ['weeklyExpenseTotals', startDateStr, endDateStr],
+    queryFn: () => getWeeklyExpenseTotals(startDateStr, endDateStr),
   });
 
   const { data: activities = [], refetch: refetchActivities } = useQuery({
@@ -160,21 +166,25 @@ export default function HomeScreen() {
     const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
     const data = days.map((day, index) => {
       const date = new Date(currentWeek.start);
-      date.setDate(date.getDate() + index);
-      const dateStr = date.toISOString().split('T')[0];
+      date.setDate(currentWeek.start.getDate() + index);
+      const dateStr = formatLocalDate(date);
       
-      const daySales = salesData
-        .filter(s => s.date === dateStr)
-        .reduce((sum, s) => sum + s.total, 0);
-
-      const dayExpenses = expensesData
-        .filter(e => e.date === dateStr)
-        .reduce((sum, e) => sum + e.total, 0);
+      const daySales = salesTotalsMap[dateStr] ?? 0;
+      const dayExpenses = expensesTotalsMap[dateStr] ?? 0;
       
-      return { day, sales: daySales, expenses: dayExpenses };
+      console.log(`Chart data for ${dateStr} (${day}): Sales=₱${daySales}, Expenses=₱${dayExpenses}`);
+      
+      return { day, sales: daySales, expenses: dayExpenses, dateStr };
     });
     return data;
-  }, [salesData, expensesData, currentWeek]);
+  }, [salesTotalsMap, expensesTotalsMap, currentWeek]);
+
+  const todayTotals = useMemo(() => {
+    const sales = salesTotalsMap[todayStr] ?? 0;
+    const expenses = expensesTotalsMap[todayStr] ?? 0;
+    console.log(`Today's totals (${todayStr}): Sales=₱${sales}, Expenses=₱${expenses}`);
+    return { sales, expenses, net: sales - expenses };
+  }, [salesTotalsMap, expensesTotalsMap, todayStr]);
 
   const rawMaxValue = Math.max(...chartData.map(d => Math.max(d.sales, d.expenses)), 100);
   
@@ -294,6 +304,21 @@ export default function HomeScreen() {
 
             <View style={[styles.chartCard, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
               <Text style={[styles.sectionTitle, { color: theme.text }]}>{"Today's Overview"}</Text>
+              
+              <View style={styles.todayTotalsRow}>
+                <View style={[styles.todayTotalCard, { backgroundColor: theme.chartLine + '15' }]}>
+                  <Text style={[styles.todayTotalLabel, { color: theme.textSecondary }]}>Today's Sales</Text>
+                  <Text style={[styles.todayTotalValue, { color: theme.chartLine }]}>
+                    ₱{todayTotals.sales.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </Text>
+                </View>
+                <View style={[styles.todayTotalCard, { backgroundColor: theme.error + '15' }]}>
+                  <Text style={[styles.todayTotalLabel, { color: theme.textSecondary }]}>Today's Expenses</Text>
+                  <Text style={[styles.todayTotalValue, { color: theme.error }]}>
+                    ₱{todayTotals.expenses.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </Text>
+                </View>
+              </View>
               
               <View style={styles.chartLegend}>
                 <TouchableOpacity 
@@ -603,5 +628,24 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 14,
+  },
+  todayTotalsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 12,
+  },
+  todayTotalCard: {
+    flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+  },
+  todayTotalLabel: {
+    fontSize: 11,
+    marginBottom: 2,
+  },
+  todayTotalValue: {
+    fontSize: 16,
+    fontWeight: '700' as const,
   },
 });
