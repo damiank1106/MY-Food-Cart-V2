@@ -163,7 +163,39 @@ export default function HomeScreen() {
     return data;
   }, [salesData, expensesData, currentWeek]);
 
-  const maxValue = Math.max(...chartData.map(d => Math.max(d.sales, d.expenses)), 200);
+  const rawMaxValue = Math.max(...chartData.map(d => Math.max(d.sales, d.expenses)), 100);
+  
+  const getYAxisConfig = (maxVal: number) => {
+    if (maxVal <= 200) return { max: 200, step: 50 };
+    if (maxVal <= 500) return { max: 500, step: 100 };
+    if (maxVal <= 1000) return { max: 1000, step: 200 };
+    if (maxVal <= 2000) return { max: 2000, step: 500 };
+    if (maxVal <= 5000) return { max: 5000, step: 1000 };
+    if (maxVal <= 10000) return { max: 10000, step: 2000 };
+    if (maxVal <= 20000) return { max: 20000, step: 5000 };
+    if (maxVal <= 50000) return { max: 50000, step: 10000 };
+    if (maxVal <= 100000) return { max: 100000, step: 20000 };
+    const magnitude = Math.pow(10, Math.floor(Math.log10(maxVal)));
+    const normalized = Math.ceil(maxVal / magnitude) * magnitude;
+    return { max: normalized, step: normalized / 5 };
+  };
+
+  const yAxisConfig = getYAxisConfig(rawMaxValue);
+  const maxValue = yAxisConfig.max;
+  
+  const yAxisLabels = useMemo(() => {
+    const labels: number[] = [];
+    for (let i = yAxisConfig.max; i >= 0; i -= yAxisConfig.step) {
+      labels.push(i);
+    }
+    return labels;
+  }, [yAxisConfig]);
+
+  const formatYAxisLabel = (value: number): string => {
+    if (value >= 1000000) return `₱${(value / 1000000).toFixed(1)}M`;
+    if (value >= 1000) return `₱${(value / 1000).toFixed(0)}K`;
+    return `₱${value}`;
+  };
   const chartHeight = 150;
   const chartWidth = width - 100;
   const stepX = chartWidth / 6;
@@ -277,9 +309,9 @@ export default function HomeScreen() {
               
               <View style={styles.chartContainer}>
                 <View style={styles.yAxis}>
-                  {[200, 150, 100, 50, 0].map((val, i) => (
+                  {yAxisLabels.map((val, i) => (
                     <Text key={i} style={[styles.yAxisLabel, { color: theme.textMuted }]}>
-                      ₱{val}
+                      {formatYAxisLabel(val)}
                     </Text>
                   ))}
                 </View>

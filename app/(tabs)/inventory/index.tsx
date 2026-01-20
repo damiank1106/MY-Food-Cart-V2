@@ -275,7 +275,7 @@ export default function InventoryScreen() {
             >
               <Text style={[
                 styles.tabText,
-                { color: !selectedCategory ? theme.primary : theme.textSecondary },
+                { color: !selectedCategory ? theme.primary : theme.text },
               ]}>
                 All
               </Text>
@@ -294,7 +294,7 @@ export default function InventoryScreen() {
               >
                 <Text style={[
                   styles.tabText,
-                  { color: selectedCategory === category.id ? theme.primary : theme.textSecondary },
+                  { color: selectedCategory === category.id ? theme.primary : theme.text },
                 ]}>
                   {category.name}
                 </Text>
