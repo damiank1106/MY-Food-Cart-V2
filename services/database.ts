@@ -39,6 +39,57 @@ async function setToStorage<T>(key: string, value: T): Promise<void> {
   }
 }
 
+type SaleRow = Omit<Sale, 'items'> & { items?: string | null };
+type ExpenseRow = Omit<Expense, 'items'> & { items?: string | null };
+
+export function serializeItems(items?: string[] | null): string {
+  const normalized = Array.isArray(items) ? items : [];
+  return JSON.stringify(normalized);
+}
+
+export function parseItems(itemsText?: string | null): string[] {
+  if (!itemsText) return [];
+  try {
+    const parsed = JSON.parse(itemsText);
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string') : [];
+  } catch (error) {
+    console.log('Error parsing items JSON:', error);
+    return [];
+  }
+}
+
+function normalizeSale(sale: Sale): Sale {
+  return {
+    ...sale,
+    name: sale.name ?? '',
+    items: Array.isArray(sale.items) ? sale.items : [],
+  };
+}
+
+function normalizeSaleRow(row: SaleRow): Sale {
+  return {
+    ...row,
+    name: row.name ?? '',
+    items: parseItems(row.items),
+  };
+}
+
+function normalizeExpense(expense: Expense): Expense {
+  return {
+    ...expense,
+    name: expense.name ?? '',
+    items: Array.isArray(expense.items) ? expense.items : [],
+  };
+}
+
+function normalizeExpenseRow(row: ExpenseRow): Expense {
+  return {
+    ...row,
+    name: row.name ?? '',
+    items: parseItems(row.items),
+  };
+}
+
 async function ensureDb(): Promise<SQLite.SQLiteDatabase | null> {
   if (Platform.OS === 'web') return null;
   if (db && dbInitialized) return db;
@@ -47,6 +98,15 @@ async function ensureDb(): Promise<SQLite.SQLiteDatabase | null> {
     return db;
   }
   return null;
+}
+
+async function ensureItemsColumn(table: 'sales' | 'expenses'): Promise<void> {
+  if (!db) return;
+  const columns = await db.getAllAsync<{ name: string }>(`PRAGMA table_info(${table})`);
+  const hasItems = columns.some(column => column.name === 'items');
+  if (!hasItems) {
+    await db.runAsync(`ALTER TABLE ${table} ADD COLUMN items TEXT`);
+  }
 }
 
 export async function initDatabase(): Promise<void> {
@@ -113,6 +173,7 @@ export async function initDatabase(): Promise<void> {
       CREATE TABLE IF NOT EXISTS sales (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
+        items TEXT,
         total REAL NOT NULL,
         date TEXT NOT NULL,
         createdBy TEXT NOT NULL,
@@ -124,6 +185,7 @@ export async function initDatabase(): Promise<void> {
       CREATE TABLE IF NOT EXISTS expenses (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
+        items TEXT,
         total REAL NOT NULL,
         date TEXT NOT NULL,
         createdBy TEXT NOT NULL,
@@ -141,6 +203,9 @@ export async function initDatabase(): Promise<void> {
         syncStatus TEXT DEFAULT 'pending'
       );
     `);
+
+      await ensureItemsColumn('sales');
+      await ensureItemsColumn('expenses');
 
       console.log('Database tables created');
       await seedDefaultData();
@@ -504,12 +569,14 @@ export async function deleteInventoryItem(id: string): Promise<void> {
 
 export async function getSales(): Promise<Sale[]> {
   if (Platform.OS === 'web') {
-    return getFromStorage<Sale[]>(STORAGE_KEYS.sales, []);
+    const sales = await getFromStorage<Sale[]>(STORAGE_KEYS.sales, []);
+    return sales.map(normalizeSale);
   }
   const database = await ensureDb();
   if (!database) return [];
   try {
-    return await database.getAllAsync<Sale>('SELECT * FROM sales ORDER BY date DESC, createdAt DESC');
+    const rows = await database.getAllAsync<SaleRow>('SELECT * FROM sales ORDER BY date DESC, createdAt DESC');
+    return rows.map(normalizeSaleRow);
   } catch (error) {
     console.log('Error getting sales:', error);
     return [];
@@ -522,12 +589,13 @@ export async function getSalesByDate(date: string): Promise<Sale[]> {
     return sales.filter(s => {
       const normalizedDate = s.date ? s.date.substring(0, 10) : '';
       return normalizedDate === date;
-    });
+    }).map(normalizeSale);
   }
   const database = await ensureDb();
   if (!database) return [];
   try {
-    return await database.getAllAsync<Sale>('SELECT * FROM sales WHERE substr(date, 1, 10) = ? ORDER BY createdAt DESC', [date]);
+    const rows = await database.getAllAsync<SaleRow>('SELECT * FROM sales WHERE substr(date, 1, 10) = ? ORDER BY createdAt DESC', [date]);
+    return rows.map(normalizeSaleRow);
   } catch (error) {
     console.log('Error getting sales by date:', error);
     return [];
@@ -537,12 +605,13 @@ export async function getSalesByDate(date: string): Promise<Sale[]> {
 export async function getSalesByDateRange(startDate: string, endDate: string): Promise<Sale[]> {
   if (Platform.OS === 'web') {
     const sales = await getFromStorage<Sale[]>(STORAGE_KEYS.sales, []);
-    return sales.filter(s => s.date >= startDate && s.date <= endDate);
+    return sales.filter(s => s.date >= startDate && s.date <= endDate).map(normalizeSale);
   }
   const database = await ensureDb();
   if (!database) return [];
   try {
-    return await database.getAllAsync<Sale>('SELECT * FROM sales WHERE date >= ? AND date <= ? ORDER BY date DESC', [startDate, endDate]);
+    const rows = await database.getAllAsync<SaleRow>('SELECT * FROM sales WHERE date >= ? AND date <= ? ORDER BY date DESC', [startDate, endDate]);
+    return rows.map(normalizeSaleRow);
   } catch (error) {
     console.log('Error getting sales by date range:', error);
     return [];
@@ -553,6 +622,8 @@ export async function createSale(sale: Omit<Sale, 'id' | 'createdAt' | 'updatedA
   const now = new Date().toISOString();
   const newSale: Sale = {
     ...sale,
+    name: sale.name ?? '',
+    items: Array.isArray(sale.items) ? sale.items : [],
     id: generateId(),
     createdAt: now,
     updatedAt: now,
@@ -569,8 +640,8 @@ export async function createSale(sale: Omit<Sale, 'id' | 'createdAt' | 'updatedA
   const database = await ensureDb();
   if (!database) throw new Error('Database not initialized');
   await database.runAsync(
-    'INSERT INTO sales (id, name, total, date, createdBy, createdAt, updatedAt, syncStatus) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-    [newSale.id, newSale.name, newSale.total, newSale.date, newSale.createdBy, now, now, 'pending']
+    'INSERT INTO sales (id, name, items, total, date, createdBy, createdAt, updatedAt, syncStatus) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    [newSale.id, newSale.name, serializeItems(newSale.items), newSale.total, newSale.date, newSale.createdBy, now, now, 'pending']
   );
   return newSale;
 }
@@ -588,12 +659,14 @@ export async function deleteSale(id: string): Promise<void> {
 
 export async function getExpenses(): Promise<Expense[]> {
   if (Platform.OS === 'web') {
-    return getFromStorage<Expense[]>(STORAGE_KEYS.expenses, []);
+    const expenses = await getFromStorage<Expense[]>(STORAGE_KEYS.expenses, []);
+    return expenses.map(normalizeExpense);
   }
   const database = await ensureDb();
   if (!database) return [];
   try {
-    return await database.getAllAsync<Expense>('SELECT * FROM expenses ORDER BY date DESC, createdAt DESC');
+    const rows = await database.getAllAsync<ExpenseRow>('SELECT * FROM expenses ORDER BY date DESC, createdAt DESC');
+    return rows.map(normalizeExpenseRow);
   } catch (error) {
     console.log('Error getting expenses:', error);
     return [];
@@ -606,12 +679,13 @@ export async function getExpensesByDate(date: string): Promise<Expense[]> {
     return expenses.filter(e => {
       const normalizedDate = e.date ? e.date.substring(0, 10) : '';
       return normalizedDate === date;
-    });
+    }).map(normalizeExpense);
   }
   const database = await ensureDb();
   if (!database) return [];
   try {
-    return await database.getAllAsync<Expense>('SELECT * FROM expenses WHERE substr(date, 1, 10) = ? ORDER BY createdAt DESC', [date]);
+    const rows = await database.getAllAsync<ExpenseRow>('SELECT * FROM expenses WHERE substr(date, 1, 10) = ? ORDER BY createdAt DESC', [date]);
+    return rows.map(normalizeExpenseRow);
   } catch (error) {
     console.log('Error getting expenses by date:', error);
     return [];
@@ -621,12 +695,13 @@ export async function getExpensesByDate(date: string): Promise<Expense[]> {
 export async function getExpensesByDateRange(startDate: string, endDate: string): Promise<Expense[]> {
   if (Platform.OS === 'web') {
     const expenses = await getFromStorage<Expense[]>(STORAGE_KEYS.expenses, []);
-    return expenses.filter(e => e.date >= startDate && e.date <= endDate);
+    return expenses.filter(e => e.date >= startDate && e.date <= endDate).map(normalizeExpense);
   }
   const database = await ensureDb();
   if (!database) return [];
   try {
-    return await database.getAllAsync<Expense>('SELECT * FROM expenses WHERE date >= ? AND date <= ? ORDER BY date DESC', [startDate, endDate]);
+    const rows = await database.getAllAsync<ExpenseRow>('SELECT * FROM expenses WHERE date >= ? AND date <= ? ORDER BY date DESC', [startDate, endDate]);
+    return rows.map(normalizeExpenseRow);
   } catch (error) {
     console.log('Error getting expenses by date range:', error);
     return [];
@@ -637,6 +712,8 @@ export async function createExpense(expense: Omit<Expense, 'id' | 'createdAt' | 
   const now = new Date().toISOString();
   const newExpense: Expense = {
     ...expense,
+    name: expense.name ?? '',
+    items: Array.isArray(expense.items) ? expense.items : [],
     id: generateId(),
     createdAt: now,
     updatedAt: now,
@@ -653,8 +730,8 @@ export async function createExpense(expense: Omit<Expense, 'id' | 'createdAt' | 
   const database = await ensureDb();
   if (!database) throw new Error('Database not initialized');
   await database.runAsync(
-    'INSERT INTO expenses (id, name, total, date, createdBy, createdAt, updatedAt, syncStatus) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-    [newExpense.id, newExpense.name, newExpense.total, newExpense.date, newExpense.createdBy, now, now, 'pending']
+    'INSERT INTO expenses (id, name, items, total, date, createdBy, createdAt, updatedAt, syncStatus) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    [newExpense.id, newExpense.name, serializeItems(newExpense.items), newExpense.total, newExpense.date, newExpense.createdBy, now, now, 'pending']
   );
   return newExpense;
 }
@@ -941,11 +1018,12 @@ export async function upsertSalesFromServer(serverSales: Sale[]): Promise<void> 
     const localMap = new Map(localSales.map(s => [s.id, s]));
     
     for (const serverSale of serverSales) {
+      const normalizedSale = normalizeSale(serverSale);
       const local = localMap.get(serverSale.id);
       if (!local) {
-        localMap.set(serverSale.id, { ...serverSale, syncStatus: 'synced' });
+        localMap.set(serverSale.id, { ...normalizedSale, syncStatus: 'synced' });
       } else if (local.syncStatus !== 'pending') {
-        localMap.set(serverSale.id, { ...serverSale, syncStatus: 'synced' });
+        localMap.set(serverSale.id, { ...normalizedSale, syncStatus: 'synced' });
       }
     }
     await setToStorage(STORAGE_KEYS.sales, Array.from(localMap.values()));
@@ -958,13 +1036,13 @@ export async function upsertSalesFromServer(serverSales: Sale[]): Promise<void> 
     const existing = await db.getFirstAsync<Sale>('SELECT * FROM sales WHERE id = ?', [serverSale.id]);
     if (!existing) {
       await db.runAsync(
-        'INSERT INTO sales (id, name, total, date, createdBy, createdAt, updatedAt, syncStatus) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-        [serverSale.id, serverSale.name, serverSale.total, serverSale.date, serverSale.createdBy, serverSale.createdAt, serverSale.updatedAt, 'synced']
+        'INSERT INTO sales (id, name, items, total, date, createdBy, createdAt, updatedAt, syncStatus) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [serverSale.id, serverSale.name, serializeItems(serverSale.items), serverSale.total, serverSale.date, serverSale.createdBy, serverSale.createdAt, serverSale.updatedAt, 'synced']
       );
     } else if (existing.syncStatus !== 'pending') {
       await db.runAsync(
-        'UPDATE sales SET name = ?, total = ?, date = ?, createdBy = ?, createdAt = ?, updatedAt = ?, syncStatus = ? WHERE id = ?',
-        [serverSale.name, serverSale.total, serverSale.date, serverSale.createdBy, serverSale.createdAt, serverSale.updatedAt, 'synced', serverSale.id]
+        'UPDATE sales SET name = ?, items = ?, total = ?, date = ?, createdBy = ?, createdAt = ?, updatedAt = ?, syncStatus = ? WHERE id = ?',
+        [serverSale.name, serializeItems(serverSale.items), serverSale.total, serverSale.date, serverSale.createdBy, serverSale.createdAt, serverSale.updatedAt, 'synced', serverSale.id]
       );
     }
   }
@@ -979,11 +1057,12 @@ export async function upsertExpensesFromServer(serverExpenses: Expense[]): Promi
     const localMap = new Map(localExpenses.map(e => [e.id, e]));
     
     for (const serverExpense of serverExpenses) {
+      const normalizedExpense = normalizeExpense(serverExpense);
       const local = localMap.get(serverExpense.id);
       if (!local) {
-        localMap.set(serverExpense.id, { ...serverExpense, syncStatus: 'synced' });
+        localMap.set(serverExpense.id, { ...normalizedExpense, syncStatus: 'synced' });
       } else if (local.syncStatus !== 'pending') {
-        localMap.set(serverExpense.id, { ...serverExpense, syncStatus: 'synced' });
+        localMap.set(serverExpense.id, { ...normalizedExpense, syncStatus: 'synced' });
       }
     }
     await setToStorage(STORAGE_KEYS.expenses, Array.from(localMap.values()));
@@ -996,13 +1075,13 @@ export async function upsertExpensesFromServer(serverExpenses: Expense[]): Promi
     const existing = await db.getFirstAsync<Expense>('SELECT * FROM expenses WHERE id = ?', [serverExpense.id]);
     if (!existing) {
       await db.runAsync(
-        'INSERT INTO expenses (id, name, total, date, createdBy, createdAt, updatedAt, syncStatus) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-        [serverExpense.id, serverExpense.name, serverExpense.total, serverExpense.date, serverExpense.createdBy, serverExpense.createdAt, serverExpense.updatedAt, 'synced']
+        'INSERT INTO expenses (id, name, items, total, date, createdBy, createdAt, updatedAt, syncStatus) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [serverExpense.id, serverExpense.name, serializeItems(serverExpense.items), serverExpense.total, serverExpense.date, serverExpense.createdBy, serverExpense.createdAt, serverExpense.updatedAt, 'synced']
       );
     } else if (existing.syncStatus !== 'pending') {
       await db.runAsync(
-        'UPDATE expenses SET name = ?, total = ?, date = ?, createdBy = ?, createdAt = ?, updatedAt = ?, syncStatus = ? WHERE id = ?',
-        [serverExpense.name, serverExpense.total, serverExpense.date, serverExpense.createdBy, serverExpense.createdAt, serverExpense.updatedAt, 'synced', serverExpense.id]
+        'UPDATE expenses SET name = ?, items = ?, total = ?, date = ?, createdBy = ?, createdAt = ?, updatedAt = ?, syncStatus = ? WHERE id = ?',
+        [serverExpense.name, serializeItems(serverExpense.items), serverExpense.total, serverExpense.date, serverExpense.createdBy, serverExpense.createdAt, serverExpense.updatedAt, 'synced', serverExpense.id]
       );
     }
   }
