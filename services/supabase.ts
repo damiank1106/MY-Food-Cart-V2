@@ -105,7 +105,8 @@ export async function fetchSalesFromSupabase(): Promise<Sale[] | null> {
     }
     return data?.map(s => ({
       id: s.id,
-      name: s.name,
+      name: s.name ?? '',
+      items: Array.isArray(s.items) ? s.items : [],
       total: s.total,
       date: s.date,
       createdBy: s.created_by,
@@ -130,7 +131,8 @@ export async function fetchExpensesFromSupabase(): Promise<Expense[] | null> {
     }
     return data?.map(e => ({
       id: e.id,
-      name: e.name,
+      name: e.name ?? '',
+      items: Array.isArray(e.items) ? e.items : [],
       total: e.total,
       date: e.date,
       createdBy: e.created_by,
@@ -257,6 +259,7 @@ export async function syncSalesToSupabase(sales: Sale[]): Promise<boolean> {
       sales.map(s => ({
         id: s.id,
         name: s.name,
+        items: s.items ?? [],
         total: s.total,
         date: s.date,
         created_by: s.createdBy,
@@ -285,6 +288,7 @@ export async function syncExpensesToSupabase(expenses: Expense[]): Promise<boole
       expenses.map(e => ({
         id: e.id,
         name: e.name,
+        items: e.items ?? [],
         total: e.total,
         date: e.date,
         created_by: e.createdBy,

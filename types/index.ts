@@ -38,6 +38,7 @@ export interface InventoryItem {
 export interface Sale {
   id: string;
   name: string;
+  items?: string[] | null;
   total: number;
   date: string;
   createdBy: string;
@@ -49,6 +50,7 @@ export interface Sale {
 export interface Expense {
   id: string;
   name: string;
+  items?: string[] | null;
   total: number;
   date: string;
   createdBy: string;

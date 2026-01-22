@@ -45,6 +45,10 @@ export default function SalesScreen() {
   const [saleTotal, setSaleTotal] = useState('');
   const [expenseName, setExpenseName] = useState('');
   const [expenseTotal, setExpenseTotal] = useState('');
+  const [saleItems, setSaleItems] = useState<string[]>([]);
+  const [saleItemInput, setSaleItemInput] = useState('');
+  const [expenseItems, setExpenseItems] = useState<string[]>([]);
+  const [expenseItemInput, setExpenseItemInput] = useState('');
   
   
 
@@ -145,7 +149,7 @@ export default function SalesScreen() {
   };
 
   const createSaleMutation = useMutation({
-    mutationFn: (data: { name: string; total: number }) => 
+    mutationFn: (data: { name: string; total: number; items: string[] }) => 
       createSale({ ...data, date: dateStr, createdBy: user?.id || '' }),
     onSuccess: async () => {
       queryClient.invalidateQueries({ queryKey: ['sales'] });
@@ -162,7 +166,7 @@ export default function SalesScreen() {
   });
 
   const createExpenseMutation = useMutation({
-    mutationFn: (data: { name: string; total: number }) => 
+    mutationFn: (data: { name: string; total: number; items: string[] }) => 
       createExpense({ ...data, date: dateStr, createdBy: user?.id || '' }),
     onSuccess: async () => {
       queryClient.invalidateQueries({ queryKey: ['expenses'] });
@@ -207,25 +211,53 @@ export default function SalesScreen() {
   }, [refetchSales, refetchExpenses]);
 
   const handleAddSale = async () => {
-    if (!saleName.trim() || !saleTotal) return;
+    if (!saleTotal) return;
     await createSaleMutation.mutateAsync({
       name: saleName.trim(),
       total: parseFloat(saleTotal),
+      items: saleItems,
     });
-    setSaleName('');
-    setSaleTotal('');
+    resetSaleForm();
     setShowSaleModal(false);
   };
 
   const handleAddExpense = async () => {
-    if (!expenseName.trim() || !expenseTotal) return;
+    if (!expenseTotal) return;
     await createExpenseMutation.mutateAsync({
       name: expenseName.trim(),
       total: parseFloat(expenseTotal),
+      items: expenseItems,
     });
+    resetExpenseForm();
+    setShowExpenseModal(false);
+  };
+
+  const resetSaleForm = () => {
+    setSaleName('');
+    setSaleTotal('');
+    setSaleItems([]);
+    setSaleItemInput('');
+  };
+
+  const resetExpenseForm = () => {
     setExpenseName('');
     setExpenseTotal('');
-    setShowExpenseModal(false);
+    setExpenseItems([]);
+    setExpenseItemInput('');
+  };
+
+  const addSaleItem = () => {
+    const trimmed = saleItemInput.trim();
+    if (!trimmed) return;
+    setSaleItems(prev => [...prev, trimmed]);
+    setSaleItemInput('');
+  };
+
+  const addExpenseItem = () => {
+    const trimmed = expenseItemInput.trim();
+    if (!trimmed) return;
+    setExpenseItems(prev => [...prev, trimmed]);
+    setExpenseItemInput('');
   };
 
   const handleDeleteSale = (id: string, name: string) => {
@@ -414,39 +446,65 @@ export default function SalesScreen() {
           </View>
 
           <Text style={[styles.sectionTitle, { color: theme.text }]}>Sales ({sales.length})</Text>
-          {sales.map(sale => (
-            <View key={sale.id} style={[styles.itemCard, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
-              <View style={styles.itemInfo}>
-                <Text style={[styles.itemName, { color: theme.text }]}>{sale.name}</Text>
-                <Text style={[styles.itemAmount, { color: theme.success }]}>{formatCurrency(sale.total)}</Text>
+          {sales.map(sale => {
+            const saleNameLabel = sale.name?.trim() ? sale.name : 'Sale';
+            const saleItemsList = Array.isArray(sale.items) ? sale.items : [];
+            return (
+              <View key={sale.id} style={[styles.itemCard, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
+                <View style={styles.itemInfo}>
+                  <Text style={[styles.itemName, { color: theme.text }]}>{saleNameLabel}</Text>
+                  {saleItemsList.length > 0 && (
+                    <View style={styles.itemList}>
+                      {saleItemsList.map((item, index) => (
+                        <Text key={`${sale.id}-item-${index}`} style={[styles.itemListText, { color: theme.textSecondary }]}>
+                          • {item}
+                        </Text>
+                      ))}
+                    </View>
+                  )}
+                  <Text style={[styles.itemAmount, { color: theme.success }]}>{formatCurrency(sale.total)}</Text>
+                </View>
+                <TouchableOpacity
+                  style={[styles.deleteButton, { backgroundColor: theme.error + '20' }]}
+                  onPress={() => handleDeleteSale(sale.id, saleNameLabel)}
+                >
+                  <Trash2 color={theme.error} size={18} />
+                </TouchableOpacity>
               </View>
-              <TouchableOpacity
-                style={[styles.deleteButton, { backgroundColor: theme.error + '20' }]}
-                onPress={() => handleDeleteSale(sale.id, sale.name)}
-              >
-                <Trash2 color={theme.error} size={18} />
-              </TouchableOpacity>
-            </View>
-          ))}
+            );
+          })}
           {sales.length === 0 && (
             <Text style={[styles.emptyText, { color: theme.textMuted }]}>No sales for this date</Text>
           )}
 
           <Text style={[styles.sectionTitle, { color: theme.text, marginTop: 24 }]}>Expenses ({expenses.length})</Text>
-          {expenses.map(expense => (
-            <View key={expense.id} style={[styles.itemCard, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
-              <View style={styles.itemInfo}>
-                <Text style={[styles.itemName, { color: theme.text }]}>{expense.name}</Text>
-                <Text style={[styles.itemAmount, { color: theme.error }]}>{formatCurrency(expense.total)}</Text>
+          {expenses.map(expense => {
+            const expenseNameLabel = expense.name?.trim() ? expense.name : 'Expense';
+            const expenseItemsList = Array.isArray(expense.items) ? expense.items : [];
+            return (
+              <View key={expense.id} style={[styles.itemCard, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
+                <View style={styles.itemInfo}>
+                  <Text style={[styles.itemName, { color: theme.text }]}>{expenseNameLabel}</Text>
+                  {expenseItemsList.length > 0 && (
+                    <View style={styles.itemList}>
+                      {expenseItemsList.map((item, index) => (
+                        <Text key={`${expense.id}-item-${index}`} style={[styles.itemListText, { color: theme.textSecondary }]}>
+                          • {item}
+                        </Text>
+                      ))}
+                    </View>
+                  )}
+                  <Text style={[styles.itemAmount, { color: theme.error }]}>{formatCurrency(expense.total)}</Text>
+                </View>
+                <TouchableOpacity
+                  style={[styles.deleteButton, { backgroundColor: theme.error + '20' }]}
+                  onPress={() => handleDeleteExpense(expense.id, expenseNameLabel)}
+                >
+                  <Trash2 color={theme.error} size={18} />
+                </TouchableOpacity>
               </View>
-              <TouchableOpacity
-                style={[styles.deleteButton, { backgroundColor: theme.error + '20' }]}
-                onPress={() => handleDeleteExpense(expense.id, expense.name)}
-              >
-                <Trash2 color={theme.error} size={18} />
-              </TouchableOpacity>
-            </View>
-          ))}
+            );
+          })}
           {expenses.length === 0 && (
             <Text style={[styles.emptyText, { color: theme.textMuted }]}>No expenses for this date</Text>
           )}
@@ -466,13 +524,13 @@ export default function SalesScreen() {
           <View style={[styles.formModal, { backgroundColor: theme.card }]}>
             <View style={styles.modalHeader}>
               <Text style={[styles.modalTitle, { color: theme.text }]}>Add New Sale</Text>
-              <TouchableOpacity onPress={() => { setShowSaleModal(false); setSaleName(''); setSaleTotal(''); }}>
+              <TouchableOpacity onPress={() => { setShowSaleModal(false); resetSaleForm(); }}>
                 <X color={theme.textMuted} size={24} />
               </TouchableOpacity>
             </View>
             
             <View style={styles.formContent}>
-              <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Name</Text>
+              <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Name (optional)</Text>
               <TextInput
                 style={[styles.input, { backgroundColor: theme.inputBackground, borderColor: theme.inputBorder, color: theme.text }]}
                 placeholder="Sale description"
@@ -490,12 +548,44 @@ export default function SalesScreen() {
                 onChangeText={setSaleTotal}
                 keyboardType="decimal-pad"
               />
+
+              <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Items (optional)</Text>
+              <View style={styles.itemsInputRow}>
+                <TextInput
+                  style={[styles.itemsInput, { backgroundColor: theme.inputBackground, borderColor: theme.inputBorder, color: theme.text }]}
+                  placeholder="Add item"
+                  placeholderTextColor={theme.textMuted}
+                  value={saleItemInput}
+                  onChangeText={setSaleItemInput}
+                />
+                <TouchableOpacity
+                  style={[styles.itemsAddButton, { backgroundColor: theme.primary }]}
+                  onPress={addSaleItem}
+                >
+                  <Text style={styles.itemsAddButtonText}>Add</Text>
+                </TouchableOpacity>
+              </View>
+              {saleItems.length > 0 && (
+                <View style={styles.itemsList}>
+                  {saleItems.map((item, index) => (
+                    <View key={`${item}-${index}`} style={[styles.itemsListItem, { borderColor: theme.cardBorder }]}>
+                      <Text style={[styles.itemsListText, { color: theme.text }]}>{item}</Text>
+                      <TouchableOpacity
+                        style={styles.itemsRemoveButton}
+                        onPress={() => setSaleItems(prev => prev.filter((_, i) => i !== index))}
+                      >
+                        <X color={theme.textMuted} size={16} />
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                </View>
+              )}
             </View>
             
             <View style={styles.modalFooter}>
               <TouchableOpacity
                 style={[styles.cancelButton, { borderColor: theme.cardBorder }]}
-                onPress={() => { setShowSaleModal(false); setSaleName(''); setSaleTotal(''); }}
+                onPress={() => { setShowSaleModal(false); resetSaleForm(); }}
               >
                 <Text style={[styles.cancelButtonText, { color: theme.textSecondary }]}>Cancel</Text>
               </TouchableOpacity>
@@ -515,13 +605,13 @@ export default function SalesScreen() {
           <View style={[styles.formModal, { backgroundColor: theme.card }]}>
             <View style={styles.modalHeader}>
               <Text style={[styles.modalTitle, { color: theme.text }]}>Add New Expense</Text>
-              <TouchableOpacity onPress={() => { setShowExpenseModal(false); setExpenseName(''); setExpenseTotal(''); }}>
+              <TouchableOpacity onPress={() => { setShowExpenseModal(false); resetExpenseForm(); }}>
                 <X color={theme.textMuted} size={24} />
               </TouchableOpacity>
             </View>
             
             <View style={styles.formContent}>
-              <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Name</Text>
+              <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Name (optional)</Text>
               <TextInput
                 style={[styles.input, { backgroundColor: theme.inputBackground, borderColor: theme.inputBorder, color: theme.text }]}
                 placeholder="Expense description"
@@ -539,12 +629,44 @@ export default function SalesScreen() {
                 onChangeText={setExpenseTotal}
                 keyboardType="decimal-pad"
               />
+
+              <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Items (optional)</Text>
+              <View style={styles.itemsInputRow}>
+                <TextInput
+                  style={[styles.itemsInput, { backgroundColor: theme.inputBackground, borderColor: theme.inputBorder, color: theme.text }]}
+                  placeholder="Add item"
+                  placeholderTextColor={theme.textMuted}
+                  value={expenseItemInput}
+                  onChangeText={setExpenseItemInput}
+                />
+                <TouchableOpacity
+                  style={[styles.itemsAddButton, { backgroundColor: theme.primary }]}
+                  onPress={addExpenseItem}
+                >
+                  <Text style={styles.itemsAddButtonText}>Add</Text>
+                </TouchableOpacity>
+              </View>
+              {expenseItems.length > 0 && (
+                <View style={styles.itemsList}>
+                  {expenseItems.map((item, index) => (
+                    <View key={`${item}-${index}`} style={[styles.itemsListItem, { borderColor: theme.cardBorder }]}>
+                      <Text style={[styles.itemsListText, { color: theme.text }]}>{item}</Text>
+                      <TouchableOpacity
+                        style={styles.itemsRemoveButton}
+                        onPress={() => setExpenseItems(prev => prev.filter((_, i) => i !== index))}
+                      >
+                        <X color={theme.textMuted} size={16} />
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                </View>
+              )}
             </View>
             
             <View style={styles.modalFooter}>
               <TouchableOpacity
                 style={[styles.cancelButton, { borderColor: theme.cardBorder }]}
-                onPress={() => { setShowExpenseModal(false); setExpenseName(''); setExpenseTotal(''); }}
+                onPress={() => { setShowExpenseModal(false); resetExpenseForm(); }}
               >
                 <Text style={[styles.cancelButtonText, { color: theme.textSecondary }]}>Cancel</Text>
               </TouchableOpacity>
@@ -789,6 +911,14 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600' as const,
   },
+  itemList: {
+    marginBottom: 6,
+    gap: 2,
+  },
+  itemListText: {
+    fontSize: 12,
+    lineHeight: 18,
+  },
   deleteButton: {
     width: 36,
     height: 36,
@@ -827,6 +957,52 @@ const styles = StyleSheet.create({
   },
   formContent: {
     padding: 20,
+  },
+  itemsInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 4,
+  },
+  itemsInput: {
+    flex: 1,
+    height: 44,
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    fontSize: 14,
+  },
+  itemsAddButton: {
+    paddingHorizontal: 16,
+    height: 44,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  itemsAddButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600' as const,
+  },
+  itemsList: {
+    marginTop: 12,
+    gap: 8,
+  },
+  itemsListItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  itemsListText: {
+    fontSize: 14,
+    flex: 1,
+  },
+  itemsRemoveButton: {
+    marginLeft: 8,
   },
   inputLabel: {
     fontSize: 14,
