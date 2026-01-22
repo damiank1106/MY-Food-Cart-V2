@@ -19,7 +19,7 @@ import { Colors } from '@/constants/colors';
 import { useRouter } from 'expo-router';
 import { formatDate, ROLE_DISPLAY_NAMES, UserRole } from '@/types';
 import { getWeeklySalesTotals, getWeeklyExpenseTotals, getActivities, getUsers } from '@/services/database';
-import { formatLocalDate, getDayKeysForWeek, getWeekdayLabels, getWeekRange } from '@/services/dateUtils';
+import { getDayKeysForWeek, getWeekdayLabels, getWeekRange, getWeekStart, toLocalDayKey } from '@/services/dateUtils';
 import Svg, { Path, Circle, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
 import LaserBackground from '@/components/LaserBackground';
 
@@ -95,16 +95,18 @@ export default function HomeScreen() {
   
   const welcomeFontSize = screenWidth < 360 ? 18 : screenWidth < 400 ? 20 : 24;
 
+  const weekStartsOn = 0;
+
   const weeks = useMemo(() => {
     return [0, 1, 2, 3].map(i => {
-      const { start, end } = getWeekRange(i);
+      const { start, end } = getWeekRange(i, weekStartsOn);
       return { start, end, label: formatWeekRange(start, end) };
     });
-  }, []);
+  }, [weekStartsOn]);
 
   const currentWeek = weeks[selectedWeek];
-  const startDateStr = formatLocalDate(currentWeek.start);
-  const endDateStr = formatLocalDate(currentWeek.end);
+  const startDateStr = toLocalDayKey(currentWeek.start);
+  const endDateStr = toLocalDayKey(currentWeek.end);
 
 
 
@@ -147,8 +149,12 @@ export default function HomeScreen() {
 
   const canViewAuthor = currentUser && AUTHOR_VISIBLE_ROLES.includes(currentUser.role);
 
-  const weekDayKeys = useMemo(() => getDayKeysForWeek(currentWeek.start), [currentWeek.start]);
-  const weekDayLabels = useMemo(() => getWeekdayLabels(), []);
+  const weekStart = useMemo(
+    () => getWeekStart(currentWeek.start, weekStartsOn),
+    [currentWeek.start, weekStartsOn]
+  );
+  const weekDayKeys = useMemo(() => getDayKeysForWeek(weekStart), [weekStart]);
+  const weekDayLabels = useMemo(() => getWeekdayLabels(weekStartsOn), [weekStartsOn]);
 
   useEffect(() => {
     if (process.env.EXPO_PUBLIC_DEBUG_WEEKLY_CHART === 'true') {
@@ -162,22 +168,40 @@ export default function HomeScreen() {
     }
   }, [weekDayKeys, weekDayLabels]);
 
+  const salesByDay = useMemo(() => {
+    return new Map(Object.entries(salesTotalsMap).map(([key, value]) => [key, Number(value) || 0]));
+  }, [salesTotalsMap]);
+
+  const expensesByDay = useMemo(() => {
+    return new Map(Object.entries(expensesTotalsMap).map(([key, value]) => [key, Number(value) || 0]));
+  }, [expensesTotalsMap]);
+
+  const salesSeries = useMemo(
+    () => weekDayKeys.map(key => salesByDay.get(key) ?? 0),
+    [salesByDay, weekDayKeys]
+  );
+
+  const expensesSeries = useMemo(
+    () => weekDayKeys.map(key => expensesByDay.get(key) ?? 0),
+    [expensesByDay, weekDayKeys]
+  );
+
   const chartData = useMemo(() => {
     return weekDayKeys.map((dateStr, index) => {
       const day = weekDayLabels[index] ?? '';
-      const daySales = salesTotalsMap[dateStr] ?? 0;
-      const dayExpenses = expensesTotalsMap[dateStr] ?? 0;
+      const daySales = salesSeries[index] ?? 0;
+      const dayExpenses = expensesSeries[index] ?? 0;
 
       return { day, sales: daySales, expenses: dayExpenses, dateStr };
     });
-  }, [salesTotalsMap, expensesTotalsMap, weekDayKeys, weekDayLabels]);
+  }, [expensesSeries, salesSeries, weekDayKeys, weekDayLabels]);
 
   const weekTotals = useMemo(() => {
-    const salesTotal = Object.values(salesTotalsMap).reduce((sum, val) => sum + (Number(val) || 0), 0);
-    const expensesTotal = Object.values(expensesTotalsMap).reduce((sum, val) => sum + (Number(val) || 0), 0);
+    const salesTotal = salesSeries.reduce((sum, val) => sum + val, 0);
+    const expensesTotal = expensesSeries.reduce((sum, val) => sum + val, 0);
     console.log(`Week totals (${startDateStr} to ${endDateStr}): Sales=₱${salesTotal}, Expenses=₱${expensesTotal}`);
     return { sales: salesTotal, expenses: expensesTotal, net: salesTotal - expensesTotal };
-  }, [salesTotalsMap, expensesTotalsMap, startDateStr, endDateStr]);
+  }, [expensesSeries, salesSeries, startDateStr, endDateStr]);
 
   const rawMaxValue = Math.max(...chartData.map(d => Math.max(d.sales, d.expenses)), 100);
   
