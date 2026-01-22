@@ -5,6 +5,7 @@ import {
   User, Category, InventoryItem, Sale, Expense, Activity,
   DEFAULT_USERS, DEFAULT_CATEGORIES, generateId 
 } from '@/types';
+import { bucketByLocalDay, getDayKeysForWeek, getLocalYYYYMMDD, parseLocalDateString } from '@/services/dateUtils';
 
 let db: SQLite.SQLiteDatabase | null = null;
 let dbInitPromise: Promise<void> | null = null;
@@ -1726,23 +1727,17 @@ export async function getEntryDaysForMonth(year: number, month: number): Promise
   }
 }
 
-export function formatLocalDate(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
 export async function getWeeklySalesTotals(startDate: string, endDate: string): Promise<Record<string, number>> {
   const result: Record<string, number> = {};
+  const start = parseLocalDateString(startDate);
+  const dayKeys = getDayKeysForWeek(start);
+  const dayKeysSet = new Set(dayKeys);
   
   if (Platform.OS === 'web') {
     const sales = await getFromStorage<Sale[]>(STORAGE_KEYS.sales, []);
-    for (const sale of sales) {
-      const normalizedDate = sale.date ? sale.date.substring(0, 10) : '';
-      if (normalizedDate >= startDate && normalizedDate <= endDate) {
-        result[normalizedDate] = (result[normalizedDate] || 0) + Number(sale.total);
-      }
+    const totals = bucketByLocalDay(sales, dayKeysSet);
+    for (const key of dayKeys) {
+      result[key] = totals.get(key) || 0;
     }
     console.log(`Web weekly sales totals (${startDate} to ${endDate}):`, result);
     return result;
@@ -1752,12 +1747,16 @@ export async function getWeeklySalesTotals(startDate: string, endDate: string): 
   if (!database) return result;
   
   try {
-    const rows = await database.getAllAsync<{ day: string; total: number }>(
-      `SELECT substr(date, 1, 10) as day, SUM(CAST(total as REAL)) as total FROM sales WHERE substr(date, 1, 10) BETWEEN ? AND ? GROUP BY substr(date, 1, 10)`,
-      [startDate, endDate]
+    const rows = await database.getAllAsync<{ date: string; total: number }>(
+      `SELECT date, total FROM sales`
     );
     for (const row of rows) {
-      result[row.day] = row.total || 0;
+      const key = getLocalYYYYMMDD(row.date);
+      if (!dayKeysSet.has(key)) continue;
+      result[key] = (result[key] || 0) + Number(row.total || 0);
+    }
+    for (const key of dayKeys) {
+      result[key] = result[key] || 0;
     }
   } catch (error) {
     console.log('Error getting weekly sales totals:', error);
@@ -1768,14 +1767,15 @@ export async function getWeeklySalesTotals(startDate: string, endDate: string): 
 
 export async function getWeeklyExpenseTotals(startDate: string, endDate: string): Promise<Record<string, number>> {
   const result: Record<string, number> = {};
+  const start = parseLocalDateString(startDate);
+  const dayKeys = getDayKeysForWeek(start);
+  const dayKeysSet = new Set(dayKeys);
   
   if (Platform.OS === 'web') {
     const expenses = await getFromStorage<Expense[]>(STORAGE_KEYS.expenses, []);
-    for (const expense of expenses) {
-      const normalizedDate = expense.date ? expense.date.substring(0, 10) : '';
-      if (normalizedDate >= startDate && normalizedDate <= endDate) {
-        result[normalizedDate] = (result[normalizedDate] || 0) + Number(expense.total);
-      }
+    const totals = bucketByLocalDay(expenses, dayKeysSet);
+    for (const key of dayKeys) {
+      result[key] = totals.get(key) || 0;
     }
     console.log(`Web weekly expense totals (${startDate} to ${endDate}):`, result);
     return result;
@@ -1785,12 +1785,16 @@ export async function getWeeklyExpenseTotals(startDate: string, endDate: string)
   if (!database) return result;
   
   try {
-    const rows = await database.getAllAsync<{ day: string; total: number }>(
-      `SELECT substr(date, 1, 10) as day, SUM(CAST(total as REAL)) as total FROM expenses WHERE substr(date, 1, 10) BETWEEN ? AND ? GROUP BY substr(date, 1, 10)`,
-      [startDate, endDate]
+    const rows = await database.getAllAsync<{ date: string; total: number }>(
+      `SELECT date, total FROM expenses`
     );
     for (const row of rows) {
-      result[row.day] = row.total || 0;
+      const key = getLocalYYYYMMDD(row.date);
+      if (!dayKeysSet.has(key)) continue;
+      result[key] = (result[key] || 0) + Number(row.total || 0);
+    }
+    for (const key of dayKeys) {
+      result[key] = result[key] || 0;
     }
   } catch (error) {
     console.log('Error getting weekly expense totals:', error);
