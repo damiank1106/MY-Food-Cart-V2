@@ -18,27 +18,12 @@ import { Colors } from '@/constants/colors';
 
 import { useRouter } from 'expo-router';
 import { formatDate, ROLE_DISPLAY_NAMES, UserRole } from '@/types';
-import { getWeeklySalesTotals, getWeeklyExpenseTotals, getActivities, getUsers, formatLocalDate } from '@/services/database';
+import { getWeeklySalesTotals, getWeeklyExpenseTotals, getActivities, getUsers } from '@/services/database';
+import { formatLocalDate, getDayKeysForWeek, getWeekdayLabels, getWeekRange } from '@/services/dateUtils';
 import Svg, { Path, Circle, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
 import LaserBackground from '@/components/LaserBackground';
 
 const { width } = Dimensions.get('window');
-
-function getWeekDates(weeksAgo: number = 0) {
-  const today = new Date();
-  const dayOfWeek = today.getDay();
-  const diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-  
-  const monday = new Date(today);
-  monday.setDate(today.getDate() + diffToMonday - (weeksAgo * 7));
-  monday.setHours(0, 0, 0, 0);
-  
-  const sunday = new Date(monday);
-  sunday.setDate(monday.getDate() + 6);
-  sunday.setHours(23, 59, 59, 999);
-  
-  return { start: monday, end: sunday };
-}
 
 function formatWeekRange(start: Date, end: Date): string {
   const startMonth = start.toLocaleDateString('en-US', { month: 'short' });
@@ -112,7 +97,7 @@ export default function HomeScreen() {
 
   const weeks = useMemo(() => {
     return [0, 1, 2, 3].map(i => {
-      const { start, end } = getWeekDates(i);
+      const { start, end } = getWeekRange(i);
       return { start, end, label: formatWeekRange(start, end) };
     });
   }, []);
@@ -162,22 +147,30 @@ export default function HomeScreen() {
 
   const canViewAuthor = currentUser && AUTHOR_VISIBLE_ROLES.includes(currentUser.role);
 
+  const weekDayKeys = useMemo(() => getDayKeysForWeek(currentWeek.start), [currentWeek.start]);
+  const weekDayLabels = useMemo(() => getWeekdayLabels(), []);
+
+  useEffect(() => {
+    if (process.env.EXPO_PUBLIC_DEBUG_WEEKLY_CHART === 'true') {
+      const labelCount = weekDayLabels.length;
+      const keyCount = weekDayKeys.length;
+      if (labelCount !== keyCount) {
+        console.warn('Weekly chart labels/day keys mismatch', { labelCount, keyCount });
+      } else {
+        console.log('Weekly chart alignment check', { weekDayLabels, weekDayKeys });
+      }
+    }
+  }, [weekDayKeys, weekDayLabels]);
+
   const chartData = useMemo(() => {
-    const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    const data = days.map((day, index) => {
-      const date = new Date(currentWeek.start);
-      date.setDate(currentWeek.start.getDate() + index);
-      const dateStr = formatLocalDate(date);
-      
+    return weekDayKeys.map((dateStr, index) => {
+      const day = weekDayLabels[index] ?? '';
       const daySales = salesTotalsMap[dateStr] ?? 0;
       const dayExpenses = expensesTotalsMap[dateStr] ?? 0;
-      
-      console.log(`Chart data for ${dateStr} (${day}): Sales=₱${daySales}, Expenses=₱${dayExpenses}`);
-      
+
       return { day, sales: daySales, expenses: dayExpenses, dateStr };
     });
-    return data;
-  }, [salesTotalsMap, expensesTotalsMap, currentWeek]);
+  }, [salesTotalsMap, expensesTotalsMap, weekDayKeys, weekDayLabels]);
 
   const weekTotals = useMemo(() => {
     const salesTotal = Object.values(salesTotalsMap).reduce((sum, val) => sum + (Number(val) || 0), 0);

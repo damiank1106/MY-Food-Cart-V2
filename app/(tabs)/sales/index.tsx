@@ -24,8 +24,9 @@ import { Colors } from '@/constants/colors';
 import { formatCurrency, formatDate } from '@/types';
 import { 
   getSalesByDate, getExpensesByDate, createSale, createExpense,
-  deleteSale, deleteExpense, createActivity, formatLocalDate
+  deleteSale, deleteExpense, createActivity
 } from '@/services/database';
+import { formatLocalDate } from '@/services/dateUtils';
 import LaserBackground from '@/components/LaserBackground';
 
 export default function SalesScreen() {
