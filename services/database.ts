@@ -5,7 +5,7 @@ import {
   User, Category, InventoryItem, Sale, Expense, Activity,
   DEFAULT_USERS, DEFAULT_CATEGORIES, generateId 
 } from '@/types';
-import { bucketByLocalDay, getDayKeysForWeek, getLocalYYYYMMDD, parseLocalDateString } from '@/services/dateUtils';
+import { bucketByLocalDay, getDayKeysForWeek, parseLocalDateString, toLocalDayKey } from '@/services/dateUtils';
 
 let db: SQLite.SQLiteDatabase | null = null;
 let dbInitPromise: Promise<void> | null = null;
@@ -1751,7 +1751,7 @@ export async function getWeeklySalesTotals(startDate: string, endDate: string): 
       `SELECT date, total FROM sales`
     );
     for (const row of rows) {
-      const key = getLocalYYYYMMDD(row.date);
+      const key = toLocalDayKey(row.date);
       if (!dayKeysSet.has(key)) continue;
       result[key] = (result[key] || 0) + Number(row.total || 0);
     }
@@ -1789,7 +1789,7 @@ export async function getWeeklyExpenseTotals(startDate: string, endDate: string)
       `SELECT date, total FROM expenses`
     );
     for (const row of rows) {
-      const key = getLocalYYYYMMDD(row.date);
+      const key = toLocalDayKey(row.date);
       if (!dayKeysSet.has(key)) continue;
       result[key] = (result[key] || 0) + Number(row.total || 0);
     }
