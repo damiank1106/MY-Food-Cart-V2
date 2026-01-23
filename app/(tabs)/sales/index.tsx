@@ -21,7 +21,7 @@ import * as Haptics from 'expo-haptics';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSync } from '@/contexts/SyncContext';
 import { Colors } from '@/constants/colors';
-import { formatCurrency, formatDate } from '@/types';
+import { ExpenseItem, formatCurrency, formatDate } from '@/types';
 import { 
   getSalesByDate, getExpensesByDate, createSale, createExpense,
   deleteSale, deleteExpense, createActivity
@@ -47,8 +47,9 @@ export default function SalesScreen() {
   const [expenseTotal, setExpenseTotal] = useState('');
   const [saleItems, setSaleItems] = useState<string[]>([]);
   const [saleItemInput, setSaleItemInput] = useState('');
-  const [expenseItems, setExpenseItems] = useState<string[]>([]);
-  const [expenseItemInput, setExpenseItemInput] = useState('');
+  const [expenseItems, setExpenseItems] = useState<ExpenseItem[]>([]);
+  const [expenseItemNameInput, setExpenseItemNameInput] = useState('');
+  const [expenseItemPriceInput, setExpenseItemPriceInput] = useState('');
   
   
 
@@ -65,6 +66,18 @@ export default function SalesScreen() {
   useEffect(() => {
     loadSplitPercentages();
   }, []);
+
+  const expenseItemsTotal = expenseItems.reduce((sum, item) => {
+    return sum + (typeof item.price === 'number' ? item.price : 0);
+  }, 0);
+  const isExpenseTotalLocked = expenseItemsTotal > 0;
+  const isExpenseItemsLocked = !isExpenseTotalLocked && expenseTotal.trim() !== '';
+
+  useEffect(() => {
+    if (expenseItemsTotal > 0) {
+      setExpenseTotal(expenseItemsTotal.toFixed(2));
+    }
+  }, [expenseItemsTotal]);
 
   const loadSplitPercentages = async () => {
     try {
@@ -166,7 +179,7 @@ export default function SalesScreen() {
   });
 
   const createExpenseMutation = useMutation({
-    mutationFn: (data: { name: string; total: number; items: string[] }) => 
+    mutationFn: (data: { name: string; total: number; items: ExpenseItem[] }) => 
       createExpense({ ...data, date: dateStr, createdBy: user?.id || '' }),
     onSuccess: async () => {
       queryClient.invalidateQueries({ queryKey: ['expenses'] });
@@ -222,10 +235,14 @@ export default function SalesScreen() {
   };
 
   const handleAddExpense = async () => {
-    if (!expenseTotal) return;
+    const manualTotal = parseFloat(expenseTotal);
+    const hasManualTotal = !Number.isNaN(manualTotal) && manualTotal > 0;
+    const hasPricedItems = expenseItemsTotal > 0;
+    if (!hasPricedItems && !hasManualTotal) return;
+    const totalValue = hasPricedItems ? Number(expenseItemsTotal.toFixed(2)) : manualTotal;
     await createExpenseMutation.mutateAsync({
       name: expenseName.trim(),
-      total: parseFloat(expenseTotal),
+      total: totalValue,
       items: expenseItems,
     });
     resetExpenseForm();
@@ -243,7 +260,8 @@ export default function SalesScreen() {
     setExpenseName('');
     setExpenseTotal('');
     setExpenseItems([]);
-    setExpenseItemInput('');
+    setExpenseItemNameInput('');
+    setExpenseItemPriceInput('');
   };
 
   const addSaleItem = () => {
@@ -254,10 +272,15 @@ export default function SalesScreen() {
   };
 
   const addExpenseItem = () => {
-    const trimmed = expenseItemInput.trim();
+    if (isExpenseItemsLocked) return;
+    const trimmed = expenseItemNameInput.trim();
     if (!trimmed) return;
-    setExpenseItems(prev => [...prev, trimmed]);
-    setExpenseItemInput('');
+    const priceValue = expenseItemPriceInput.trim();
+    const parsedPrice = priceValue ? Number.parseFloat(priceValue) : null;
+    const normalizedPrice = parsedPrice !== null && !Number.isNaN(parsedPrice) ? parsedPrice : null;
+    setExpenseItems(prev => [...prev, { name: trimmed, price: normalizedPrice }]);
+    setExpenseItemNameInput('');
+    setExpenseItemPriceInput('');
   };
 
   const handleDeleteSale = (id: string, name: string) => {
@@ -489,7 +512,7 @@ export default function SalesScreen() {
                     <View style={styles.itemList}>
                       {expenseItemsList.map((item, index) => (
                         <Text key={`${expense.id}-item-${index}`} style={[styles.itemListText, { color: theme.textSecondary }]}>
-                          • {item}
+                          • {item.name}{typeof item.price === 'number' ? ` (${formatCurrency(item.price)})` : ''}
                         </Text>
                       ))}
                     </View>
@@ -622,38 +645,75 @@ export default function SalesScreen() {
               
               <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Total (₱)</Text>
               <TextInput
-                style={[styles.input, { backgroundColor: theme.inputBackground, borderColor: theme.inputBorder, color: theme.text }]}
+                style={[
+                  styles.input,
+                  { backgroundColor: theme.inputBackground, borderColor: theme.inputBorder, color: theme.text },
+                  isExpenseTotalLocked && styles.inputDisabled,
+                ]}
                 placeholder="0.00"
                 placeholderTextColor={theme.textMuted}
                 value={expenseTotal}
                 onChangeText={setExpenseTotal}
                 keyboardType="decimal-pad"
+                editable={!isExpenseTotalLocked}
               />
+              {isExpenseTotalLocked && (
+                <Text style={[styles.helperText, { color: theme.textMuted }]}>Total calculated from items.</Text>
+              )}
 
               <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Items (optional)</Text>
               <View style={styles.itemsInputRow}>
                 <TextInput
-                  style={[styles.itemsInput, { backgroundColor: theme.inputBackground, borderColor: theme.inputBorder, color: theme.text }]}
-                  placeholder="Add item"
+                  style={[
+                    styles.itemsInput,
+                    { backgroundColor: theme.inputBackground, borderColor: theme.inputBorder, color: theme.text },
+                    isExpenseItemsLocked && styles.inputDisabled,
+                  ]}
+                  placeholder="Item name"
                   placeholderTextColor={theme.textMuted}
-                  value={expenseItemInput}
-                  onChangeText={setExpenseItemInput}
+                  value={expenseItemNameInput}
+                  onChangeText={setExpenseItemNameInput}
+                  editable={!isExpenseItemsLocked}
+                />
+                <TextInput
+                  style={[
+                    styles.itemsPriceInput,
+                    { backgroundColor: theme.inputBackground, borderColor: theme.inputBorder, color: theme.text },
+                    isExpenseItemsLocked && styles.inputDisabled,
+                  ]}
+                  placeholder="₱0.00"
+                  placeholderTextColor={theme.textMuted}
+                  value={expenseItemPriceInput}
+                  onChangeText={setExpenseItemPriceInput}
+                  keyboardType="decimal-pad"
+                  editable={!isExpenseItemsLocked}
                 />
                 <TouchableOpacity
-                  style={[styles.itemsAddButton, { backgroundColor: theme.primary }]}
+                  style={[
+                    styles.itemsAddButton,
+                    { backgroundColor: theme.primary, opacity: isExpenseItemsLocked ? 0.5 : 1 },
+                  ]}
                   onPress={addExpenseItem}
+                  disabled={isExpenseItemsLocked}
                 >
-                  <Text style={styles.itemsAddButtonText}>Add</Text>
+                  <Text style={styles.itemsAddButtonText}>Add Item</Text>
                 </TouchableOpacity>
               </View>
+              {isExpenseItemsLocked && (
+                <Text style={[styles.helperText, { color: theme.textMuted }]}>Clear Total to enter item prices.</Text>
+              )}
               {expenseItems.length > 0 && (
                 <View style={styles.itemsList}>
                   {expenseItems.map((item, index) => (
-                    <View key={`${item}-${index}`} style={[styles.itemsListItem, { borderColor: theme.cardBorder }]}>
-                      <Text style={[styles.itemsListText, { color: theme.text }]}>{item}</Text>
+                    <View key={`${item.name}-${index}`} style={[styles.itemsListItem, { borderColor: theme.cardBorder }]}>
+                      <Text style={[styles.itemsListText, { color: theme.text }]}>
+                        {item.name}
+                        {typeof item.price === 'number' ? ` (${formatCurrency(item.price)})` : ''}
+                      </Text>
                       <TouchableOpacity
                         style={styles.itemsRemoveButton}
                         onPress={() => setExpenseItems(prev => prev.filter((_, i) => i !== index))}
+                        disabled={isExpenseItemsLocked}
                       >
                         <X color={theme.textMuted} size={16} />
                       </TouchableOpacity>
@@ -972,6 +1032,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     fontSize: 14,
   },
+  itemsPriceInput: {
+    width: 110,
+    height: 44,
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    fontSize: 14,
+  },
   itemsAddButton: {
     paddingHorizontal: 16,
     height: 44,
@@ -1004,6 +1072,10 @@ const styles = StyleSheet.create({
   itemsRemoveButton: {
     marginLeft: 8,
   },
+  helperText: {
+    fontSize: 12,
+    marginTop: 6,
+  },
   inputLabel: {
     fontSize: 14,
     marginBottom: 8,
@@ -1015,6 +1087,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     paddingHorizontal: 16,
     fontSize: 16,
+  },
+  inputDisabled: {
+    opacity: 0.6,
   },
   modalFooter: {
     flexDirection: 'row',

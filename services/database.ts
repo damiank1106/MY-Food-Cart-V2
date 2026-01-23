@@ -2,7 +2,7 @@ import * as SQLite from 'expo-sqlite';
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { 
-  User, Category, InventoryItem, Sale, Expense, Activity,
+  User, Category, InventoryItem, Sale, Expense, ExpenseItem, Activity,
   DEFAULT_USERS, DEFAULT_CATEGORIES, generateId 
 } from '@/types';
 import { bucketByLocalDay, getDayKeysForWeek, parseLocalDateString, toLocalDayKey } from '@/services/dateUtils';
@@ -42,7 +42,7 @@ async function setToStorage<T>(key: string, value: T): Promise<void> {
 type SaleRow = Omit<Sale, 'items'> & { items?: string | null };
 type ExpenseRow = Omit<Expense, 'items'> & { items?: string | null };
 
-export function serializeItems(items?: string[] | null): string {
+export function serializeItems(items?: Array<string | ExpenseItem> | null): string {
   const normalized = Array.isArray(items) ? items : [];
   return JSON.stringify(normalized);
 }
@@ -54,6 +54,38 @@ export function parseItems(itemsText?: string | null): string[] {
     return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string') : [];
   } catch (error) {
     console.log('Error parsing items JSON:', error);
+    return [];
+  }
+}
+
+function normalizeExpenseItems(items: unknown): ExpenseItem[] {
+  if (!Array.isArray(items)) return [];
+  return items.reduce<ExpenseItem[]>((acc, item) => {
+    if (typeof item === 'string') {
+      const name = item.trim();
+      if (name) acc.push({ name });
+      return acc;
+    }
+    if (item && typeof item === 'object') {
+      const maybeItem = item as { name?: unknown; price?: unknown };
+      if (typeof maybeItem.name === 'string' && maybeItem.name.trim()) {
+        const priceValue = typeof maybeItem.price === 'number' && !Number.isNaN(maybeItem.price)
+          ? maybeItem.price
+          : null;
+        acc.push({ name: maybeItem.name.trim(), price: priceValue });
+      }
+    }
+    return acc;
+  }, []);
+}
+
+export function parseExpenseItems(itemsText?: string | null): ExpenseItem[] {
+  if (!itemsText) return [];
+  try {
+    const parsed = JSON.parse(itemsText);
+    return normalizeExpenseItems(parsed);
+  } catch (error) {
+    console.log('Error parsing expense items JSON:', error);
     return [];
   }
 }
@@ -78,7 +110,7 @@ function normalizeExpense(expense: Expense): Expense {
   return {
     ...expense,
     name: expense.name ?? '',
-    items: Array.isArray(expense.items) ? expense.items : [],
+    items: normalizeExpenseItems(expense.items),
   };
 }
 
@@ -86,7 +118,7 @@ function normalizeExpenseRow(row: ExpenseRow): Expense {
   return {
     ...row,
     name: row.name ?? '',
-    items: parseItems(row.items),
+    items: parseExpenseItems(row.items),
   };
 }
 

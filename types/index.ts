@@ -47,10 +47,15 @@ export interface Sale {
   syncStatus: 'synced' | 'pending';
 }
 
+export interface ExpenseItem {
+  name: string;
+  price?: number | null;
+}
+
 export interface Expense {
   id: string;
   name: string;
-  items?: string[] | null;
+  items?: ExpenseItem[] | null;
   total: number;
   date: string;
   createdBy: string;
