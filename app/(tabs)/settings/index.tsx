@@ -29,7 +29,7 @@ import SyncProgressModal from '@/components/SyncProgressModal';
 import LaserBackground from '@/components/LaserBackground';
 
 const APP_VERSION = '1.0.0';
-const PRIVACY_POLICY_GITHUB_URL = 'https://github.com/user/myfoodcart-privacy-policy';
+const PRIVACY_POLICY_GITHUB_URL = 'https://damiank1106.github.io/MY-Food-Cart-V2/privacy-policy.html#changes';
 
 export default function SettingsScreen() {
   const router = useRouter();
