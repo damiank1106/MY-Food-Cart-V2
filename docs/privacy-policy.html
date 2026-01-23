@@ -1,66 +1,475 @@
-# Privacy Policy — MY Food Cart V2
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="theme-color" content="#0B1220" />
+  <meta name="description" content="Privacy Policy for MY Food Cart Inventory" />
+  <title>Privacy Policy — MY Food Cart V2</title>
 
-**Effective date:** January 22, 2026
+  <style>
+    :root{
+      --bg0:#070B14;
+      --bg1:#0B1220;
+      --card: rgba(255,255,255,.06);
+      --card2: rgba(255,255,255,.08);
+      --stroke: rgba(255,255,255,.12);
+      --text: rgba(255,255,255,.92);
+      --muted: rgba(255,255,255,.70);
+      --muted2: rgba(255,255,255,.58);
+      --accent:#57C8FF;
+      --accent2:#7B5CFF;
+      --good:#32D583;
+      --warn:#FEC84B;
+      --shadow: 0 18px 60px rgba(0,0,0,.55);
+      --radius: 20px;
+      --radius2: 28px;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace;
+      --sans: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
+    }
 
-This Privacy Policy explains how **MY Food Cart V2** (“the App”) collects, uses, stores, and shares information.
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0;
+      font-family: var(--sans);
+      color: var(--text);
+      background:
+        radial-gradient(1000px 700px at 15% 10%, rgba(87,200,255,.22), transparent 55%),
+        radial-gradient(900px 650px at 90% 15%, rgba(123,92,255,.18), transparent 55%),
+        radial-gradient(1100px 800px at 55% 100%, rgba(87,200,255,.12), transparent 60%),
+        linear-gradient(180deg, var(--bg0), var(--bg1));
+      overflow-x:hidden;
+    }
 
-## Who this app is for
-The App is designed for business use (e.g., food cart operations) by authorized users (such as managers, clerks, and staff). It is not intended for children.
+    a{color: var(--accent); text-decoration:none}
+    a:hover{text-decoration:underline}
 
-## Information we collect
-The App may collect and store the following data, depending on how you use it:
+    .wrap{
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 28px 18px 60px;
+    }
 
-### 1) Account & profile information
-- User name (if provided)
-- Role (e.g., general manager, operation manager, inventory clerk, developer)
-- PIN (used for app access)
-- Optional profile photo (if you choose to add one)
+    /* Top hero */
+    .hero{
+      position:relative;
+      border-radius: var(--radius2);
+      padding: 26px 22px;
+      background: linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.04));
+      border: 1px solid var(--stroke);
+      box-shadow: var(--shadow);
+      overflow:hidden;
+    }
 
-### 2) Business data you enter
-- Inventory items, quantities, pricing, and categories
-- Sales entries (date, totals, optional details)
-- Expense entries (date, totals, optional details)
-- Activity/history logs (e.g., actions performed in the app)
+    .hero:before{
+      content:"";
+      position:absolute;
+      inset:-2px;
+      background:
+        radial-gradient(700px 260px at 20% 0%, rgba(87,200,255,.35), transparent 60%),
+        radial-gradient(600px 220px at 85% 10%, rgba(123,92,255,.32), transparent 62%);
+      filter: blur(20px);
+      opacity:.65;
+      pointer-events:none;
+    }
 
-### 3) Device permissions (only when you use related features)
-- **Camera / Photos:** used to add a profile photo (if you choose).
-- **Storage access:** used for local app data storage and file handling on your device (if applicable).
-- **Microphone:** the App does **not** use the microphone to record audio in normal operation. If your device shows a microphone permission prompt, it may be due to system/media components; you can deny it and continue using core features.
+    .hero-inner{
+      position:relative;
+      display:flex;
+      gap: 18px;
+      align-items:flex-start;
+      justify-content:space-between;
+      flex-wrap:wrap;
+    }
 
-## How we use information
-We use the collected information to:
-- Provide app functionality (inventory, sales, expenses, summaries)
-- Authenticate users and enforce roles/permissions
-- Save your data locally on the device so the app can work offline
-- Synchronize data to your cloud database when sync is enabled (see below)
+    .brand{
+      display:flex;
+      gap: 14px;
+      align-items:center;
+      min-width: 260px;
+    }
 
-## Sync and cloud storage (Supabase)
-If you configure cloud sync, the App transmits your app data to your Supabase backend (database and storage) so it can be backed up and available across devices. Supabase acts as a service provider/processor for data you choose to sync.
+    .logo{
+      width: 44px;
+      height: 44px;
+      border-radius: 14px;
+      background:
+        linear-gradient(135deg, rgba(87,200,255,.95), rgba(123,92,255,.85));
+      box-shadow: 0 10px 30px rgba(87,200,255,.18);
+      border: 1px solid rgba(255,255,255,.22);
+      display:grid;
+      place-items:center;
+      flex: 0 0 auto;
+    }
 
-## Sharing of information
-We do **not** sell your data.
-We share data only:
-- With your configured Supabase backend for syncing (if enabled by you), and
-- When required to comply with applicable law.
+    .logo span{
+      font-family: var(--mono);
+      font-weight: 800;
+      font-size: 14px;
+      color: rgba(7,11,20,.88);
+      letter-spacing: .5px;
+    }
 
-## Data retention
-- Local data remains on your device until you delete it, reset the app, or uninstall the app.
-- Synced data remains in your Supabase project until you delete it from your database/storage.
+    h1{
+      margin:0;
+      font-size: 22px;
+      letter-spacing: .2px;
+    }
 
-## Security
-- The App stores data locally (including offline use).
-- We use reasonable measures to protect data; however, no method of storage or transmission is 100% secure.
-- You are responsible for securing devices that have access (PIN control, device lock, etc.).
+    .sub{
+      margin:6px 0 0;
+      color: var(--muted);
+      line-height:1.45;
+      font-size: 14px;
+    }
 
-## Your choices
-- You can choose not to provide optional fields (like profile photo or optional details).
-- You can manage your business data by editing/deleting entries inside the app.
-- If you want data removed from cloud sync, you must delete it from your Supabase project.
+    .meta{
+      display:flex;
+      gap: 10px;
+      flex-wrap:wrap;
+      align-items:center;
+      justify-content:flex-end;
+    }
 
-## Contact
-If you have questions or requests about this Privacy Policy, contact:
+    .pill{
+      border: 1px solid rgba(255,255,255,.14);
+      background: rgba(0,0,0,.18);
+      padding: 8px 10px;
+      border-radius: 999px;
+      color: var(--muted);
+      font-size: 12px;
+      display:flex;
+      gap:8px;
+      align-items:center;
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+    }
 
-**Email:** dedeveloper@icloud.com
+    .dot{
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--good);
+      box-shadow: 0 0 0 6px rgba(50,213,131,.10);
+    }
 
-## Changes to this policy
-We may update this Privacy Policy from time to time. The “Effective date” will reflect the latest version.
+    /* Layout */
+    .grid{
+      display:grid;
+      grid-template-columns: 1fr;
+      gap: 18px;
+      margin-top: 18px;
+    }
+    @media (min-width: 980px){
+      .grid{
+        grid-template-columns: 310px 1fr;
+        gap: 18px;
+        align-items:start;
+      }
+    }
+
+    /* Sidebar */
+    .side{
+      position: sticky;
+      top: 18px;
+      border-radius: var(--radius);
+      padding: 16px;
+      background: rgba(255,255,255,.05);
+      border: 1px solid var(--stroke);
+      box-shadow: 0 12px 40px rgba(0,0,0,.35);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+    }
+
+    .side h2{
+      margin: 0 0 10px;
+      font-size: 14px;
+      letter-spacing:.3px;
+      color: rgba(255,255,255,.88);
+    }
+
+    .toc{
+      list-style:none;
+      padding:0;
+      margin:0;
+      display:flex;
+      flex-direction:column;
+      gap: 6px;
+    }
+
+    .toc a{
+      display:flex;
+      gap:10px;
+      align-items:center;
+      padding: 10px 10px;
+      border-radius: 12px;
+      color: var(--muted);
+      border: 1px solid transparent;
+      background: transparent;
+      transition: all .18s ease;
+    }
+    .toc a:hover{
+      background: rgba(255,255,255,.06);
+      border-color: rgba(255,255,255,.10);
+      color: rgba(255,255,255,.88);
+      text-decoration:none;
+    }
+    .toc .k{
+      width: 22px;
+      height: 22px;
+      border-radius: 8px;
+      background: rgba(87,200,255,.14);
+      border: 1px solid rgba(87,200,255,.22);
+      display:grid;
+      place-items:center;
+      color: rgba(255,255,255,.88);
+      font-size: 12px;
+      flex:0 0 auto;
+    }
+
+    .mini{
+      margin-top: 14px;
+      padding-top: 14px;
+      border-top: 1px solid rgba(255,255,255,.10);
+      color: var(--muted2);
+      font-size: 12px;
+      line-height:1.5;
+    }
+    .mini code{
+      font-family: var(--mono);
+      font-size: 11px;
+      color: rgba(255,255,255,.78);
+      background: rgba(0,0,0,.22);
+      padding: 2px 6px;
+      border-radius: 8px;
+      border: 1px solid rgba(255,255,255,.10);
+    }
+
+    /* Main content cards */
+    .card{
+      border-radius: var(--radius);
+      padding: 18px 18px;
+      background: rgba(255,255,255,.05);
+      border: 1px solid var(--stroke);
+      box-shadow: 0 12px 40px rgba(0,0,0,.35);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+    }
+
+    .card h2{
+      margin: 0 0 10px;
+      font-size: 16px;
+      letter-spacing: .2px;
+      display:flex;
+      align-items:center;
+      gap: 10px;
+    }
+    .badge{
+      font-size: 11px;
+      color: rgba(255,255,255,.88);
+      border: 1px solid rgba(255,255,255,.14);
+      background: rgba(0,0,0,.18);
+      padding: 4px 8px;
+      border-radius: 999px;
+    }
+
+    .card p{
+      margin: 10px 0;
+      color: var(--muted);
+      line-height: 1.65;
+      font-size: 14px;
+    }
+
+    .card ul{
+      margin: 8px 0 0 18px;
+      color: var(--muted);
+      line-height: 1.65;
+      font-size: 14px;
+    }
+
+    .note{
+      margin-top: 12px;
+      padding: 12px 12px;
+      border-radius: 16px;
+      background: rgba(87,200,255,.08);
+      border: 1px solid rgba(87,200,255,.18);
+      color: rgba(255,255,255,.82);
+      font-size: 13px;
+      line-height: 1.55;
+    }
+
+    .warn{
+      background: rgba(254,200,75,.08);
+      border-color: rgba(254,200,75,.18);
+    }
+
+    .footer{
+      margin-top: 18px;
+      color: rgba(255,255,255,.55);
+      font-size: 12px;
+      text-align:center;
+    }
+
+    .mono{
+      font-family: var(--mono);
+    }
+  </style>
+</head>
+
+<body>
+  <div class="wrap">
+    <header class="hero" role="banner">
+      <div class="hero-inner">
+        <div class="brand">
+          <div class="logo" aria-hidden="true"><span>FC</span></div>
+          <div>
+            <h1>Privacy Policy — MY Food Cart V2</h1>
+            <p class="sub">
+              This page explains how the app handles data for inventory, sales, and expenses.
+            </p>
+          </div>
+        </div>
+
+        <div class="meta">
+          <div class="pill"><span class="dot"></span><span><b>Effective:</b> Jan 22, 2026</span></div>
+          <div class="pill"><span class="mono">₱</span><span>Philippine Peso focus</span></div>
+        </div>
+      </div>
+    </header>
+
+    <section class="grid" role="main">
+      <aside class="side">
+        <h2>On this page</h2>
+        <nav aria-label="Table of contents">
+          <ul class="toc">
+            <li><a href="#who"><span class="k">1</span> Who this app is for</a></li>
+            <li><a href="#collect"><span class="k">2</span> Information we collect</a></li>
+            <li><a href="#use"><span class="k">3</span> How we use information</a></li>
+            <li><a href="#sync"><span class="k">4</span> Sync & cloud storage</a></li>
+            <li><a href="#share"><span class="k">5</span> Sharing of information</a></li>
+            <li><a href="#retain"><span class="k">6</span> Data retention</a></li>
+            <li><a href="#security"><span class="k">7</span> Security</a></li>
+            <li><a href="#choices"><span class="k">8</span> Your choices</a></li>
+            <li><a href="#contact"><span class="k">9</span> Contact</a></li>
+            <li><a href="#changes"><span class="k">10</span> Changes to this policy</a></li>
+          </ul>
+        </nav>
+
+        <div class="mini">
+          <div><b>Tip:</b> Replace the email in <code>Contact</code> before publishing.</div>
+          <div style="margin-top:10px;">This policy is intended for Google Play review and store listing use.</div>
+        </div>
+      </aside>
+
+      <div style="display:flex; flex-direction:column; gap:18px;">
+        <article class="card" id="who">
+          <h2>Who this app is for <span class="badge">Section 1</span></h2>
+          <p>
+            <b>MY Food Cart Inventory</b> is designed for business use by authorized users
+            (e.g., manager/operations staff). It is not intended for children.
+          </p>
+        </article>
+
+        <article class="card" id="collect">
+          <h2>Information we collect <span class="badge">Section 2</span></h2>
+          <p>The app may collect and store the following, depending on how you use it:</p>
+          <ul>
+            <li><b>Account & profile info:</b> user name (if provided), role, and access PIN (for app login).</li>
+            <li><b>Business data you enter:</b> inventory items, quantities, pricing, sales records, expense records, summaries.</li>
+            <li><b>Optional media:</b> profile photo (only if you choose to add one).</li>
+          </ul>
+
+          <div class="note">
+            <b>Permissions:</b> If the app requests camera/photos, it is only for features you actively use (e.g., profile photo).
+            You can deny permissions and continue using core features.
+          </div>
+        </article>
+
+        <article class="card" id="use">
+          <h2>How we use information <span class="badge">Section 3</span></h2>
+          <ul>
+            <li>Provide app functionality (inventory, sales, expenses, summaries).</li>
+            <li>Authenticate users and enforce roles/permissions.</li>
+            <li>Support offline usage by storing data locally on your device.</li>
+            <li>Synchronize data to your cloud database when sync is enabled.</li>
+          </ul>
+        </article>
+
+        <article class="card" id="sync">
+          <h2>Sync & cloud storage (Supabase) <span class="badge">Section 4</span></h2>
+          <p>
+            If you configure cloud sync, the app transmits your business data to your Supabase backend
+            (database and storage) so it can be backed up and shared across devices.
+          </p>
+          <div class="note warn">
+            <b>Important:</b> Your Supabase project configuration (access rules, backups, and user management)
+            affects how synced data is protected. Keep your admin credentials secure.
+          </div>
+        </article>
+
+        <article class="card" id="share">
+          <h2>Sharing of information <span class="badge">Section 5</span></h2>
+          <p><b>We do not sell your data.</b></p>
+          <p>We share data only:</p>
+          <ul>
+            <li>With your configured Supabase backend for syncing (if enabled by you), and</li>
+            <li>When required to comply with applicable law.</li>
+          </ul>
+        </article>
+
+        <article class="card" id="retain">
+          <h2>Data retention <span class="badge">Section 6</span></h2>
+          <ul>
+            <li><b>Local data:</b> remains on your device until you delete it, reset the app, or uninstall the app.</li>
+            <li><b>Synced data:</b> remains in your Supabase project until you delete it from your database/storage.</li>
+          </ul>
+        </article>
+
+        <article class="card" id="security">
+          <h2>Security <span class="badge">Section 7</span></h2>
+          <ul>
+            <li>Data can be stored locally for offline use.</li>
+            <li>We use reasonable measures to protect data, but no system is 100% secure.</li>
+            <li>You are responsible for securing devices that can access the app (device lock, PIN, etc.).</li>
+          </ul>
+        </article>
+
+        <article class="card" id="choices">
+          <h2>Your choices <span class="badge">Section 8</span></h2>
+          <ul>
+            <li>You can skip optional fields (like profile photo or optional details).</li>
+            <li>You can edit/delete business entries in the app.</li>
+            <li>To remove synced data, delete it from your Supabase project.</li>
+          </ul>
+        </article>
+
+        <article class="card" id="contact">
+          <h2>Contact <span class="badge">Section 9</span></h2>
+          <p>
+            For questions or requests about this Privacy Policy, contact:
+          </p>
+          <p class="note">
+            <b>Email:</b> <span class="mono">dedeveloper@icloud.com</span>
+          </p>
+        </article>
+
+        <article class="card" id="changes">
+          <h2>Changes to this policy <span class="badge">Section 10</span></h2>
+          <p>
+            We may update this Privacy Policy from time to time. The “Effective date” at the top will reflect the latest version.
+          </p>
+        </article>
+
+        <div class="footer">
+          © <span id="y"></span> MY Food Cart V2• Privacy Policy
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    document.getElementById("y").textContent = new Date().getFullYear();
+  </script>
+</body>
+</html>
