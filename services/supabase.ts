@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { User, Category, InventoryItem, Sale, Expense, Activity } from '@/types';
+import { User, Category, InventoryItem, Sale, Expense, ExpenseItem, Activity } from '@/types';
 
 const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
 const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '';
@@ -15,6 +15,27 @@ export const supabase = SUPABASE_URL && SUPABASE_ANON_KEY
       },
     })
   : null;
+
+function normalizeExpenseItems(items: unknown): ExpenseItem[] {
+  if (!Array.isArray(items)) return [];
+  return items.reduce<ExpenseItem[]>((acc, item) => {
+    if (typeof item === 'string') {
+      const name = item.trim();
+      if (name) acc.push({ name });
+      return acc;
+    }
+    if (item && typeof item === 'object') {
+      const maybeItem = item as { name?: unknown; price?: unknown };
+      if (typeof maybeItem.name === 'string' && maybeItem.name.trim()) {
+        const priceValue = typeof maybeItem.price === 'number' && !Number.isNaN(maybeItem.price)
+          ? maybeItem.price
+          : null;
+        acc.push({ name: maybeItem.name.trim(), price: priceValue });
+      }
+    }
+    return acc;
+  }, []);
+}
 
 export function isSupabaseConfigured(): boolean {
   return !!(SUPABASE_URL && SUPABASE_ANON_KEY && supabase);
@@ -132,7 +153,7 @@ export async function fetchExpensesFromSupabase(): Promise<Expense[] | null> {
     return data?.map(e => ({
       id: e.id,
       name: e.name ?? '',
-      items: Array.isArray(e.items) ? e.items : [],
+      items: normalizeExpenseItems(e.items),
       total: e.total,
       date: e.date,
       createdBy: e.created_by,
@@ -288,7 +309,7 @@ export async function syncExpensesToSupabase(expenses: Expense[]): Promise<boole
       expenses.map(e => ({
         id: e.id,
         name: e.name,
-        items: e.items ?? [],
+        items: normalizeExpenseItems(e.items ?? []),
         total: e.total,
         date: e.date,
         created_by: e.createdBy,
