@@ -8,20 +8,23 @@ import {
   Dimensions,
   RefreshControl,
   useWindowDimensions,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Package, ShoppingCart, User, Settings } from 'lucide-react-native';
+import { Package, ShoppingCart, User, Settings, RefreshCw } from 'lucide-react-native';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { Colors } from '@/constants/colors';
 
 import { useRouter } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import { formatDate, ROLE_DISPLAY_NAMES, UserRole } from '@/types';
 import { getWeeklySalesTotals, getWeeklyExpenseTotals, getActivities, getUsers } from '@/services/database';
 import { getDayKeysForWeek, getWeekdayLabels, getWeekRange, getWeekStart, toLocalDayKey } from '@/services/dateUtils';
 import Svg, { Path, Circle, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
 import LaserBackground from '@/components/LaserBackground';
+import { useSync } from '@/contexts/SyncContext';
 
 const { width } = Dimensions.get('window');
 
@@ -74,6 +77,7 @@ const AUTHOR_VISIBLE_ROLES: UserRole[] = ['general_manager', 'operation_manager'
 export default function HomeScreen() {
   const router = useRouter();
   const { settings, user: currentUser } = useAuth();
+  const { lastSyncTime } = useSync();
   const theme = settings.darkMode ? Colors.dark : Colors.light;
 
   useEffect(() => {
@@ -88,6 +92,7 @@ export default function HomeScreen() {
   }
   const [selectedWeek, setSelectedWeek] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
+  const [isOverviewRefreshing, setIsOverviewRefreshing] = useState(false);
   const [showSales, setShowSales] = useState(true);
   const [showExpenses, setShowExpenses] = useState(true);
 
@@ -234,6 +239,27 @@ export default function HomeScreen() {
     setRefreshing(false);
   }, [refetchSales, refetchExpenses, refetchActivities, refetchUsers]);
 
+  const refreshOverview = useCallback(async () => {
+    setIsOverviewRefreshing(true);
+    try {
+      await Promise.all([refetchSales(), refetchExpenses()]);
+    } finally {
+      setIsOverviewRefreshing(false);
+    }
+  }, [refetchSales, refetchExpenses]);
+
+  useFocusEffect(
+    useCallback(() => {
+      refreshOverview();
+    }, [refreshOverview])
+  );
+
+  useEffect(() => {
+    if (lastSyncTime) {
+      refreshOverview();
+    }
+  }, [lastSyncTime, refreshOverview]);
+
   const pathData = chartData.map((point, index) => {
     const x = index * stepX;
     const y = chartHeight - (point.sales / maxValue) * chartHeight;
@@ -308,7 +334,20 @@ export default function HomeScreen() {
             </View>
 
             <View style={[styles.chartCard, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
-              <Text style={[styles.sectionTitle, { color: theme.text }]}>Weekly Overview</Text>
+              <View style={styles.overviewHeader}>
+                <Text style={[styles.sectionTitle, { color: theme.text }]}>Weekly Overview</Text>
+                <TouchableOpacity
+                  style={[styles.refreshButton, { backgroundColor: theme.cardHighlight, borderColor: theme.cardBorder }]}
+                  onPress={refreshOverview}
+                  disabled={isOverviewRefreshing}
+                >
+                  {isOverviewRefreshing ? (
+                    <ActivityIndicator size="small" color={theme.primary} />
+                  ) : (
+                    <RefreshCw color={theme.primary} size={16} />
+                  )}
+                </TouchableOpacity>
+              </View>
               
               <View style={styles.weekTotalsRow}>
                 <View style={[styles.weekTotalCard, { backgroundColor: theme.chartLine + '15' }]}>
@@ -524,6 +563,20 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: 16,
     borderWidth: 1,
+  },
+  overviewHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  refreshButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   chartContainer: {
     alignItems: 'center',
