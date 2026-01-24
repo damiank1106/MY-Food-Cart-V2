@@ -21,9 +21,9 @@ import { Colors } from '@/constants/colors';
 
 import { useRouter } from 'expo-router';
 import { formatDate, ROLE_DISPLAY_NAMES, UserRole } from '@/types';
-import { getWeeklySalesTotals, getWeeklyExpenseTotals, getActivities, getUsers } from '@/services/database';
+import { getWeeklySalesTotals, getWeeklyExpenseTotals, getActivities, getUsers, getSalesByDateRange, getExpensesByDateRange } from '@/services/database';
 import { getDayKeysForWeek, getWeekdayLabels, getWeekRange, getWeekStart, toLocalDayKey } from '@/services/dateUtils';
-import Svg, { Path, Circle, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
+import Svg, { Path, Circle, Defs, LinearGradient as SvgLinearGradient, Stop, Rect, Line } from 'react-native-svg';
 import LaserBackground from '@/components/LaserBackground';
 
 const { width } = Dimensions.get('window');
@@ -95,11 +95,13 @@ export default function HomeScreen() {
   const [isOverviewRefreshing, setIsOverviewRefreshing] = useState(false);
   const [showSales, setShowSales] = useState(true);
   const [showExpenses, setShowExpenses] = useState(true);
+  const [overviewTab, setOverviewTab] = useState<'overview' | 'netSplit'>('overview');
   const overviewRefreshInFlight = useRef(false);
 
   const { width: screenWidth } = useWindowDimensions();
   
   const welcomeFontSize = screenWidth < 360 ? 18 : screenWidth < 400 ? 20 : 24;
+  const isSmallScreen = screenWidth < 360;
 
   const weekStartsOn = 0;
 
@@ -124,6 +126,16 @@ export default function HomeScreen() {
   const { data: expensesTotalsMap = {}, refetch: refetchExpenses } = useQuery({
     queryKey: ['weeklyExpenseTotals', startDateStr, endDateStr],
     queryFn: () => getWeeklyExpenseTotals(startDateStr, endDateStr),
+  });
+
+  const { data: weeklySales = [], refetch: refetchWeeklySales } = useQuery({
+    queryKey: ['weeklySalesEntries', startDateStr, endDateStr],
+    queryFn: () => getSalesByDateRange(startDateStr, endDateStr),
+  });
+
+  const { data: weeklyExpenses = [], refetch: refetchWeeklyExpenses } = useQuery({
+    queryKey: ['weeklyExpenseEntries', startDateStr, endDateStr],
+    queryFn: () => getExpensesByDateRange(startDateStr, endDateStr),
   });
 
   const { data: activities = [], refetch: refetchActivities } = useQuery({
@@ -209,6 +221,63 @@ export default function HomeScreen() {
     return { sales: salesTotal, expenses: expensesTotal, net: salesTotal - expensesTotal };
   }, [expensesSeries, salesSeries, startDateStr, endDateStr]);
 
+  const netSplitByDay = useMemo(() => {
+    const dayTotals = new Map(
+      weekDayKeys.map(key => [key, { op: 0, gm: 0, fd: 0 }])
+    );
+
+    const resolveBucket = (userId: string) => {
+      const role = userMap.get(userId)?.role;
+      if (role === 'operation_manager') return 'op';
+      if (role === 'general_manager') return 'gm';
+      return 'fd';
+    };
+
+    for (const sale of weeklySales) {
+      const dayKey = toLocalDayKey(sale.date);
+      const bucket = dayTotals.get(dayKey);
+      if (!bucket) continue;
+      const key = resolveBucket(sale.createdBy);
+      bucket[key] += Number(sale.total || 0);
+    }
+
+    for (const expense of weeklyExpenses) {
+      const dayKey = toLocalDayKey(expense.date);
+      const bucket = dayTotals.get(dayKey);
+      if (!bucket) continue;
+      const key = resolveBucket(expense.createdBy);
+      bucket[key] -= Number(expense.total || 0);
+    }
+
+    return dayTotals;
+  }, [userMap, weekDayKeys, weeklyExpenses, weeklySales]);
+
+  const netSplitChartData = useMemo(() => {
+    return weekDayKeys.map((dateStr, index) => {
+      const day = weekDayLabels[index] ?? '';
+      const bucket = netSplitByDay.get(dateStr) ?? { op: 0, gm: 0, fd: 0 };
+      return {
+        day,
+        dateStr,
+        op: bucket.op,
+        gm: bucket.gm,
+        fd: bucket.fd,
+      };
+    });
+  }, [netSplitByDay, weekDayKeys, weekDayLabels]);
+
+  const netSplitTotals = useMemo(() => {
+    return netSplitChartData.reduce(
+      (totals, day) => {
+        totals.op += day.op;
+        totals.gm += day.gm;
+        totals.fd += day.fd;
+        return totals;
+      },
+      { op: 0, gm: 0, fd: 0 }
+    );
+  }, [netSplitChartData]);
+
   const rawMaxValue = Math.max(...chartData.map(d => Math.max(d.sales, d.expenses)), 100);
   
   const getYAxisConfig = (maxVal: number) => {
@@ -234,23 +303,38 @@ export default function HomeScreen() {
   const chartWidth = width - 80;
   const stepX = chartWidth / 6;
 
+  const splitStepX = chartWidth / 7;
+  const splitGroupWidth = splitStepX * 0.7;
+  const splitBarWidth = splitGroupWidth / 3;
+  const splitMaxValue = Math.max(...netSplitChartData.flatMap(day => [day.op, day.gm, day.fd]), 0);
+  const splitMinValue = Math.min(...netSplitChartData.flatMap(day => [day.op, day.gm, day.fd]), 0);
+  const splitRange = splitMaxValue - splitMinValue || 1;
+  const splitZeroY = chartHeight - ((0 - splitMinValue) / splitRange) * chartHeight;
+
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await Promise.all([refetchSales(), refetchExpenses(), refetchActivities(), refetchUsers()]);
+    await Promise.all([
+      refetchSales(),
+      refetchExpenses(),
+      refetchWeeklySales(),
+      refetchWeeklyExpenses(),
+      refetchActivities(),
+      refetchUsers(),
+    ]);
     setRefreshing(false);
-  }, [refetchSales, refetchExpenses, refetchActivities, refetchUsers]);
+  }, [refetchSales, refetchExpenses, refetchWeeklySales, refetchWeeklyExpenses, refetchActivities, refetchUsers]);
 
   const handleOverviewRefresh = useCallback(async () => {
     if (overviewRefreshInFlight.current) return;
     overviewRefreshInFlight.current = true;
     setIsOverviewRefreshing(true);
     try {
-      await Promise.all([refetchSales(), refetchExpenses()]);
+      await Promise.all([refetchSales(), refetchExpenses(), refetchWeeklySales(), refetchWeeklyExpenses()]);
     } finally {
       setIsOverviewRefreshing(false);
       overviewRefreshInFlight.current = false;
     }
-  }, [refetchSales, refetchExpenses]);
+  }, [refetchSales, refetchExpenses, refetchWeeklySales, refetchWeeklyExpenses]);
 
   useEffect(() => {
     handleOverviewRefresh();
@@ -337,7 +421,48 @@ export default function HomeScreen() {
 
             <View style={[styles.chartCard, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
               <View style={styles.overviewHeader}>
-                <Text style={[styles.sectionTitle, { color: theme.text }]}>Weekly Overview</Text>
+                <View style={styles.tabRow}>
+                  <TouchableOpacity
+                    style={[
+                      styles.tabButton,
+                      isSmallScreen && styles.tabButtonSmall,
+                      { borderColor: theme.cardBorder },
+                      overviewTab === 'overview' && { backgroundColor: theme.primary + '20', borderColor: theme.primary },
+                    ]}
+                    onPress={() => setOverviewTab('overview')}
+                  >
+                    <Text
+                      style={[
+                        styles.tabLabel,
+                        isSmallScreen && styles.tabLabelSmall,
+                        { color: overviewTab === 'overview' ? theme.primary : theme.textSecondary },
+                      ]}
+                      numberOfLines={1}
+                    >
+                      Overview
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.tabButton,
+                      isSmallScreen && styles.tabButtonSmall,
+                      { borderColor: theme.cardBorder },
+                      overviewTab === 'netSplit' && { backgroundColor: theme.primary + '20', borderColor: theme.primary },
+                    ]}
+                    onPress={() => setOverviewTab('netSplit')}
+                  >
+                    <Text
+                      style={[
+                        styles.tabLabel,
+                        isSmallScreen && styles.tabLabelSmall,
+                        { color: overviewTab === 'netSplit' ? theme.primary : theme.textSecondary },
+                      ]}
+                      numberOfLines={1}
+                    >
+                      Net Split
+                    </Text>
+                  </TouchableOpacity>
+                </View>
                 <TouchableOpacity
                   style={styles.overviewRefreshButton}
                   onPress={handleOverviewRefresh}
@@ -351,101 +476,180 @@ export default function HomeScreen() {
                 </TouchableOpacity>
               </View>
               
-              <View style={styles.weekTotalsRow}>
-                <View style={[styles.weekTotalCard, { backgroundColor: theme.chartLine + '15' }]}>
-                  <Text style={[styles.weekTotalLabel, { color: theme.textSecondary }]}>Sales</Text>
-                  <Text style={[styles.weekTotalValue, { color: theme.chartLine }]}>
-                    ₱{weekTotals.sales.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </Text>
-                </View>
-                <View style={[styles.weekTotalCard, { backgroundColor: theme.error + '15' }]}>
-                  <Text style={[styles.weekTotalLabel, { color: theme.textSecondary }]}>Expenses</Text>
-                  <Text style={[styles.weekTotalValue, { color: theme.error }]}>
-                    ₱{weekTotals.expenses.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </Text>
-                </View>
-              </View>
-              
-              <View style={styles.chartLegend}>
-                <TouchableOpacity 
-                  style={[
-                    styles.legendToggle,
-                    { borderColor: showSales ? theme.chartLine : theme.cardBorder },
-                    showSales && { backgroundColor: theme.chartLine + '20' }
-                  ]}
-                  onPress={() => setShowSales(!showSales)}
-                >
-                  <View style={[styles.legendDot, { backgroundColor: theme.chartLine, opacity: showSales ? 1 : 0.4 }]} />
-                  <Text style={[styles.legendText, { color: showSales ? theme.chartLine : theme.textMuted }]}>Sales</Text>
-                </TouchableOpacity>
-                <TouchableOpacity 
-                  style={[
-                    styles.legendToggle,
-                    { borderColor: showExpenses ? theme.error : theme.cardBorder },
-                    showExpenses && { backgroundColor: theme.error + '20' }
-                  ]}
-                  onPress={() => setShowExpenses(!showExpenses)}
-                >
-                  <View style={[styles.legendDot, { backgroundColor: theme.error, opacity: showExpenses ? 1 : 0.4 }]} />
-                  <Text style={[styles.legendText, { color: showExpenses ? theme.error : theme.textMuted }]}>Expenses</Text>
-                </TouchableOpacity>
-              </View>
-              
-              <View style={styles.chartContainer}>
-                <Svg width={chartWidth + 48} height={chartHeight + 30} style={styles.chart}>
-                  <Defs>
-                    <SvgLinearGradient id="areaGradient" x1="0" y1="0" x2="0" y2="1">
-                      <Stop offset="0" stopColor={theme.chartLine} stopOpacity="0.3" />
-                      <Stop offset="1" stopColor={theme.chartLine} stopOpacity="0.05" />
-                    </SvgLinearGradient>
-                    <SvgLinearGradient id="expenseGradient" x1="0" y1="0" x2="0" y2="1">
-                      <Stop offset="0" stopColor={theme.error} stopOpacity="0.2" />
-                      <Stop offset="1" stopColor={theme.error} stopOpacity="0.02" />
-                    </SvgLinearGradient>
-                  </Defs>
+              {overviewTab === 'overview' ? (
+                <>
+                  <View style={styles.weekTotalsRow}>
+                    <View style={[styles.weekTotalCard, { backgroundColor: theme.chartLine + '15' }]}> 
+                      <Text style={[styles.weekTotalLabel, { color: theme.textSecondary }]}>Sales</Text>
+                      <Text style={[styles.weekTotalValue, { color: theme.chartLine }]}>
+                        ₱{weekTotals.sales.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </Text>
+                    </View>
+                    <View style={[styles.weekTotalCard, { backgroundColor: theme.error + '15' }]}> 
+                      <Text style={[styles.weekTotalLabel, { color: theme.textSecondary }]}>Expenses</Text>
+                      <Text style={[styles.weekTotalValue, { color: theme.error }]}>
+                        ₱{weekTotals.expenses.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </Text>
+                    </View>
+                  </View>
                   
-                  {showSales && (
-                    <>
-                      <Path d={areaPath} fill="url(#areaGradient)" />
-                      <Path d={pathData} stroke={theme.chartLine} strokeWidth={2} fill="none" />
-                    </>
-                  )}
+                  <View style={styles.chartLegend}>
+                    <TouchableOpacity 
+                      style={[
+                        styles.legendToggle,
+                        { borderColor: showSales ? theme.chartLine : theme.cardBorder },
+                        showSales && { backgroundColor: theme.chartLine + '20' }
+                      ]}
+                      onPress={() => setShowSales(!showSales)}
+                    >
+                      <View style={[styles.legendDot, { backgroundColor: theme.chartLine, opacity: showSales ? 1 : 0.4 }]} />
+                      <Text style={[styles.legendText, { color: showSales ? theme.chartLine : theme.textMuted }]}>Sales</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity 
+                      style={[
+                        styles.legendToggle,
+                        { borderColor: showExpenses ? theme.error : theme.cardBorder },
+                        showExpenses && { backgroundColor: theme.error + '20' }
+                      ]}
+                      onPress={() => setShowExpenses(!showExpenses)}
+                    >
+                      <View style={[styles.legendDot, { backgroundColor: theme.error, opacity: showExpenses ? 1 : 0.4 }]} />
+                      <Text style={[styles.legendText, { color: showExpenses ? theme.error : theme.textMuted }]}>Expenses</Text>
+                    </TouchableOpacity>
+                  </View>
                   
-                  {showExpenses && (
-                    <>
-                      <Path d={expenseAreaPath} fill="url(#expenseGradient)" />
-                      <Path d={expensePathData} stroke={theme.error} strokeWidth={2} fill="none" strokeDasharray="4,4" />
-                    </>
-                  )}
+                  <View style={styles.chartContainer}>
+                    <Svg width={chartWidth + 48} height={chartHeight + 30} style={styles.chart}>
+                      <Defs>
+                        <SvgLinearGradient id="areaGradient" x1="0" y1="0" x2="0" y2="1">
+                          <Stop offset="0" stopColor={theme.chartLine} stopOpacity="0.3" />
+                          <Stop offset="1" stopColor={theme.chartLine} stopOpacity="0.05" />
+                        </SvgLinearGradient>
+                        <SvgLinearGradient id="expenseGradient" x1="0" y1="0" x2="0" y2="1">
+                          <Stop offset="0" stopColor={theme.error} stopOpacity="0.2" />
+                          <Stop offset="1" stopColor={theme.error} stopOpacity="0.02" />
+                        </SvgLinearGradient>
+                      </Defs>
+                      
+                      {showSales && (
+                        <>
+                          <Path d={areaPath} fill="url(#areaGradient)" />
+                          <Path d={pathData} stroke={theme.chartLine} strokeWidth={2} fill="none" />
+                        </>
+                      )}
+                      
+                      {showExpenses && (
+                        <>
+                          <Path d={expenseAreaPath} fill="url(#expenseGradient)" />
+                          <Path d={expensePathData} stroke={theme.error} strokeWidth={2} fill="none" strokeDasharray="4,4" />
+                        </>
+                      )}
+                      
+                      {showSales && chartData.map((point, index) => (
+                        <Circle
+                          key={`sales-${index}`}
+                          cx={index * stepX}
+                          cy={chartHeight - (point.sales / maxValue) * chartHeight}
+                          r={4}
+                          fill={theme.chartLine}
+                        />
+                      ))}
+                      {showExpenses && chartData.map((point, index) => (
+                        <Circle
+                          key={`expense-${index}`}
+                          cx={index * stepX}
+                          cy={chartHeight - (point.expenses / maxValue) * chartHeight}
+                          r={3}
+                          fill={theme.error}
+                        />
+                      ))}
+                    </Svg>
+                  </View>
                   
-                  {showSales && chartData.map((point, index) => (
-                    <Circle
-                      key={`sales-${index}`}
-                      cx={index * stepX}
-                      cy={chartHeight - (point.sales / maxValue) * chartHeight}
-                      r={4}
-                      fill={theme.chartLine}
-                    />
-                  ))}
-                  {showExpenses && chartData.map((point, index) => (
-                    <Circle
-                      key={`expense-${index}`}
-                      cx={index * stepX}
-                      cy={chartHeight - (point.expenses / maxValue) * chartHeight}
-                      r={3}
-                      fill={theme.error}
-                    />
-                  ))}
-                </Svg>
-              </View>
-              
-              <View style={styles.xAxis}>
-                {chartData.map((point, index) => (
-                  <Text key={index} style={[styles.xAxisLabel, { color: theme.textMuted }]}>
-                    {point.day}
-                  </Text>
-                ))}
-              </View>
+                  <View style={styles.xAxis}>
+                    {chartData.map((point, index) => (
+                      <Text key={index} style={[styles.xAxisLabel, { color: theme.textMuted }]}>
+                        {point.day}
+                      </Text>
+                    ))}
+                  </View>
+                </>
+              ) : (
+                <>
+                  <View style={styles.weekTotalsRow}>
+                    <View style={[styles.weekTotalCard, { backgroundColor: theme.success + '15' }]}> 
+                      <Text style={[styles.weekTotalLabel, { color: theme.textSecondary }]}>OP</Text>
+                      <Text style={[styles.weekTotalValue, { color: theme.success }]}>
+                        ₱{netSplitTotals.op.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </Text>
+                    </View>
+                    <View style={[styles.weekTotalCard, { backgroundColor: theme.primary + '15' }]}> 
+                      <Text style={[styles.weekTotalLabel, { color: theme.textSecondary }]}>GM</Text>
+                      <Text style={[styles.weekTotalValue, { color: theme.primary }]}>
+                        ₱{netSplitTotals.gm.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </Text>
+                    </View>
+                    <View style={[styles.weekTotalCard, { backgroundColor: theme.warning + '15' }]}> 
+                      <Text style={[styles.weekTotalLabel, { color: theme.textSecondary }]}>FD</Text>
+                      <Text style={[styles.weekTotalValue, { color: theme.warning }]}>
+                        ₱{netSplitTotals.fd.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.chartLegend}>
+                    <View style={[styles.legendToggle, { borderColor: theme.cardBorder }]}> 
+                      <View style={[styles.legendDot, { backgroundColor: theme.success }]} />
+                      <Text style={[styles.legendText, { color: theme.success }]}>OP</Text>
+                    </View>
+                    <View style={[styles.legendToggle, { borderColor: theme.cardBorder }]}> 
+                      <View style={[styles.legendDot, { backgroundColor: theme.primary }]} />
+                      <Text style={[styles.legendText, { color: theme.primary }]}>GM</Text>
+                    </View>
+                    <View style={[styles.legendToggle, { borderColor: theme.cardBorder }]}> 
+                      <View style={[styles.legendDot, { backgroundColor: theme.warning }]} />
+                      <Text style={[styles.legendText, { color: theme.warning }]}>FD</Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.chartContainer}>
+                    <Svg width={chartWidth + 48} height={chartHeight + 30} style={styles.chart}>
+                      <Line x1={0} y1={splitZeroY} x2={chartWidth} y2={splitZeroY} stroke={theme.chartGrid} strokeWidth={1} />
+                      {netSplitChartData.map((point, index) => {
+                        const groupX = index * splitStepX + (splitStepX - splitGroupWidth) / 2;
+                        const values = [point.op, point.gm, point.fd];
+                        const colors = [theme.success, theme.primary, theme.warning];
+                        return values.map((value, seriesIndex) => {
+                          const barX = groupX + seriesIndex * splitBarWidth;
+                          const barY = value >= 0
+                            ? splitZeroY - ((value - 0) / splitRange) * chartHeight
+                            : splitZeroY;
+                          const barHeight = Math.abs((value / splitRange) * chartHeight);
+                          return (
+                            <Rect
+                              key={`split-${index}-${seriesIndex}`}
+                              x={barX}
+                              y={barY}
+                              width={splitBarWidth * 0.8}
+                              height={barHeight}
+                              fill={colors[seriesIndex]}
+                              rx={3}
+                            />
+                          );
+                        });
+                      })}
+                    </Svg>
+                  </View>
+
+                  <View style={styles.xAxis}>
+                    {netSplitChartData.map((point, index) => (
+                      <Text key={index} style={[styles.xAxisLabel, { color: theme.textMuted }]}>
+                        {point.day}
+                      </Text>
+                    ))}
+                  </View>
+                </>
+              )}
             </View>
           </View>
 
@@ -570,6 +774,32 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+  },
+  tabRow: {
+    flexDirection: 'row',
+    flex: 1,
+    gap: 8,
+    marginRight: 12,
+  },
+  tabButton: {
+    flex: 1,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tabButtonSmall: {
+    paddingVertical: 4,
+    paddingHorizontal: 6,
+  },
+  tabLabel: {
+    fontSize: 12,
+    fontWeight: '600' as const,
+  },
+  tabLabelSmall: {
+    fontSize: 10,
   },
   overviewRefreshButton: {
     padding: 4,
