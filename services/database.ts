@@ -141,6 +141,15 @@ async function ensureItemsColumn(table: 'sales' | 'expenses'): Promise<void> {
   }
 }
 
+async function ensureCreatedByRoleColumn(table: 'sales' | 'expenses'): Promise<void> {
+  if (!db) return;
+  const columns = await db.getAllAsync<{ name: string }>(`PRAGMA table_info(${table})`);
+  const hasCreatedByRole = columns.some(column => column.name === 'createdByRole');
+  if (!hasCreatedByRole) {
+    await db.runAsync(`ALTER TABLE ${table} ADD COLUMN createdByRole TEXT`);
+  }
+}
+
 export async function initDatabase(): Promise<void> {
   console.log('Initializing database...');
   
@@ -209,6 +218,7 @@ export async function initDatabase(): Promise<void> {
         total REAL NOT NULL,
         date TEXT NOT NULL,
         createdBy TEXT NOT NULL,
+        createdByRole TEXT,
         createdAt TEXT NOT NULL,
         updatedAt TEXT NOT NULL,
         syncStatus TEXT DEFAULT 'pending'
@@ -221,6 +231,7 @@ export async function initDatabase(): Promise<void> {
         total REAL NOT NULL,
         date TEXT NOT NULL,
         createdBy TEXT NOT NULL,
+        createdByRole TEXT,
         createdAt TEXT NOT NULL,
         updatedAt TEXT NOT NULL,
         syncStatus TEXT DEFAULT 'pending'
@@ -238,6 +249,8 @@ export async function initDatabase(): Promise<void> {
 
       await ensureItemsColumn('sales');
       await ensureItemsColumn('expenses');
+      await ensureCreatedByRoleColumn('sales');
+      await ensureCreatedByRoleColumn('expenses');
 
       console.log('Database tables created');
       await seedDefaultData();
@@ -637,12 +650,18 @@ export async function getSalesByDate(date: string): Promise<Sale[]> {
 export async function getSalesByDateRange(startDate: string, endDate: string): Promise<Sale[]> {
   if (Platform.OS === 'web') {
     const sales = await getFromStorage<Sale[]>(STORAGE_KEYS.sales, []);
-    return sales.filter(s => s.date >= startDate && s.date <= endDate).map(normalizeSale);
+    return sales.filter(s => {
+      const key = toLocalDayKey(s.date);
+      return key >= startDate && key <= endDate;
+    }).map(normalizeSale);
   }
   const database = await ensureDb();
   if (!database) return [];
   try {
-    const rows = await database.getAllAsync<SaleRow>('SELECT * FROM sales WHERE date >= ? AND date <= ? ORDER BY date DESC', [startDate, endDate]);
+    const rows = await database.getAllAsync<SaleRow>(
+      'SELECT * FROM sales WHERE substr(date, 1, 10) >= ? AND substr(date, 1, 10) <= ? ORDER BY date DESC',
+      [startDate, endDate]
+    );
     return rows.map(normalizeSaleRow);
   } catch (error) {
     console.log('Error getting sales by date range:', error);
@@ -672,8 +691,19 @@ export async function createSale(sale: Omit<Sale, 'id' | 'createdAt' | 'updatedA
   const database = await ensureDb();
   if (!database) throw new Error('Database not initialized');
   await database.runAsync(
-    'INSERT INTO sales (id, name, items, total, date, createdBy, createdAt, updatedAt, syncStatus) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    [newSale.id, newSale.name, serializeItems(newSale.items), newSale.total, newSale.date, newSale.createdBy, now, now, 'pending']
+    'INSERT INTO sales (id, name, items, total, date, createdBy, createdByRole, createdAt, updatedAt, syncStatus) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    [
+      newSale.id,
+      newSale.name,
+      serializeItems(newSale.items),
+      newSale.total,
+      newSale.date,
+      newSale.createdBy,
+      newSale.createdByRole ?? null,
+      now,
+      now,
+      'pending',
+    ]
   );
   return newSale;
 }
@@ -727,12 +757,18 @@ export async function getExpensesByDate(date: string): Promise<Expense[]> {
 export async function getExpensesByDateRange(startDate: string, endDate: string): Promise<Expense[]> {
   if (Platform.OS === 'web') {
     const expenses = await getFromStorage<Expense[]>(STORAGE_KEYS.expenses, []);
-    return expenses.filter(e => e.date >= startDate && e.date <= endDate).map(normalizeExpense);
+    return expenses.filter(e => {
+      const key = toLocalDayKey(e.date);
+      return key >= startDate && key <= endDate;
+    }).map(normalizeExpense);
   }
   const database = await ensureDb();
   if (!database) return [];
   try {
-    const rows = await database.getAllAsync<ExpenseRow>('SELECT * FROM expenses WHERE date >= ? AND date <= ? ORDER BY date DESC', [startDate, endDate]);
+    const rows = await database.getAllAsync<ExpenseRow>(
+      'SELECT * FROM expenses WHERE substr(date, 1, 10) >= ? AND substr(date, 1, 10) <= ? ORDER BY date DESC',
+      [startDate, endDate]
+    );
     return rows.map(normalizeExpenseRow);
   } catch (error) {
     console.log('Error getting expenses by date range:', error);
@@ -762,8 +798,19 @@ export async function createExpense(expense: Omit<Expense, 'id' | 'createdAt' | 
   const database = await ensureDb();
   if (!database) throw new Error('Database not initialized');
   await database.runAsync(
-    'INSERT INTO expenses (id, name, items, total, date, createdBy, createdAt, updatedAt, syncStatus) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    [newExpense.id, newExpense.name, serializeItems(newExpense.items), newExpense.total, newExpense.date, newExpense.createdBy, now, now, 'pending']
+    'INSERT INTO expenses (id, name, items, total, date, createdBy, createdByRole, createdAt, updatedAt, syncStatus) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    [
+      newExpense.id,
+      newExpense.name,
+      serializeItems(newExpense.items),
+      newExpense.total,
+      newExpense.date,
+      newExpense.createdBy,
+      newExpense.createdByRole ?? null,
+      now,
+      now,
+      'pending',
+    ]
   );
   return newExpense;
 }
@@ -1068,13 +1115,35 @@ export async function upsertSalesFromServer(serverSales: Sale[]): Promise<void> 
     const existing = await db.getFirstAsync<Sale>('SELECT * FROM sales WHERE id = ?', [serverSale.id]);
     if (!existing) {
       await db.runAsync(
-        'INSERT INTO sales (id, name, items, total, date, createdBy, createdAt, updatedAt, syncStatus) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-        [serverSale.id, serverSale.name, serializeItems(serverSale.items), serverSale.total, serverSale.date, serverSale.createdBy, serverSale.createdAt, serverSale.updatedAt, 'synced']
+        'INSERT INTO sales (id, name, items, total, date, createdBy, createdByRole, createdAt, updatedAt, syncStatus) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [
+          serverSale.id,
+          serverSale.name,
+          serializeItems(serverSale.items),
+          serverSale.total,
+          serverSale.date,
+          serverSale.createdBy,
+          serverSale.createdByRole ?? null,
+          serverSale.createdAt,
+          serverSale.updatedAt,
+          'synced',
+        ]
       );
     } else if (existing.syncStatus !== 'pending') {
       await db.runAsync(
-        'UPDATE sales SET name = ?, items = ?, total = ?, date = ?, createdBy = ?, createdAt = ?, updatedAt = ?, syncStatus = ? WHERE id = ?',
-        [serverSale.name, serializeItems(serverSale.items), serverSale.total, serverSale.date, serverSale.createdBy, serverSale.createdAt, serverSale.updatedAt, 'synced', serverSale.id]
+        'UPDATE sales SET name = ?, items = ?, total = ?, date = ?, createdBy = ?, createdByRole = ?, createdAt = ?, updatedAt = ?, syncStatus = ? WHERE id = ?',
+        [
+          serverSale.name,
+          serializeItems(serverSale.items),
+          serverSale.total,
+          serverSale.date,
+          serverSale.createdBy,
+          serverSale.createdByRole ?? null,
+          serverSale.createdAt,
+          serverSale.updatedAt,
+          'synced',
+          serverSale.id,
+        ]
       );
     }
   }
@@ -1107,13 +1176,35 @@ export async function upsertExpensesFromServer(serverExpenses: Expense[]): Promi
     const existing = await db.getFirstAsync<Expense>('SELECT * FROM expenses WHERE id = ?', [serverExpense.id]);
     if (!existing) {
       await db.runAsync(
-        'INSERT INTO expenses (id, name, items, total, date, createdBy, createdAt, updatedAt, syncStatus) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-        [serverExpense.id, serverExpense.name, serializeItems(serverExpense.items), serverExpense.total, serverExpense.date, serverExpense.createdBy, serverExpense.createdAt, serverExpense.updatedAt, 'synced']
+        'INSERT INTO expenses (id, name, items, total, date, createdBy, createdByRole, createdAt, updatedAt, syncStatus) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [
+          serverExpense.id,
+          serverExpense.name,
+          serializeItems(serverExpense.items),
+          serverExpense.total,
+          serverExpense.date,
+          serverExpense.createdBy,
+          serverExpense.createdByRole ?? null,
+          serverExpense.createdAt,
+          serverExpense.updatedAt,
+          'synced',
+        ]
       );
     } else if (existing.syncStatus !== 'pending') {
       await db.runAsync(
-        'UPDATE expenses SET name = ?, items = ?, total = ?, date = ?, createdBy = ?, createdAt = ?, updatedAt = ?, syncStatus = ? WHERE id = ?',
-        [serverExpense.name, serializeItems(serverExpense.items), serverExpense.total, serverExpense.date, serverExpense.createdBy, serverExpense.createdAt, serverExpense.updatedAt, 'synced', serverExpense.id]
+        'UPDATE expenses SET name = ?, items = ?, total = ?, date = ?, createdBy = ?, createdByRole = ?, createdAt = ?, updatedAt = ?, syncStatus = ? WHERE id = ?',
+        [
+          serverExpense.name,
+          serializeItems(serverExpense.items),
+          serverExpense.total,
+          serverExpense.date,
+          serverExpense.createdBy,
+          serverExpense.createdByRole ?? null,
+          serverExpense.createdAt,
+          serverExpense.updatedAt,
+          'synced',
+          serverExpense.id,
+        ]
       );
     }
   }

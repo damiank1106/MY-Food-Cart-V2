@@ -42,6 +42,7 @@ export interface Sale {
   total: number;
   date: string;
   createdBy: string;
+  createdByRole?: UserRole | null;
   createdAt: string;
   updatedAt: string;
   syncStatus: 'synced' | 'pending';
@@ -59,6 +60,7 @@ export interface Expense {
   total: number;
   date: string;
   createdBy: string;
+  createdByRole?: UserRole | null;
   createdAt: string;
   updatedAt: string;
   syncStatus: 'synced' | 'pending';

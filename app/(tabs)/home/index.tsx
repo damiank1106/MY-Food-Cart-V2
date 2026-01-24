@@ -73,6 +73,22 @@ function getRelativeTime(dateString: string): string {
 }
 
 const AUTHOR_VISIBLE_ROLES: UserRole[] = ['general_manager', 'operation_manager', 'developer'];
+type SplitKey = 'op' | 'gm' | 'fd';
+
+const normalizeSplitRole = (value: string): SplitKey | null => {
+  const normalized = value.toLowerCase().replace(/[\s_-]/g, '');
+  if (['operationmanager', 'operationsmanager', 'op', 'operations'].includes(normalized)) return 'op';
+  if (['generalmanager', 'gm', 'general'].includes(normalized)) return 'gm';
+  if (['foodcart', 'fd', 'food'].includes(normalized)) return 'fd';
+  if (['inventoryclerk', 'developer', 'worker', 'staff'].includes(normalized)) return 'fd';
+  return null;
+};
+
+const roleToSplitKey = (role?: UserRole | null): SplitKey => {
+  if (role === 'operation_manager') return 'op';
+  if (role === 'general_manager') return 'gm';
+  return 'fd';
+};
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -95,8 +111,23 @@ export default function HomeScreen() {
   const [isOverviewRefreshing, setIsOverviewRefreshing] = useState(false);
   const [showSales, setShowSales] = useState(true);
   const [showExpenses, setShowExpenses] = useState(true);
+  const [showSplitOp, setShowSplitOp] = useState(true);
+  const [showSplitGm, setShowSplitGm] = useState(true);
+  const [showSplitFd, setShowSplitFd] = useState(true);
   const [overviewTab, setOverviewTab] = useState<'overview' | 'netSplit'>('overview');
   const overviewRefreshInFlight = useRef(false);
+
+  const toggleSplitSeries = useCallback((key: SplitKey) => {
+    if (key === 'op') {
+      setShowSplitOp(prev => !prev);
+      return;
+    }
+    if (key === 'gm') {
+      setShowSplitGm(prev => !prev);
+      return;
+    }
+    setShowSplitFd(prev => !prev);
+  }, []);
 
   const { width: screenWidth } = useWindowDimensions();
   
@@ -152,6 +183,17 @@ export default function HomeScreen() {
     const map = new Map<string, { name: string; role: UserRole }>();
     for (const u of users) {
       map.set(u.id, { name: u.name, role: u.role });
+    }
+    return map;
+  }, [users]);
+
+  const userNameMap = useMemo(() => {
+    const map = new Map<string, UserRole>();
+    for (const u of users) {
+      const normalizedName = u.name?.trim().toLowerCase();
+      if (normalizedName) {
+        map.set(normalizedName, u.role);
+      }
     }
     return map;
   }, [users]);
@@ -226,10 +268,43 @@ export default function HomeScreen() {
       weekDayKeys.map(key => [key, { op: 0, gm: 0, fd: 0 }])
     );
 
-    const resolveBucket = (userId: string) => {
-      const role = userMap.get(userId)?.role;
-      if (role === 'operation_manager') return 'op';
-      if (role === 'general_manager') return 'gm';
+    const getRoleHint = (record: Record<string, unknown>) => {
+      const candidates = [
+        record.createdByRole,
+        record['created_by_role'],
+        record.userRole,
+        record['user_role'],
+        record.role,
+        record.source,
+        record.accountType,
+        record['account_type'],
+        record.postedBy,
+        record['posted_by'],
+        record.device_user_role,
+      ];
+      for (const candidate of candidates) {
+        if (typeof candidate === 'string' && candidate.trim()) return candidate;
+      }
+      return null;
+    };
+
+    const resolveBucket = (record: { createdBy?: string; createdByRole?: string | null }) => {
+      const recordHint = getRoleHint(record as Record<string, unknown>);
+      if (recordHint) {
+        const normalizedHint = normalizeSplitRole(recordHint);
+        if (normalizedHint) return normalizedHint;
+      }
+
+      const createdBy = record.createdBy ?? '';
+      if (createdBy) {
+        const userRole = userMap.get(createdBy)?.role;
+        if (userRole) return roleToSplitKey(userRole);
+        const nameRole = userNameMap.get(createdBy.trim().toLowerCase());
+        if (nameRole) return roleToSplitKey(nameRole);
+        const normalizedCreatedBy = normalizeSplitRole(createdBy);
+        if (normalizedCreatedBy) return normalizedCreatedBy;
+      }
+
       return 'fd';
     };
 
@@ -237,7 +312,7 @@ export default function HomeScreen() {
       const dayKey = toLocalDayKey(sale.date);
       const bucket = dayTotals.get(dayKey);
       if (!bucket) continue;
-      const key = resolveBucket(sale.createdBy);
+      const key = resolveBucket(sale);
       bucket[key] += Number(sale.total || 0);
     }
 
@@ -245,12 +320,12 @@ export default function HomeScreen() {
       const dayKey = toLocalDayKey(expense.date);
       const bucket = dayTotals.get(dayKey);
       if (!bucket) continue;
-      const key = resolveBucket(expense.createdBy);
+      const key = resolveBucket(expense);
       bucket[key] -= Number(expense.total || 0);
     }
 
     return dayTotals;
-  }, [userMap, weekDayKeys, weeklyExpenses, weeklySales]);
+  }, [userMap, userNameMap, weekDayKeys, weeklyExpenses, weeklySales]);
 
   const netSplitChartData = useMemo(() => {
     return weekDayKeys.map((dateStr, index) => {
@@ -277,6 +352,29 @@ export default function HomeScreen() {
       { op: 0, gm: 0, fd: 0 }
     );
   }, [netSplitChartData]);
+
+  const splitSeriesConfig = useMemo(
+    () => ([
+      { key: 'op' as const, label: 'OP', color: theme.success, enabled: showSplitOp },
+      { key: 'gm' as const, label: 'GM', color: theme.primary, enabled: showSplitGm },
+      { key: 'fd' as const, label: 'FD', color: theme.warning, enabled: showSplitFd },
+    ]),
+    [showSplitOp, showSplitGm, showSplitFd, theme.primary, theme.success, theme.warning]
+  );
+
+  const activeSplitSeries = useMemo(
+    () => splitSeriesConfig.filter(series => series.enabled),
+    [splitSeriesConfig]
+  );
+
+  const visibleNetSplitTotals = useMemo(
+    () => ({
+      op: showSplitOp ? netSplitTotals.op : 0,
+      gm: showSplitGm ? netSplitTotals.gm : 0,
+      fd: showSplitFd ? netSplitTotals.fd : 0,
+    }),
+    [netSplitTotals, showSplitOp, showSplitGm, showSplitFd]
+  );
 
   const rawMaxValue = Math.max(...chartData.map(d => Math.max(d.sales, d.expenses)), 100);
   
@@ -305,9 +403,13 @@ export default function HomeScreen() {
 
   const splitStepX = chartWidth / 7;
   const splitGroupWidth = splitStepX * 0.7;
-  const splitBarWidth = splitGroupWidth / 3;
-  const splitMaxValue = Math.max(...netSplitChartData.flatMap(day => [day.op, day.gm, day.fd]), 0);
-  const splitMinValue = Math.min(...netSplitChartData.flatMap(day => [day.op, day.gm, day.fd]), 0);
+  const splitBarCount = Math.max(activeSplitSeries.length, 1);
+  const splitBarWidth = splitGroupWidth / splitBarCount;
+  const splitValues = activeSplitSeries.length
+    ? netSplitChartData.flatMap(day => activeSplitSeries.map(series => day[series.key]))
+    : [0];
+  const splitMaxValue = Math.max(...splitValues, 0);
+  const splitMinValue = Math.min(...splitValues, 0);
   const splitRange = splitMaxValue - splitMinValue || 1;
   const splitZeroY = chartHeight - ((0 - splitMinValue) / splitRange) * chartHeight;
 
@@ -329,12 +431,18 @@ export default function HomeScreen() {
     overviewRefreshInFlight.current = true;
     setIsOverviewRefreshing(true);
     try {
-      await Promise.all([refetchSales(), refetchExpenses(), refetchWeeklySales(), refetchWeeklyExpenses()]);
+      await Promise.all([
+        refetchSales(),
+        refetchExpenses(),
+        refetchWeeklySales(),
+        refetchWeeklyExpenses(),
+        refetchUsers(),
+      ]);
     } finally {
       setIsOverviewRefreshing(false);
       overviewRefreshInFlight.current = false;
     }
-  }, [refetchSales, refetchExpenses, refetchWeeklySales, refetchWeeklyExpenses]);
+  }, [refetchSales, refetchExpenses, refetchWeeklySales, refetchWeeklyExpenses, refetchUsers]);
 
   useEffect(() => {
     handleOverviewRefresh();
@@ -577,39 +685,49 @@ export default function HomeScreen() {
               ) : (
                 <>
                   <View style={styles.weekTotalsRow}>
-                    <View style={[styles.weekTotalCard, { backgroundColor: theme.success + '15' }]}> 
-                      <Text style={[styles.weekTotalLabel, { color: theme.textSecondary }]}>OP</Text>
-                      <Text style={[styles.weekTotalValue, { color: theme.success }]}>
-                        ₱{netSplitTotals.op.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </Text>
-                    </View>
-                    <View style={[styles.weekTotalCard, { backgroundColor: theme.primary + '15' }]}> 
-                      <Text style={[styles.weekTotalLabel, { color: theme.textSecondary }]}>GM</Text>
-                      <Text style={[styles.weekTotalValue, { color: theme.primary }]}>
-                        ₱{netSplitTotals.gm.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </Text>
-                    </View>
-                    <View style={[styles.weekTotalCard, { backgroundColor: theme.warning + '15' }]}> 
-                      <Text style={[styles.weekTotalLabel, { color: theme.textSecondary }]}>FD</Text>
-                      <Text style={[styles.weekTotalValue, { color: theme.warning }]}>
-                        ₱{netSplitTotals.fd.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </Text>
-                    </View>
+                    {showSplitOp && (
+                      <View style={[styles.weekTotalCard, { backgroundColor: theme.success + '15' }]}> 
+                        <Text style={[styles.weekTotalLabel, { color: theme.textSecondary }]}>OP</Text>
+                        <Text style={[styles.weekTotalValue, { color: theme.success }]}>
+                          ₱{visibleNetSplitTotals.op.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </Text>
+                      </View>
+                    )}
+                    {showSplitGm && (
+                      <View style={[styles.weekTotalCard, { backgroundColor: theme.primary + '15' }]}> 
+                        <Text style={[styles.weekTotalLabel, { color: theme.textSecondary }]}>GM</Text>
+                        <Text style={[styles.weekTotalValue, { color: theme.primary }]}>
+                          ₱{visibleNetSplitTotals.gm.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </Text>
+                      </View>
+                    )}
+                    {showSplitFd && (
+                      <View style={[styles.weekTotalCard, { backgroundColor: theme.warning + '15' }]}> 
+                        <Text style={[styles.weekTotalLabel, { color: theme.textSecondary }]}>FD</Text>
+                        <Text style={[styles.weekTotalValue, { color: theme.warning }]}>
+                          ₱{visibleNetSplitTotals.fd.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </Text>
+                      </View>
+                    )}
                   </View>
 
                   <View style={styles.chartLegend}>
-                    <View style={[styles.legendToggle, { borderColor: theme.cardBorder }]}> 
-                      <View style={[styles.legendDot, { backgroundColor: theme.success }]} />
-                      <Text style={[styles.legendText, { color: theme.success }]}>OP</Text>
-                    </View>
-                    <View style={[styles.legendToggle, { borderColor: theme.cardBorder }]}> 
-                      <View style={[styles.legendDot, { backgroundColor: theme.primary }]} />
-                      <Text style={[styles.legendText, { color: theme.primary }]}>GM</Text>
-                    </View>
-                    <View style={[styles.legendToggle, { borderColor: theme.cardBorder }]}> 
-                      <View style={[styles.legendDot, { backgroundColor: theme.warning }]} />
-                      <Text style={[styles.legendText, { color: theme.warning }]}>FD</Text>
-                    </View>
+                    {splitSeriesConfig.map(series => (
+                      <TouchableOpacity
+                        key={series.key}
+                        style={[
+                          styles.legendToggle,
+                          { borderColor: series.enabled ? series.color : theme.cardBorder },
+                          series.enabled && { backgroundColor: series.color + '20' },
+                        ]}
+                        onPress={() => toggleSplitSeries(series.key)}
+                      >
+                        <View style={[styles.legendDot, { backgroundColor: series.color, opacity: series.enabled ? 1 : 0.4 }]} />
+                        <Text style={[styles.legendText, { color: series.enabled ? series.color : theme.textMuted }]}>
+                          {series.label}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
                   </View>
 
                   <View style={styles.chartContainer}>
@@ -617,9 +735,11 @@ export default function HomeScreen() {
                       <Line x1={0} y1={splitZeroY} x2={chartWidth} y2={splitZeroY} stroke={theme.chartGrid} strokeWidth={1} />
                       {netSplitChartData.map((point, index) => {
                         const groupX = index * splitStepX + (splitStepX - splitGroupWidth) / 2;
-                        const values = [point.op, point.gm, point.fd];
-                        const colors = [theme.success, theme.primary, theme.warning];
-                        return values.map((value, seriesIndex) => {
+                        if (activeSplitSeries.length === 0) {
+                          return null;
+                        }
+                        return activeSplitSeries.map((series, seriesIndex) => {
+                          const value = point[series.key];
                           const barX = groupX + seriesIndex * splitBarWidth;
                           const barY = value >= 0
                             ? splitZeroY - ((value - 0) / splitRange) * chartHeight
@@ -627,12 +747,12 @@ export default function HomeScreen() {
                           const barHeight = Math.abs((value / splitRange) * chartHeight);
                           return (
                             <Rect
-                              key={`split-${index}-${seriesIndex}`}
+                              key={`split-${index}-${series.key}`}
                               x={barX}
                               y={barY}
                               width={splitBarWidth * 0.8}
                               height={barHeight}
-                              fill={colors[seriesIndex]}
+                              fill={series.color}
                               rx={3}
                             />
                           );
