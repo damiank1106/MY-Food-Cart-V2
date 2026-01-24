@@ -34,7 +34,7 @@ const PRIVACY_POLICY_GITHUB_URL = 'https://damiank1106.github.io/MY-Food-Cart-V2
 export default function SettingsScreen() {
   const router = useRouter();
   const { user, settings, updateSettings, changePin, logout } = useAuth();
-  const { syncStatus, pendingCount, isOnline, triggerSync, syncBeforeLogout } = useSync();
+  const { syncStatus, pendingCount, isOnline, triggerSync, syncBeforeLogout, lastSyncTime } = useSync();
   const queryClient = useQueryClient();
   const theme = settings.darkMode ? Colors.dark : Colors.light;
   
@@ -107,6 +107,13 @@ export default function SettingsScreen() {
   const truncateId = (id: string) => {
     if (id.length <= 16) return id;
     return `${id.substring(0, 8)}...${id.substring(id.length - 4)}`;
+  };
+
+  const formatLastSyncTime = (date: Date | null) => {
+    if (!date) return 'Never';
+    const datePart = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(date);
+    const timePart = new Intl.DateTimeFormat(undefined, { timeStyle: 'short' }).format(date);
+    return `${datePart} • ${timePart}`;
   };
 
   const renderPendingSyncContent = () => {
@@ -702,6 +709,16 @@ export default function SettingsScreen() {
               </View>
               <Text style={[styles.settingLabel, { color: theme.text }]}>Status</Text>
               <Text style={[styles.settingValue, { color: syncStatusDisplay.color }]}>{syncStatusDisplay.text}</Text>
+            </View>
+
+            <View style={styles.settingRow}>
+              <View style={[styles.settingIcon, { backgroundColor: theme.primary + '20' }]}>
+                <Database color={theme.primary} size={20} />
+              </View>
+              <Text style={[styles.settingLabel, { color: theme.text }]}>Last Sync</Text>
+              <Text style={[styles.settingValue, { color: theme.textMuted }]}>
+                {formatLastSyncTime(lastSyncTime)}
+              </Text>
             </View>
 
             <TouchableOpacity
