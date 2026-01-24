@@ -139,12 +139,13 @@ export default function SalesScreen() {
   const operationManagerAmount = (effectiveNetSales * operationManagerPercent) / 100;
   const generalManagerAmount = (effectiveNetSales * generalManagerPercent) / 100;
   const foodCartAmount = (effectiveNetSales * foodCartPercent) / 100;
+  const currentSplitTotal = tempOperationPercent + tempGeneralPercent + tempFoodCartPercent;
 
   const saveSplitPercentages = async () => {
     try {
       const totalPercent = tempOperationPercent + tempGeneralPercent + tempFoodCartPercent;
       if (totalPercent !== 100) {
-        Alert.alert('Invalid Split', 'Percentages must add up to 100%');
+        Alert.alert('Total must equal 100%', 'Total must equal 100%');
         return;
       }
       await AsyncStorage.setItem('netSalesSplit', JSON.stringify({
@@ -165,57 +166,28 @@ export default function SalesScreen() {
 
   const adjustPercentage = (type: 'operation' | 'general' | 'foodCart', delta: number) => {
     const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
-    const values = {
-      operation: tempOperationPercent,
-      general: tempGeneralPercent,
-      foodCart: tempFoodCartPercent,
-    };
-    const current = values[type];
-    let nextValue = clamp(current + delta, 0, 100);
-    let actualDelta = nextValue - current;
-
-    if (actualDelta === 0) {
+    const applyValue = (setter: (value: number) => void, current: number) => {
+      const nextValue = clamp(current + delta, 0, 100);
+      if (nextValue === current) {
+        Haptics.selectionAsync();
+        return;
+      }
+      setter(nextValue);
       Haptics.selectionAsync();
+    };
+
+    if (type === 'operation') {
+      applyValue(setTempOperationPercent, tempOperationPercent);
       return;
     }
 
-    const otherKeys = (Object.keys(values) as Array<'operation' | 'general' | 'foodCart'>).filter(
-      key => key !== type
-    );
-
-    if (actualDelta > 0) {
-      let remaining = actualDelta;
-      const sorted = [...otherKeys].sort((a, b) => values[b] - values[a]);
-      for (const key of sorted) {
-        const reducible = Math.min(values[key], remaining);
-        values[key] -= reducible;
-        remaining -= reducible;
-      }
-      if (remaining > 0) {
-        nextValue -= remaining;
-        actualDelta -= remaining;
-      }
-    } else {
-      let remaining = Math.abs(actualDelta);
-      const sorted = [...otherKeys].sort((a, b) => (100 - values[b]) - (100 - values[a]));
-      for (const key of sorted) {
-        const capacity = 100 - values[key];
-        const addable = Math.min(capacity, remaining);
-        values[key] += addable;
-        remaining -= addable;
-      }
-      if (remaining > 0) {
-        nextValue += remaining;
-        actualDelta += remaining;
-      }
+    if (type === 'general') {
+      applyValue(setTempGeneralPercent, tempGeneralPercent);
+      return;
     }
 
-    values[type] = clamp(nextValue, 0, 100);
-
-    setTempOperationPercent(values.operation);
-    setTempGeneralPercent(values.general);
-    setTempFoodCartPercent(values.foodCart);
-    Haptics.selectionAsync();
+    applyValue(setTempFoodCartPercent, tempFoodCartPercent);
+    return;
   };
 
   const openSplitModal = () => {
@@ -902,14 +874,27 @@ export default function SalesScreen() {
 
             <View style={styles.splitModalContent}>
               <Text style={[styles.splitModalNote, { color: theme.textMuted }]}>
-                Total must equal 100%. Current: {tempOperationPercent + tempGeneralPercent + tempFoodCartPercent}%
+                Total must equal 100%
               </Text>
+              <Text
+                style={[
+                  styles.splitModalNote,
+                  { color: currentSplitTotal === 100 ? theme.textMuted : theme.error },
+                ]}
+              >
+                Current: {currentSplitTotal}%
+              </Text>
+              {currentSplitTotal !== 100 && (
+                <Text style={[styles.helperText, { color: theme.error }]}>
+                  Adjust values to total 100%.
+                </Text>
+              )}
 
               {/* Operation Manager */}
               <View style={styles.percentageRow}>
                 <View style={styles.percentageLabelRow}>
                   <View style={[styles.splitDot, { backgroundColor: '#4CAF50' }]} />
-                  <Text style={[styles.percentageLabel, { color: theme.text }]}>Operation Manager</Text>
+                  <Text style={[styles.percentageLabel, { color: theme.text }]}>OP - Operation Manager</Text>
                 </View>
                 <View style={styles.percentageControls}>
                   <TouchableOpacity
@@ -932,7 +917,7 @@ export default function SalesScreen() {
               <View style={styles.percentageRow}>
                 <View style={styles.percentageLabelRow}>
                   <View style={[styles.splitDot, { backgroundColor: '#2196F3' }]} />
-                  <Text style={[styles.percentageLabel, { color: theme.text }]}>General Manager</Text>
+                  <Text style={[styles.percentageLabel, { color: theme.text }]}>GM - General Manager</Text>
                 </View>
                 <View style={styles.percentageControls}>
                   <TouchableOpacity
@@ -955,7 +940,7 @@ export default function SalesScreen() {
               <View style={styles.percentageRow}>
                 <View style={styles.percentageLabelRow}>
                   <View style={[styles.splitDot, { backgroundColor: '#FF9800' }]} />
-                  <Text style={[styles.percentageLabel, { color: theme.text }]}>Food Cart</Text>
+                  <Text style={[styles.percentageLabel, { color: theme.text }]}>FD - Food Cart</Text>
                 </View>
                 <View style={styles.percentageControls}>
                   <TouchableOpacity
@@ -995,10 +980,10 @@ export default function SalesScreen() {
               <TouchableOpacity
                 style={[
                   styles.submitButton, 
-                  { backgroundColor: (tempOperationPercent + tempGeneralPercent + tempFoodCartPercent) === 100 ? theme.primary : theme.textMuted }
+                  { backgroundColor: currentSplitTotal === 100 ? theme.primary : theme.textMuted }
                 ]}
                 onPress={saveSplitPercentages}
-                disabled={(tempOperationPercent + tempGeneralPercent + tempFoodCartPercent) !== 100}
+                disabled={currentSplitTotal !== 100}
               >
                 <Save color="#fff" size={18} />
                 <Text style={styles.submitButtonText}>Save</Text>
