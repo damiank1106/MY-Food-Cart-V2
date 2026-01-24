@@ -3,7 +3,7 @@ import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { 
   User, Category, InventoryItem, Sale, Expense, ExpenseItem, Activity,
-  DEFAULT_USERS, DEFAULT_CATEGORIES, generateId 
+  DEFAULT_USERS, DEFAULT_CATEGORIES, generateId, OutboxItem, OutboxEntityType
 } from '@/types';
 import { bucketByLocalDay, getDayKeysForWeek, parseLocalDateString, toLocalDayKey } from '@/services/dateUtils';
 
@@ -18,6 +18,7 @@ const STORAGE_KEYS = {
   sales: '@myfoodcart_sales',
   expenses: '@myfoodcart_expenses',
   activities: '@myfoodcart_activities',
+  outbox: '@myfoodcart_outbox',
   settings: '@myfoodcart_settings',
 };
 
@@ -41,6 +42,7 @@ async function setToStorage<T>(key: string, value: T): Promise<void> {
 
 type SaleRow = Omit<Sale, 'items'> & { items?: string | null };
 type ExpenseRow = Omit<Expense, 'items'> & { items?: string | null };
+type OutboxRow = Omit<OutboxItem, 'syncStatus'> & { syncStatus?: string | null };
 
 export function serializeItems(items?: Array<string | ExpenseItem> | null): string {
   const normalized = Array.isArray(items) ? items : [];
@@ -119,6 +121,20 @@ function normalizeExpenseRow(row: ExpenseRow): Expense {
     ...row,
     name: row.name ?? '',
     items: parseExpenseItems(row.items),
+  };
+}
+
+function normalizeOutboxRow(row: OutboxRow): OutboxItem {
+  return {
+    id: row.id,
+    entityType: row.entityType,
+    entityId: row.entityId,
+    operation: row.operation,
+    createdAt: row.createdAt,
+    syncStatus: row.syncStatus === 'error' ? 'error' : 'pending',
+    name: row.name ?? null,
+    amount: typeof row.amount === 'number' ? row.amount : null,
+    date: row.date ?? null,
   };
 }
 
@@ -234,6 +250,18 @@ export async function initDatabase(): Promise<void> {
         createdAt TEXT NOT NULL,
         syncStatus TEXT DEFAULT 'pending'
       );
+
+      CREATE TABLE IF NOT EXISTS outbox (
+        id TEXT PRIMARY KEY,
+        entityType TEXT NOT NULL,
+        entityId TEXT NOT NULL,
+        operation TEXT NOT NULL,
+        createdAt TEXT NOT NULL,
+        syncStatus TEXT DEFAULT 'pending',
+        name TEXT,
+        amount REAL,
+        date TEXT
+      );
     `);
 
       await ensureItemsColumn('sales');
@@ -316,6 +344,7 @@ async function seedDefaultDataWeb(): Promise<void> {
   await setToStorage(STORAGE_KEYS.sales, []);
   await setToStorage(STORAGE_KEYS.expenses, []);
   await setToStorage(STORAGE_KEYS.activities, []);
+  await setToStorage(STORAGE_KEYS.outbox, []);
 }
 
 export async function getUsers(): Promise<User[]> {
@@ -819,6 +848,119 @@ export async function createActivity(activity: Omit<Activity, 'id' | 'createdAt'
   return newActivity;
 }
 
+export async function getOutboxItems(): Promise<OutboxItem[]> {
+  if (Platform.OS === 'web') {
+    const outbox = await getFromStorage<OutboxItem[]>(STORAGE_KEYS.outbox, []);
+    return outbox.map(normalizeOutboxRow);
+  }
+  const database = await ensureDb();
+  if (!database) return [];
+  try {
+    const rows = await database.getAllAsync<OutboxRow>('SELECT * FROM outbox ORDER BY createdAt DESC');
+    return rows.map(normalizeOutboxRow);
+  } catch (error) {
+    console.log('Error getting outbox items:', error);
+    return [];
+  }
+}
+
+export async function enqueueDeletion(
+  entityType: OutboxEntityType,
+  entityId: string,
+  metadata?: { name?: string; amount?: number | null; date?: string | null }
+): Promise<OutboxItem | null> {
+  const now = new Date().toISOString();
+
+  if (Platform.OS === 'web') {
+    const outbox = await getFromStorage<OutboxItem[]>(STORAGE_KEYS.outbox, []);
+    const existing = outbox.find(item => item.entityType === entityType && item.entityId === entityId && item.operation === 'delete');
+    if (existing) {
+      return normalizeOutboxRow(existing);
+    }
+    const newItem: OutboxItem = {
+      id: generateId(),
+      entityType,
+      entityId,
+      operation: 'delete',
+      createdAt: now,
+      syncStatus: 'pending',
+      name: metadata?.name ?? null,
+      amount: metadata?.amount ?? null,
+      date: metadata?.date ?? null,
+    };
+    outbox.unshift(newItem);
+    await setToStorage(STORAGE_KEYS.outbox, outbox);
+    return newItem;
+  }
+
+  const database = await ensureDb();
+  if (!database) return null;
+  try {
+    const existing = await database.getFirstAsync<OutboxRow>(
+      'SELECT * FROM outbox WHERE entityType = ? AND entityId = ? AND operation = ? LIMIT 1',
+      [entityType, entityId, 'delete']
+    );
+    if (existing) {
+      return normalizeOutboxRow(existing);
+    }
+    const id = generateId();
+    await database.runAsync(
+      'INSERT INTO outbox (id, entityType, entityId, operation, createdAt, syncStatus, name, amount, date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [
+        id,
+        entityType,
+        entityId,
+        'delete',
+        now,
+        'pending',
+        metadata?.name ?? null,
+        metadata?.amount ?? null,
+        metadata?.date ?? null,
+      ]
+    );
+    return {
+      id,
+      entityType,
+      entityId,
+      operation: 'delete',
+      createdAt: now,
+      syncStatus: 'pending',
+      name: metadata?.name ?? null,
+      amount: metadata?.amount ?? null,
+      date: metadata?.date ?? null,
+    };
+  } catch (error) {
+    console.log('Error enqueueing deletion:', error);
+    return null;
+  }
+}
+
+export async function updateOutboxItemStatus(id: string, status: 'pending' | 'error'): Promise<void> {
+  if (Platform.OS === 'web') {
+    const outbox = await getFromStorage<OutboxItem[]>(STORAGE_KEYS.outbox, []);
+    const index = outbox.findIndex(item => item.id === id);
+    if (index >= 0) {
+      outbox[index] = { ...outbox[index], syncStatus: status };
+      await setToStorage(STORAGE_KEYS.outbox, outbox);
+    }
+    return;
+  }
+  const database = await ensureDb();
+  if (!database) return;
+  await database.runAsync('UPDATE outbox SET syncStatus = ? WHERE id = ?', [status, id]);
+}
+
+export async function removeOutboxItem(id: string): Promise<void> {
+  if (Platform.OS === 'web') {
+    const outbox = await getFromStorage<OutboxItem[]>(STORAGE_KEYS.outbox, []);
+    await setToStorage(STORAGE_KEYS.outbox, outbox.filter(item => item.id !== id));
+    return;
+  }
+  const database = await ensureDb();
+  if (!database) return;
+  await database.runAsync('DELETE FROM outbox WHERE id = ?', [id]);
+}
+
 export async function getPendingSyncCount(): Promise<number> {
   if (Platform.OS === 'web') {
     const users = await getFromStorage<User[]>(STORAGE_KEYS.users, []);
@@ -827,6 +969,7 @@ export async function getPendingSyncCount(): Promise<number> {
     const sales = await getFromStorage<Sale[]>(STORAGE_KEYS.sales, []);
     const expenses = await getFromStorage<Expense[]>(STORAGE_KEYS.expenses, []);
     const activities = await getFromStorage<Activity[]>(STORAGE_KEYS.activities, []);
+    const outbox = await getFromStorage<OutboxItem[]>(STORAGE_KEYS.outbox, []);
     
     return [
       ...users.filter(u => u.syncStatus === 'pending'),
@@ -835,6 +978,7 @@ export async function getPendingSyncCount(): Promise<number> {
       ...sales.filter(s => s.syncStatus === 'pending'),
       ...expenses.filter(e => e.syncStatus === 'pending'),
       ...activities.filter(a => a.syncStatus === 'pending'),
+      ...outbox,
     ].length;
   }
 
@@ -847,6 +991,7 @@ export async function getPendingSyncCount(): Promise<number> {
     db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM sales WHERE syncStatus = ?', ['pending']),
     db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM expenses WHERE syncStatus = ?', ['pending']),
     db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM activities WHERE syncStatus = ?', ['pending']),
+    db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM outbox'),
   ]);
 
   return counts.reduce((sum, result) => sum + (result?.count || 0), 0);
@@ -1676,13 +1821,14 @@ export interface PendingSummary {
     sales: { id: string; name: string; total: number; createdBy: string; date: string; syncStatus: string; updatedAt: string }[];
     expenses: { id: string; name: string; total: number; createdBy: string; date: string; syncStatus: string; updatedAt: string }[];
     activities: { id: string; type: string; description: string; userId: string; syncStatus: string; createdAt: string }[];
+    deletions: OutboxItem[];
   };
 }
 
 export async function getPendingSummaryAndItems(limitPerTable = 50): Promise<PendingSummary> {
   const result: PendingSummary = {
     totals: { users: 0, categories: 0, inventory: 0, sales: 0, expenses: 0, activities: 0, deletions: 0, total: 0 },
-    itemsByTable: { users: [], categories: [], inventory: [], sales: [], expenses: [], activities: [] },
+    itemsByTable: { users: [], categories: [], inventory: [], sales: [], expenses: [], activities: [], deletions: [] },
   };
 
   try {
@@ -1693,6 +1839,7 @@ export async function getPendingSummaryAndItems(limitPerTable = 50): Promise<Pen
       const sales = await getFromStorage<Sale[]>(STORAGE_KEYS.sales, []);
       const expenses = await getFromStorage<Expense[]>(STORAGE_KEYS.expenses, []);
       const activities = await getFromStorage<Activity[]>(STORAGE_KEYS.activities, []);
+      const outbox = await getFromStorage<OutboxItem[]>(STORAGE_KEYS.outbox, []);
 
       const pendingUsers = users.filter(u => u.syncStatus === 'pending');
       const pendingCategories = categories.filter(c => c.syncStatus === 'pending');
@@ -1700,6 +1847,7 @@ export async function getPendingSummaryAndItems(limitPerTable = 50): Promise<Pen
       const pendingSales = sales.filter(s => s.syncStatus === 'pending');
       const pendingExpenses = expenses.filter(e => e.syncStatus === 'pending');
       const pendingActivities = activities.filter(a => a.syncStatus === 'pending');
+      const pendingDeletions = outbox.map(normalizeOutboxRow);
 
       result.totals.users = pendingUsers.length;
       result.totals.categories = pendingCategories.length;
@@ -1707,7 +1855,8 @@ export async function getPendingSummaryAndItems(limitPerTable = 50): Promise<Pen
       result.totals.sales = pendingSales.length;
       result.totals.expenses = pendingExpenses.length;
       result.totals.activities = pendingActivities.length;
-      result.totals.total = pendingUsers.length + pendingCategories.length + pendingInventory.length + pendingSales.length + pendingExpenses.length + pendingActivities.length;
+      result.totals.deletions = pendingDeletions.length;
+      result.totals.total = pendingUsers.length + pendingCategories.length + pendingInventory.length + pendingSales.length + pendingExpenses.length + pendingActivities.length + pendingDeletions.length;
 
       result.itemsByTable.users = pendingUsers.slice(0, limitPerTable).map(u => ({
         id: u.id, pin: u.pin, name: u.name, role: u.role, syncStatus: u.syncStatus || 'pending', updatedAt: u.updatedAt,
@@ -1727,19 +1876,21 @@ export async function getPendingSummaryAndItems(limitPerTable = 50): Promise<Pen
       result.itemsByTable.activities = pendingActivities.slice(0, limitPerTable).map(a => ({
         id: a.id, type: a.type, description: a.description, userId: a.userId, syncStatus: a.syncStatus || 'pending', createdAt: a.createdAt,
       }));
+      result.itemsByTable.deletions = pendingDeletions.slice(0, limitPerTable);
 
       return result;
     }
 
     if (!db) return result;
 
-    const [usersCount, categoriesCount, inventoryCount, salesCount, expensesCount, activitiesCount] = await Promise.all([
+    const [usersCount, categoriesCount, inventoryCount, salesCount, expensesCount, activitiesCount, deletionsCount] = await Promise.all([
       db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM users WHERE syncStatus = ?', ['pending']),
       db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM categories WHERE syncStatus = ?', ['pending']),
       db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM inventory WHERE syncStatus = ?', ['pending']),
       db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM sales WHERE syncStatus = ?', ['pending']),
       db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM expenses WHERE syncStatus = ?', ['pending']),
       db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM activities WHERE syncStatus = ?', ['pending']),
+      db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM outbox'),
     ]);
 
     result.totals.users = usersCount?.count || 0;
@@ -1748,15 +1899,17 @@ export async function getPendingSummaryAndItems(limitPerTable = 50): Promise<Pen
     result.totals.sales = salesCount?.count || 0;
     result.totals.expenses = expensesCount?.count || 0;
     result.totals.activities = activitiesCount?.count || 0;
-    result.totals.total = result.totals.users + result.totals.categories + result.totals.inventory + result.totals.sales + result.totals.expenses + result.totals.activities;
+    result.totals.deletions = deletionsCount?.count || 0;
+    result.totals.total = result.totals.users + result.totals.categories + result.totals.inventory + result.totals.sales + result.totals.expenses + result.totals.activities + result.totals.deletions;
 
-    const [pendingUsers, pendingCategories, pendingInventory, pendingSales, pendingExpenses, pendingActivities] = await Promise.all([
+    const [pendingUsers, pendingCategories, pendingInventory, pendingSales, pendingExpenses, pendingActivities, pendingDeletions] = await Promise.all([
       db.getAllAsync<User>(`SELECT * FROM users WHERE syncStatus = 'pending' LIMIT ?`, [limitPerTable]),
       db.getAllAsync<Category>(`SELECT * FROM categories WHERE syncStatus = 'pending' LIMIT ?`, [limitPerTable]),
       db.getAllAsync<InventoryItem>(`SELECT * FROM inventory WHERE syncStatus = 'pending' LIMIT ?`, [limitPerTable]),
       db.getAllAsync<Sale>(`SELECT * FROM sales WHERE syncStatus = 'pending' LIMIT ?`, [limitPerTable]),
       db.getAllAsync<Expense>(`SELECT * FROM expenses WHERE syncStatus = 'pending' LIMIT ?`, [limitPerTable]),
       db.getAllAsync<Activity>(`SELECT * FROM activities WHERE syncStatus = 'pending' LIMIT ?`, [limitPerTable]),
+      db.getAllAsync<OutboxRow>(`SELECT * FROM outbox ORDER BY createdAt DESC LIMIT ?`, [limitPerTable]),
     ]);
 
     result.itemsByTable.users = pendingUsers.map(u => ({
@@ -1777,6 +1930,7 @@ export async function getPendingSummaryAndItems(limitPerTable = 50): Promise<Pen
     result.itemsByTable.activities = pendingActivities.map(a => ({
       id: a.id, type: a.type, description: a.description, userId: a.userId, syncStatus: a.syncStatus || 'pending', createdAt: a.createdAt,
     }));
+    result.itemsByTable.deletions = pendingDeletions.map(normalizeOutboxRow);
 
     return result;
   } catch (error) {

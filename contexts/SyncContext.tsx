@@ -2,6 +2,7 @@ import createContextHook from '@nkzw/create-context-hook';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import NetInfo from '@react-native-community/netinfo';
+import { OutboxEntityType } from '@/types';
 import {
   getUsers,
   getCategories,
@@ -10,7 +11,11 @@ import {
   getExpenses,
   getActivities,
   getPendingSyncCount,
+  getOutboxItems,
+  enqueueDeletion,
   markAllSynced,
+  removeOutboxItem,
+  updateOutboxItemStatus,
   upsertUsersFromServer,
   upsertCategoriesFromServer,
   upsertInventoryFromServer,
@@ -46,10 +51,7 @@ export type SyncReason = 'login' | 'logout' | 'manual' | 'auto';
 const DEVELOPER_PIN = '2345';
 const LAST_SYNC_TIME_KEY = '@myfoodcart_last_sync_time';
 
-interface PendingDeletion {
-  table: string;
-  id: string;
-}
+type DeletionTable = 'users' | 'categories' | 'inventory' | 'sales' | 'expenses' | 'activities';
 
 export const [SyncProvider, useSync] = createContextHook(() => {
   const supabaseConfigured = isSupabaseConfigured();
@@ -58,7 +60,6 @@ export const [SyncProvider, useSync] = createContextHook(() => {
   const [isOnline, setIsOnline] = useState(true);
   const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
   const isSyncing = useRef(false);
-  const pendingDeletions = useRef<PendingDeletion[]>([]);
 
   const checkPendingCountInternal = useCallback(async (online: boolean) => {
     const count = await getPendingSyncCount();
@@ -113,11 +114,48 @@ export const [SyncProvider, useSync] = createContextHook(() => {
       console.log('Running pre-sync database repair...');
       await repairDuplicateCategories();
 
+      let pushSuccess = true;
+
       console.log('Processing pending deletions...');
-      for (const deletion of pendingDeletions.current) {
-        await deleteFromSupabase(deletion.table, deletion.id);
+      const pendingDeletions = await getOutboxItems();
+      for (const deletion of pendingDeletions) {
+        if (deletion.operation !== 'delete') {
+          continue;
+        }
+
+        const table = (() => {
+          switch (deletion.entityType) {
+            case 'sale':
+              return 'sales';
+            case 'expense':
+              return 'expenses';
+            case 'inventory':
+              return 'inventory';
+            case 'category':
+              return 'categories';
+            case 'user':
+              return 'users';
+            case 'activity':
+              return 'activities';
+            default:
+              return null;
+          }
+        })();
+
+        if (!table) {
+          await updateOutboxItemStatus(deletion.id, 'error');
+          pushSuccess = false;
+          continue;
+        }
+
+        const deleted = await deleteFromSupabase(table, deletion.entityId);
+        if (deleted) {
+          await removeOutboxItem(deletion.id);
+        } else {
+          await updateOutboxItemStatus(deletion.id, 'error');
+          pushSuccess = false;
+        }
       }
-      pendingDeletions.current = [];
 
       console.log('Fetching local data...');
       const [users, categories, inventory, sales, expenses, activities] = await Promise.all([
@@ -137,8 +175,6 @@ export const [SyncProvider, useSync] = createContextHook(() => {
       const pendingActivities = activities.filter(a => a.syncStatus === 'pending');
 
       console.log(`Pushing pending changes: ${pendingUsers.length} users, ${pendingCategories.length} categories, ${pendingInventory.length} inventory, ${pendingSales.length} sales, ${pendingExpenses.length} expenses, ${pendingActivities.length} activities`);
-
-      let pushSuccess = true;
 
       if (pendingUsers.length > 0) {
         console.log('Resolving user PIN conflicts before push...');
@@ -310,8 +346,24 @@ export const [SyncProvider, useSync] = createContextHook(() => {
     return () => unsubscribe();
   }, [checkPendingCountInternal, triggerFullSync]);
 
-  const queueDeletion = useCallback((table: string, id: string) => {
-    pendingDeletions.current.push({ table, id });
+  const queueDeletion = useCallback(async (
+    entityType: DeletionTable,
+    id: string,
+    metadata?: { name?: string; amount?: number | null; date?: string | null }
+  ) => {
+    const mappedEntityType: OutboxEntityType = (() => {
+      switch (entityType) {
+        case 'sales':
+          return 'sale';
+        case 'expenses':
+          return 'expense';
+        case 'categories':
+          return 'category';
+        default:
+          return entityType as OutboxEntityType;
+      }
+    })();
+    await enqueueDeletion(mappedEntityType, id, metadata);
     checkPendingCount();
   }, [checkPendingCount]);
 
