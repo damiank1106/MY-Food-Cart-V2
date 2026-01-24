@@ -10,6 +10,7 @@ import {
   Modal,
   ActivityIndicator,
   Platform,
+  Pressable,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -110,16 +111,18 @@ export default function HomeScreen() {
   }
   const [selectedWeek, setSelectedWeek] = useState(0);
   const [selectedMode, setSelectedMode] = useState<'week' | 'custom'>('week');
-  const [customRange, setCustomRange] = useState<{ start: Date; end: Date }>({
-    start: new Date(),
-    end: new Date(),
-  });
-  const [isRangeModalVisible, setIsRangeModalVisible] = useState(false);
-  const [rangeDraft, setRangeDraft] = useState<{ start: Date; end: Date }>({
-    start: new Date(),
-    end: new Date(),
-  });
+  const [rangeFrom, setRangeFrom] = useState(new Date());
+  const [rangeTo, setRangeTo] = useState(new Date());
+  const [isRangePickerOpen, setIsRangePickerOpen] = useState(false);
+  const [tempFrom, setTempFrom] = useState(new Date());
+  const [tempTo, setTempTo] = useState(new Date());
+  const [rangePickerOrigin, setRangePickerOrigin] = useState<{
+    mode: 'week' | 'custom';
+    week: number;
+  } | null>(null);
+  const [activeAndroidPicker, setActiveAndroidPicker] = useState<'from' | 'to' | null>(null);
   const [rangeError, setRangeError] = useState('');
+  const [isApplyingRange, setIsApplyingRange] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [overviewRefreshing, setOverviewRefreshing] = useState(false);
   const [showSales, setShowSales] = useState(true);
@@ -140,6 +143,7 @@ export default function HomeScreen() {
   }, [weekStartsOn]);
 
   const currentWeek = weeks[selectedWeek];
+  const customRange = useMemo(() => ({ start: rangeFrom, end: rangeTo }), [rangeFrom, rangeTo]);
   const selectedRange = useMemo(() => {
     if (selectedMode === 'custom') {
       return customRange;
@@ -299,19 +303,43 @@ export default function HomeScreen() {
 
   const expenseAreaPath = `${expensePathData} L ${chartData.length * chartStep - chartStep / 2} ${chartHeight} L ${chartStep / 2} ${chartHeight} Z`;
 
+  const handleRangeCancel = useCallback(() => {
+    setIsRangePickerOpen(false);
+    setTempFrom(rangeFrom);
+    setTempTo(rangeTo);
+    setRangeError('');
+    setIsApplyingRange(false);
+    setActiveAndroidPicker(null);
+    if (rangePickerOrigin?.mode === 'week') {
+      setSelectedMode('week');
+      setSelectedWeek(rangePickerOrigin.week);
+    } else if (rangePickerOrigin?.mode === 'custom') {
+      setSelectedMode('custom');
+    }
+    setRangePickerOrigin(null);
+  }, [rangeFrom, rangePickerOrigin, rangeTo]);
+
   const handleRangeConfirm = useCallback(() => {
-    if (rangeDraft.start > rangeDraft.end) {
+    if (isApplyingRange) {
+      return;
+    }
+    if (tempFrom > tempTo) {
       setRangeError('From date must be on or before To date.');
       return;
     }
-    const normalizedStart = new Date(rangeDraft.start);
+    setIsApplyingRange(true);
+    const normalizedStart = new Date(tempFrom);
     normalizedStart.setHours(0, 0, 0, 0);
-    const normalizedEnd = new Date(rangeDraft.end);
+    const normalizedEnd = new Date(tempTo);
     normalizedEnd.setHours(0, 0, 0, 0);
-    setCustomRange({ start: normalizedStart, end: normalizedEnd });
-    setIsRangeModalVisible(false);
+    setRangeFrom(normalizedStart);
+    setRangeTo(normalizedEnd);
+    setSelectedMode('custom');
+    setIsRangePickerOpen(false);
     setRangeError('');
-  }, [rangeDraft]);
+    setIsApplyingRange(false);
+    setRangePickerOrigin(null);
+  }, [isApplyingRange, tempFrom, tempTo]);
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
@@ -384,10 +412,12 @@ export default function HomeScreen() {
                     selectedMode === 'custom' && { backgroundColor: theme.primary + '30', borderColor: theme.primary },
                   ]}
                   onPress={() => {
+                    setRangePickerOrigin({ mode: selectedMode, week: selectedWeek });
                     setSelectedMode('custom');
-                    setRangeDraft(customRange);
+                    setTempFrom(customRange.start);
+                    setTempTo(customRange.end);
                     setRangeError('');
-                    setIsRangeModalVisible(true);
+                    setIsRangePickerOpen(true);
                   }}
                 >
                   <Text style={[
@@ -538,47 +568,94 @@ export default function HomeScreen() {
           </View>
 
           <Modal
-            visible={isRangeModalVisible}
+            visible={isRangePickerOpen}
             transparent
             animationType="fade"
-            onRequestClose={() => {
-              setIsRangeModalVisible(false);
-              setRangeError('');
-            }}
+            onRequestClose={handleRangeCancel}
           >
-            <View style={styles.modalOverlay}>
-              <View style={[styles.rangeModal, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
+            <Pressable style={styles.modalOverlay} onPress={handleRangeCancel}>
+              <Pressable style={[styles.rangeModal, { backgroundColor: theme.card, borderColor: theme.cardBorder }]} onPress={() => {}}>
                 <Text style={[styles.modalTitle, { color: theme.text }]}>Pick custom range</Text>
 
-                <View style={styles.rangePickerRow}>
-                  <Text style={[styles.rangePickerLabel, { color: theme.textSecondary }]}>From</Text>
-                  <DateTimePicker
-                    value={rangeDraft.start}
-                    mode="date"
-                    display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                    onChange={(_, date) => {
-                      if (date) {
-                        setRangeDraft(prev => ({ ...prev, start: date }));
-                      }
-                    }}
-                    maximumDate={rangeDraft.end}
-                  />
-                </View>
+                {Platform.OS === 'ios' ? (
+                  <>
+                    <View style={styles.rangePickerRow}>
+                      <Text style={[styles.rangePickerLabel, { color: theme.textSecondary }]}>From</Text>
+                      <DateTimePicker
+                        value={tempFrom}
+                        mode="date"
+                        display="spinner"
+                        onChange={(_, date) => {
+                          if (date) {
+                            setTempFrom(date);
+                          }
+                        }}
+                        maximumDate={tempTo}
+                      />
+                    </View>
 
-                <View style={styles.rangePickerRow}>
-                  <Text style={[styles.rangePickerLabel, { color: theme.textSecondary }]}>To</Text>
-                  <DateTimePicker
-                    value={rangeDraft.end}
-                    mode="date"
-                    display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                    onChange={(_, date) => {
-                      if (date) {
-                        setRangeDraft(prev => ({ ...prev, end: date }));
-                      }
-                    }}
-                    minimumDate={rangeDraft.start}
-                  />
-                </View>
+                    <View style={styles.rangePickerRow}>
+                      <Text style={[styles.rangePickerLabel, { color: theme.textSecondary }]}>To</Text>
+                      <DateTimePicker
+                        value={tempTo}
+                        mode="date"
+                        display="spinner"
+                        onChange={(_, date) => {
+                          if (date) {
+                            setTempTo(date);
+                          }
+                        }}
+                        minimumDate={tempFrom}
+                      />
+                    </View>
+                  </>
+                ) : (
+                  <>
+                    <View style={styles.rangePickerRow}>
+                      <Text style={[styles.rangePickerLabel, { color: theme.textSecondary }]}>From</Text>
+                      <TouchableOpacity
+                        style={[styles.rangePickerButton, { borderColor: theme.cardBorder }]}
+                        onPress={() => setActiveAndroidPicker('from')}
+                      >
+                        <Text style={[styles.rangePickerValue, { color: theme.text }]}>
+                          {formatDate(tempFrom)}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+
+                    <View style={styles.rangePickerRow}>
+                      <Text style={[styles.rangePickerLabel, { color: theme.textSecondary }]}>To</Text>
+                      <TouchableOpacity
+                        style={[styles.rangePickerButton, { borderColor: theme.cardBorder }]}
+                        onPress={() => setActiveAndroidPicker('to')}
+                      >
+                        <Text style={[styles.rangePickerValue, { color: theme.text }]}>
+                          {formatDate(tempTo)}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+
+                    {activeAndroidPicker ? (
+                      <DateTimePicker
+                        value={activeAndroidPicker === 'from' ? tempFrom : tempTo}
+                        mode="date"
+                        display="default"
+                        onChange={(event, date) => {
+                          if (event.type === 'set' && date) {
+                            if (activeAndroidPicker === 'from') {
+                              setTempFrom(date);
+                            } else {
+                              setTempTo(date);
+                            }
+                          }
+                          setActiveAndroidPicker(null);
+                        }}
+                        maximumDate={activeAndroidPicker === 'from' ? tempTo : undefined}
+                        minimumDate={activeAndroidPicker === 'to' ? tempFrom : undefined}
+                      />
+                    ) : null}
+                  </>
+                )}
 
                 {rangeError ? (
                   <Text style={[styles.rangeError, { color: theme.error }]}>{rangeError}</Text>
@@ -587,22 +664,26 @@ export default function HomeScreen() {
                 <View style={styles.rangeActions}>
                   <TouchableOpacity
                     style={[styles.rangeActionButton, { borderColor: theme.cardBorder }]}
-                    onPress={() => {
-                      setIsRangeModalVisible(false);
-                      setRangeError('');
-                    }}
+                    onPress={handleRangeCancel}
                   >
                     <Text style={[styles.rangeActionText, { color: theme.textSecondary }]}>Cancel</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
-                    style={[styles.rangeActionButton, { borderColor: theme.primary, backgroundColor: theme.primary + '20' }]}
+                    style={[
+                      styles.rangeActionButton,
+                      { borderColor: theme.primary, backgroundColor: theme.primary + '20' },
+                      isApplyingRange && { opacity: 0.6 },
+                    ]}
                     onPress={handleRangeConfirm}
+                    disabled={isApplyingRange}
                   >
-                    <Text style={[styles.rangeActionText, { color: theme.primary }]}>Confirm</Text>
+                    <Text style={[styles.rangeActionText, { color: theme.primary }]}>
+                      {isApplyingRange ? 'Applying...' : 'Confirm'}
+                    </Text>
                   </TouchableOpacity>
                 </View>
-              </View>
-            </View>
+              </Pressable>
+            </Pressable>
           </Modal>
 
           <View style={[styles.updatesCard, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
@@ -823,6 +904,16 @@ const styles = StyleSheet.create({
   rangePickerLabel: {
     fontSize: 12,
     marginBottom: 6,
+  },
+  rangePickerButton: {
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+  },
+  rangePickerValue: {
+    fontSize: 14,
+    fontWeight: '500' as const,
   },
   rangeError: {
     fontSize: 12,
