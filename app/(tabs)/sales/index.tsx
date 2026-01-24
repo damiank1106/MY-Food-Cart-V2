@@ -164,13 +164,57 @@ export default function SalesScreen() {
   };
 
   const adjustPercentage = (type: 'operation' | 'general' | 'foodCart', delta: number) => {
-    const current = type === 'operation' ? tempOperationPercent : type === 'general' ? tempGeneralPercent : tempFoodCartPercent;
-    const newValue = Math.max(0, Math.min(100, current + delta));
-    
-    if (type === 'operation') setTempOperationPercent(newValue);
-    else if (type === 'general') setTempGeneralPercent(newValue);
-    else setTempFoodCartPercent(newValue);
-    
+    const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
+    const values = {
+      operation: tempOperationPercent,
+      general: tempGeneralPercent,
+      foodCart: tempFoodCartPercent,
+    };
+    const current = values[type];
+    let nextValue = clamp(current + delta, 0, 100);
+    let actualDelta = nextValue - current;
+
+    if (actualDelta === 0) {
+      Haptics.selectionAsync();
+      return;
+    }
+
+    const otherKeys = (Object.keys(values) as Array<'operation' | 'general' | 'foodCart'>).filter(
+      key => key !== type
+    );
+
+    if (actualDelta > 0) {
+      let remaining = actualDelta;
+      const sorted = [...otherKeys].sort((a, b) => values[b] - values[a]);
+      for (const key of sorted) {
+        const reducible = Math.min(values[key], remaining);
+        values[key] -= reducible;
+        remaining -= reducible;
+      }
+      if (remaining > 0) {
+        nextValue -= remaining;
+        actualDelta -= remaining;
+      }
+    } else {
+      let remaining = Math.abs(actualDelta);
+      const sorted = [...otherKeys].sort((a, b) => (100 - values[b]) - (100 - values[a]));
+      for (const key of sorted) {
+        const capacity = 100 - values[key];
+        const addable = Math.min(capacity, remaining);
+        values[key] += addable;
+        remaining -= addable;
+      }
+      if (remaining > 0) {
+        nextValue += remaining;
+        actualDelta += remaining;
+      }
+    }
+
+    values[type] = clamp(nextValue, 0, 100);
+
+    setTempOperationPercent(values.operation);
+    setTempGeneralPercent(values.general);
+    setTempFoodCartPercent(values.foodCart);
     Haptics.selectionAsync();
   };
 
@@ -870,16 +914,16 @@ export default function SalesScreen() {
                 <View style={styles.percentageControls}>
                   <TouchableOpacity
                     style={[styles.percentageButton, { backgroundColor: theme.error + '20' }]}
-                    onPress={() => adjustPercentage('operation', -5)}
+                    onPress={() => adjustPercentage('operation', -1)}
                   >
-                    <Text style={[styles.percentageButtonText, { color: theme.error }]}>-5</Text>
+                    <Text style={[styles.percentageButtonText, { color: theme.error }]}>-1</Text>
                   </TouchableOpacity>
                   <Text style={[styles.percentageValue, { color: theme.text }]}>{tempOperationPercent}%</Text>
                   <TouchableOpacity
                     style={[styles.percentageButton, { backgroundColor: theme.success + '20' }]}
-                    onPress={() => adjustPercentage('operation', 5)}
+                    onPress={() => adjustPercentage('operation', 1)}
                   >
-                    <Text style={[styles.percentageButtonText, { color: theme.success }]}>+5</Text>
+                    <Text style={[styles.percentageButtonText, { color: theme.success }]}>+1</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -893,16 +937,16 @@ export default function SalesScreen() {
                 <View style={styles.percentageControls}>
                   <TouchableOpacity
                     style={[styles.percentageButton, { backgroundColor: theme.error + '20' }]}
-                    onPress={() => adjustPercentage('general', -5)}
+                    onPress={() => adjustPercentage('general', -1)}
                   >
-                    <Text style={[styles.percentageButtonText, { color: theme.error }]}>-5</Text>
+                    <Text style={[styles.percentageButtonText, { color: theme.error }]}>-1</Text>
                   </TouchableOpacity>
                   <Text style={[styles.percentageValue, { color: theme.text }]}>{tempGeneralPercent}%</Text>
                   <TouchableOpacity
                     style={[styles.percentageButton, { backgroundColor: theme.success + '20' }]}
-                    onPress={() => adjustPercentage('general', 5)}
+                    onPress={() => adjustPercentage('general', 1)}
                   >
-                    <Text style={[styles.percentageButtonText, { color: theme.success }]}>+5</Text>
+                    <Text style={[styles.percentageButtonText, { color: theme.success }]}>+1</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -916,16 +960,16 @@ export default function SalesScreen() {
                 <View style={styles.percentageControls}>
                   <TouchableOpacity
                     style={[styles.percentageButton, { backgroundColor: theme.error + '20' }]}
-                    onPress={() => adjustPercentage('foodCart', -5)}
+                    onPress={() => adjustPercentage('foodCart', -1)}
                   >
-                    <Text style={[styles.percentageButtonText, { color: theme.error }]}>-5</Text>
+                    <Text style={[styles.percentageButtonText, { color: theme.error }]}>-1</Text>
                   </TouchableOpacity>
                   <Text style={[styles.percentageValue, { color: theme.text }]}>{tempFoodCartPercent}%</Text>
                   <TouchableOpacity
                     style={[styles.percentageButton, { backgroundColor: theme.success + '20' }]}
-                    onPress={() => adjustPercentage('foodCart', 5)}
+                    onPress={() => adjustPercentage('foodCart', 1)}
                   >
-                    <Text style={[styles.percentageButtonText, { color: theme.success }]}>+5</Text>
+                    <Text style={[styles.percentageButtonText, { color: theme.success }]}>+1</Text>
                   </TouchableOpacity>
                 </View>
               </View>
