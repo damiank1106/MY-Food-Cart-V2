@@ -10,10 +10,12 @@ import {
   RefreshControl,
   Alert,
   Platform,
+  KeyboardAvoidingView,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Calendar, Plus, X, Trash2, PieChart, Save, AlertCircle } from 'lucide-react-native';
+import { Calendar, Plus, X, Trash2, PieChart, Save, AlertCircle, Clock, RefreshCw } from 'lucide-react-native';
 import CalendarModal from '@/components/CalendarModal';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -21,17 +23,17 @@ import * as Haptics from 'expo-haptics';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSync } from '@/contexts/SyncContext';
 import { Colors } from '@/constants/colors';
-import { ExpenseItem, formatCurrency, formatDate } from '@/types';
+import { ExpenseItem, formatCurrency, formatDate, formatShortDate } from '@/types';
 import { 
   getSalesByDate, getExpensesByDate, createSale, createExpense,
-  deleteSale, deleteExpense, createActivity
+  deleteSale, deleteExpense, createActivity, getPendingSummaryAndItems, PendingSummary
 } from '@/services/database';
 import { formatLocalDate } from '@/services/dateUtils';
 import LaserBackground from '@/components/LaserBackground';
 
 export default function SalesScreen() {
   const { user, settings } = useAuth();
-  const { queueDeletion } = useSync();
+  const { queueDeletion, pendingCount, triggerFullSync, checkPendingCount, isOnline } = useSync();
   const theme = settings.darkMode ? Colors.dark : Colors.light;
   const queryClient = useQueryClient();
   
@@ -39,6 +41,9 @@ export default function SalesScreen() {
   const [showCalendar, setShowCalendar] = useState(false);
   const [showSaleModal, setShowSaleModal] = useState(false);
   const [showExpenseModal, setShowExpenseModal] = useState(false);
+  const [showPendingModal, setShowPendingModal] = useState(false);
+  const [pendingSummary, setPendingSummary] = useState<PendingSummary | null>(null);
+  const [isSyncingPending, setIsSyncingPending] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   
   const [saleName, setSaleName] = useState('');
@@ -62,6 +67,21 @@ export default function SalesScreen() {
   const [tempFoodCartPercent, setTempFoodCartPercent] = useState(10);
   const [includeExpenses, setIncludeExpenses] = useState(true);
   
+  const loadPendingSummary = useCallback(async () => {
+    try {
+      const summary = await getPendingSummaryAndItems(50);
+      setPendingSummary(summary);
+    } catch (error) {
+      console.log('Error loading pending summary:', error);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (showPendingModal) {
+      loadPendingSummary();
+    }
+  }, [showPendingModal, pendingCount, loadPendingSummary]);
+
 
   useEffect(() => {
     loadSplitPercentages();
@@ -314,6 +334,49 @@ export default function SalesScreen() {
     setShowCalendar(false);
   };
 
+  const pendingSales = pendingSummary?.itemsByTable.sales ?? [];
+  const pendingExpenses = pendingSummary?.itemsByTable.expenses ?? [];
+  const pendingItems = [
+    ...pendingSales.map(item => ({
+      id: item.id,
+      type: 'Sale',
+      name: item.name?.trim() ? item.name : 'Sale',
+      amount: item.total,
+      date: item.date,
+      status: item.syncStatus || 'pending',
+    })),
+    ...pendingExpenses.map(item => ({
+      id: item.id,
+      type: 'Expense',
+      name: item.name?.trim() ? item.name : 'Expense',
+      amount: item.total,
+      date: item.date,
+      status: item.syncStatus || 'pending',
+    })),
+  ];
+
+  const handlePendingSync = async () => {
+    if (!isOnline) {
+      Alert.alert('Offline', "You're offline. Pending items will sync next time.");
+      return;
+    }
+    setIsSyncingPending(true);
+    try {
+      const result = await triggerFullSync({ reason: 'manual' });
+      await checkPendingCount();
+      await loadPendingSummary();
+      if (result.ok) {
+        Alert.alert('Synced successfully', 'All pending items have been synchronized.');
+      } else {
+        Alert.alert('Sync failed', 'We could not sync all items. Please try again.');
+      }
+    } catch (error) {
+      Alert.alert('Sync failed', 'We could not sync your pending items. Please try again.');
+    } finally {
+      setIsSyncingPending(false);
+    }
+  };
+
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       <LinearGradient
@@ -327,12 +390,25 @@ export default function SalesScreen() {
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         <View style={[styles.header, { borderBottomColor: theme.divider }]}>
           <Text style={[styles.headerTitle, { color: theme.text }]}>Sales</Text>
-          <TouchableOpacity
-            style={[styles.calendarButton, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}
-            onPress={() => setShowCalendar(true)}
-          >
-            <Calendar color={theme.primary} size={20} />
-          </TouchableOpacity>
+          <View style={styles.headerActions}>
+            <TouchableOpacity
+              style={[styles.pendingButton, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}
+              onPress={() => setShowPendingModal(true)}
+            >
+              <Clock color={theme.warning} size={20} />
+              {pendingCount > 0 && (
+                <View style={[styles.pendingBadge, { backgroundColor: theme.error }]}>
+                  <Text style={styles.pendingBadgeText}>{pendingCount}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.calendarButton, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}
+              onPress={() => setShowCalendar(true)}
+            >
+              <Calendar color={theme.primary} size={20} />
+            </TouchableOpacity>
+          </View>
         </View>
 
         <View style={styles.dateSection}>
@@ -544,200 +620,224 @@ export default function SalesScreen() {
 
       <Modal visible={showSaleModal} transparent animationType="fade">
         <View style={[styles.modalOverlay, { backgroundColor: theme.modalOverlay }]}>
-          <View style={[styles.formModal, { backgroundColor: theme.card }]}>
-            <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: theme.text }]}>Add New Sale</Text>
-              <TouchableOpacity onPress={() => { setShowSaleModal(false); resetSaleForm(); }}>
-                <X color={theme.textMuted} size={24} />
-              </TouchableOpacity>
-            </View>
-            
-            <View style={styles.formContent}>
-              <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Name (optional)</Text>
-              <TextInput
-                style={[styles.input, { backgroundColor: theme.inputBackground, borderColor: theme.inputBorder, color: theme.text }]}
-                placeholder="Sale description"
-                placeholderTextColor={theme.textMuted}
-                value={saleName}
-                onChangeText={setSaleName}
-              />
-              
-              <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Total (₱)</Text>
-              <TextInput
-                style={[styles.input, { backgroundColor: theme.inputBackground, borderColor: theme.inputBorder, color: theme.text }]}
-                placeholder="0.00"
-                placeholderTextColor={theme.textMuted}
-                value={saleTotal}
-                onChangeText={setSaleTotal}
-                keyboardType="decimal-pad"
-              />
-
-              <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Items (optional)</Text>
-              <View style={styles.itemsInputRow}>
-                <TextInput
-                  style={[styles.itemsInput, { backgroundColor: theme.inputBackground, borderColor: theme.inputBorder, color: theme.text }]}
-                  placeholder="Add item"
-                  placeholderTextColor={theme.textMuted}
-                  value={saleItemInput}
-                  onChangeText={setSaleItemInput}
-                />
-                <TouchableOpacity
-                  style={[styles.itemsAddButton, { backgroundColor: theme.primary }]}
-                  onPress={addSaleItem}
-                >
-                  <Text style={styles.itemsAddButtonText}>Add</Text>
-                </TouchableOpacity>
-              </View>
-              {saleItems.length > 0 && (
-                <View style={styles.itemsList}>
-                  {saleItems.map((item, index) => (
-                    <View key={`${item}-${index}`} style={[styles.itemsListItem, { borderColor: theme.cardBorder }]}>
-                      <Text style={[styles.itemsListText, { color: theme.text }]}>{item}</Text>
-                      <TouchableOpacity
-                        style={styles.itemsRemoveButton}
-                        onPress={() => setSaleItems(prev => prev.filter((_, i) => i !== index))}
-                      >
-                        <X color={theme.textMuted} size={16} />
-                      </TouchableOpacity>
-                    </View>
-                  ))}
+          <KeyboardAvoidingView
+            style={styles.keyboardAvoidingView}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
+          >
+            <View style={[styles.formModal, { backgroundColor: theme.card }]}>
+              <ScrollView
+                contentContainerStyle={styles.formScrollContent}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+              >
+                <View style={styles.modalHeader}>
+                  <Text style={[styles.modalTitle, { color: theme.text }]}>Add New Sale</Text>
+                  <TouchableOpacity onPress={() => { setShowSaleModal(false); resetSaleForm(); }}>
+                    <X color={theme.textMuted} size={24} />
+                  </TouchableOpacity>
                 </View>
-              )}
+                
+                <View style={styles.formContent}>
+                  <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Name (optional)</Text>
+                  <TextInput
+                    style={[styles.input, { backgroundColor: theme.inputBackground, borderColor: theme.inputBorder, color: theme.text }]}
+                    placeholder="Sale description"
+                    placeholderTextColor={theme.textMuted}
+                    value={saleName}
+                    onChangeText={setSaleName}
+                  />
+                  
+                  <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Total (₱)</Text>
+                  <TextInput
+                    style={[styles.input, { backgroundColor: theme.inputBackground, borderColor: theme.inputBorder, color: theme.text }]}
+                    placeholder="0.00"
+                    placeholderTextColor={theme.textMuted}
+                    value={saleTotal}
+                    onChangeText={setSaleTotal}
+                    keyboardType="decimal-pad"
+                  />
+
+                  <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Items (optional)</Text>
+                  <View style={styles.itemsInputRow}>
+                    <TextInput
+                      style={[styles.itemsInput, { backgroundColor: theme.inputBackground, borderColor: theme.inputBorder, color: theme.text }]}
+                      placeholder="Add item"
+                      placeholderTextColor={theme.textMuted}
+                      value={saleItemInput}
+                      onChangeText={setSaleItemInput}
+                    />
+                    <TouchableOpacity
+                      style={[styles.itemsAddButton, { backgroundColor: theme.primary }]}
+                      onPress={addSaleItem}
+                    >
+                      <Text style={styles.itemsAddButtonText}>Add</Text>
+                    </TouchableOpacity>
+                  </View>
+                  {saleItems.length > 0 && (
+                    <View style={styles.itemsList}>
+                      {saleItems.map((item, index) => (
+                        <View key={`${item}-${index}`} style={[styles.itemsListItem, { borderColor: theme.cardBorder }]}>
+                          <Text style={[styles.itemsListText, { color: theme.text }]}>{item}</Text>
+                          <TouchableOpacity
+                            style={styles.itemsRemoveButton}
+                            onPress={() => setSaleItems(prev => prev.filter((_, i) => i !== index))}
+                          >
+                            <X color={theme.textMuted} size={16} />
+                          </TouchableOpacity>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                </View>
+                
+                <View style={styles.modalFooter}>
+                  <TouchableOpacity
+                    style={[styles.cancelButton, { borderColor: theme.cardBorder }]}
+                    onPress={() => { setShowSaleModal(false); resetSaleForm(); }}
+                  >
+                    <Text style={[styles.cancelButtonText, { color: theme.textSecondary }]}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.submitButton, { backgroundColor: theme.success }]}
+                    onPress={handleAddSale}
+                  >
+                    <Text style={styles.submitButtonText}>Add Sale</Text>
+                  </TouchableOpacity>
+                </View>
+              </ScrollView>
             </View>
-            
-            <View style={styles.modalFooter}>
-              <TouchableOpacity
-                style={[styles.cancelButton, { borderColor: theme.cardBorder }]}
-                onPress={() => { setShowSaleModal(false); resetSaleForm(); }}
-              >
-                <Text style={[styles.cancelButtonText, { color: theme.textSecondary }]}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.submitButton, { backgroundColor: theme.success }]}
-                onPress={handleAddSale}
-              >
-                <Text style={styles.submitButtonText}>Add Sale</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
+          </KeyboardAvoidingView>
         </View>
       </Modal>
 
       <Modal visible={showExpenseModal} transparent animationType="fade">
         <View style={[styles.modalOverlay, { backgroundColor: theme.modalOverlay }]}>
-          <View style={[styles.formModal, { backgroundColor: theme.card }]}>
-            <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: theme.text }]}>Add New Expense</Text>
-              <TouchableOpacity onPress={() => { setShowExpenseModal(false); resetExpenseForm(); }}>
-                <X color={theme.textMuted} size={24} />
-              </TouchableOpacity>
-            </View>
-            
-            <View style={styles.formContent}>
-              <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Name (optional)</Text>
-              <TextInput
-                style={[styles.input, { backgroundColor: theme.inputBackground, borderColor: theme.inputBorder, color: theme.text }]}
-                placeholder="Expense description"
-                placeholderTextColor={theme.textMuted}
-                value={expenseName}
-                onChangeText={setExpenseName}
-              />
-              
-              <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Total (₱)</Text>
-              <TextInput
-                style={[
-                  styles.input,
-                  { backgroundColor: theme.inputBackground, borderColor: theme.inputBorder, color: theme.text },
-                  isExpenseTotalLocked && styles.inputDisabled,
-                ]}
-                placeholder="0.00"
-                placeholderTextColor={theme.textMuted}
-                value={expenseTotal}
-                onChangeText={setExpenseTotal}
-                keyboardType="decimal-pad"
-                editable={!isExpenseTotalLocked}
-              />
-              {isExpenseTotalLocked && (
-                <Text style={[styles.helperText, { color: theme.textMuted }]}>Total calculated from items.</Text>
-              )}
-
-              <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Items (optional)</Text>
-              <View style={styles.itemsInputRow}>
-                <TextInput
-                  style={[
-                    styles.itemsInput,
-                    { backgroundColor: theme.inputBackground, borderColor: theme.inputBorder, color: theme.text },
-                    isExpenseItemsLocked && styles.inputDisabled,
-                  ]}
-                  placeholder="Item name"
-                  placeholderTextColor={theme.textMuted}
-                  value={expenseItemNameInput}
-                  onChangeText={setExpenseItemNameInput}
-                  editable={!isExpenseItemsLocked}
-                />
-                <TextInput
-                  style={[
-                    styles.itemsPriceInput,
-                    { backgroundColor: theme.inputBackground, borderColor: theme.inputBorder, color: theme.text },
-                    isExpenseItemsLocked && styles.inputDisabled,
-                  ]}
-                  placeholder="₱0.00"
-                  placeholderTextColor={theme.textMuted}
-                  value={expenseItemPriceInput}
-                  onChangeText={setExpenseItemPriceInput}
-                  keyboardType="decimal-pad"
-                  editable={!isExpenseItemsLocked}
-                />
-                <TouchableOpacity
-                  style={[
-                    styles.itemsAddButton,
-                    { backgroundColor: theme.primary, opacity: isExpenseItemsLocked ? 0.5 : 1 },
-                  ]}
-                  onPress={addExpenseItem}
-                  disabled={isExpenseItemsLocked}
-                >
-                  <Text style={styles.itemsAddButtonText}>Add Item</Text>
-                </TouchableOpacity>
-              </View>
-              {isExpenseItemsLocked && (
-                <Text style={[styles.helperText, { color: theme.textMuted }]}>Clear Total to enter item prices.</Text>
-              )}
-              {expenseItems.length > 0 && (
-                <View style={styles.itemsList}>
-                  {expenseItems.map((item, index) => (
-                    <View key={`${item.name}-${index}`} style={[styles.itemsListItem, { borderColor: theme.cardBorder }]}>
-                      <Text style={[styles.itemsListText, { color: theme.text }]}>
-                        {item.name}
-                        {typeof item.price === 'number' ? ` (${formatCurrency(item.price)})` : ''}
-                      </Text>
-                      <TouchableOpacity
-                        style={styles.itemsRemoveButton}
-                        onPress={() => setExpenseItems(prev => prev.filter((_, i) => i !== index))}
-                        disabled={isExpenseItemsLocked}
-                      >
-                        <X color={theme.textMuted} size={16} />
-                      </TouchableOpacity>
-                    </View>
-                  ))}
+          <KeyboardAvoidingView
+            style={styles.keyboardAvoidingView}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
+          >
+            <View style={[styles.formModal, { backgroundColor: theme.card }]}>
+              <ScrollView
+                contentContainerStyle={styles.formScrollContent}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+              >
+                <View style={styles.modalHeader}>
+                  <Text style={[styles.modalTitle, { color: theme.text }]}>Add New Expense</Text>
+                  <TouchableOpacity onPress={() => { setShowExpenseModal(false); resetExpenseForm(); }}>
+                    <X color={theme.textMuted} size={24} />
+                  </TouchableOpacity>
                 </View>
-              )}
+                
+                <View style={styles.formContent}>
+                  <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Name (optional)</Text>
+                  <TextInput
+                    style={[styles.input, { backgroundColor: theme.inputBackground, borderColor: theme.inputBorder, color: theme.text }]}
+                    placeholder="Expense description"
+                    placeholderTextColor={theme.textMuted}
+                    value={expenseName}
+                    onChangeText={setExpenseName}
+                  />
+                  
+                  <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Total (₱)</Text>
+                  <TextInput
+                    style={[
+                      styles.input,
+                      { backgroundColor: theme.inputBackground, borderColor: theme.inputBorder, color: theme.text },
+                      isExpenseTotalLocked && styles.inputDisabled,
+                    ]}
+                    placeholder="0.00"
+                    placeholderTextColor={theme.textMuted}
+                    value={expenseTotal}
+                    onChangeText={setExpenseTotal}
+                    keyboardType="decimal-pad"
+                    editable={!isExpenseTotalLocked}
+                  />
+                  {isExpenseTotalLocked && (
+                    <Text style={[styles.helperText, { color: theme.textMuted }]}>Total calculated from items.</Text>
+                  )}
+
+                  <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Items (optional)</Text>
+                  <View style={styles.itemsInputRow}>
+                    <TextInput
+                      style={[
+                        styles.itemsInput,
+                        { backgroundColor: theme.inputBackground, borderColor: theme.inputBorder, color: theme.text },
+                        isExpenseItemsLocked && styles.inputDisabled,
+                      ]}
+                      placeholder="Item name"
+                      placeholderTextColor={theme.textMuted}
+                      value={expenseItemNameInput}
+                      onChangeText={setExpenseItemNameInput}
+                      editable={!isExpenseItemsLocked}
+                    />
+                    <TextInput
+                      style={[
+                        styles.itemsPriceInput,
+                        { backgroundColor: theme.inputBackground, borderColor: theme.inputBorder, color: theme.text },
+                        isExpenseItemsLocked && styles.inputDisabled,
+                      ]}
+                      placeholder="₱0.00"
+                      placeholderTextColor={theme.textMuted}
+                      value={expenseItemPriceInput}
+                      onChangeText={setExpenseItemPriceInput}
+                      keyboardType="decimal-pad"
+                      editable={!isExpenseItemsLocked}
+                    />
+                    <TouchableOpacity
+                      style={[
+                        styles.itemsAddButton,
+                        { backgroundColor: theme.primary, opacity: isExpenseItemsLocked ? 0.5 : 1 },
+                      ]}
+                      onPress={addExpenseItem}
+                      disabled={isExpenseItemsLocked}
+                    >
+                      <Text style={styles.itemsAddButtonText}>Add Item</Text>
+                    </TouchableOpacity>
+                  </View>
+                  {isExpenseItemsLocked && (
+                    <Text style={[styles.helperText, { color: theme.textMuted }]}>Clear Total to enter item prices.</Text>
+                  )}
+                  {expenseItems.length > 0 && (
+                    <View style={styles.itemsList}>
+                      {expenseItems.map((item, index) => (
+                        <View key={`${item.name}-${index}`} style={[styles.itemsListItem, { borderColor: theme.cardBorder }]}>
+                          <Text style={[styles.itemsListText, { color: theme.text }]}>
+                            {item.name}
+                            {typeof item.price === 'number' ? ` (${formatCurrency(item.price)})` : ''}
+                          </Text>
+                          <TouchableOpacity
+                            style={styles.itemsRemoveButton}
+                            onPress={() => setExpenseItems(prev => prev.filter((_, i) => i !== index))}
+                            disabled={isExpenseItemsLocked}
+                          >
+                            <X color={theme.textMuted} size={16} />
+                          </TouchableOpacity>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                </View>
+                
+                <View style={styles.modalFooter}>
+                  <TouchableOpacity
+                    style={[styles.cancelButton, { borderColor: theme.cardBorder }]}
+                    onPress={() => { setShowExpenseModal(false); resetExpenseForm(); }}
+                  >
+                    <Text style={[styles.cancelButtonText, { color: theme.textSecondary }]}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.submitButton, { backgroundColor: theme.error }]}
+                    onPress={handleAddExpense}
+                  >
+                    <Text style={styles.submitButtonText}>Add Expense</Text>
+                  </TouchableOpacity>
+                </View>
+              </ScrollView>
             </View>
-            
-            <View style={styles.modalFooter}>
-              <TouchableOpacity
-                style={[styles.cancelButton, { borderColor: theme.cardBorder }]}
-                onPress={() => { setShowExpenseModal(false); resetExpenseForm(); }}
-              >
-                <Text style={[styles.cancelButtonText, { color: theme.textSecondary }]}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.submitButton, { backgroundColor: theme.error }]}
-                onPress={handleAddExpense}
-              >
-                <Text style={styles.submitButtonText}>Add Expense</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
+          </KeyboardAvoidingView>
         </View>
       </Modal>
 
@@ -859,6 +959,85 @@ export default function SalesScreen() {
           </View>
         </View>
       </Modal>
+
+      <Modal visible={showPendingModal} transparent animationType="fade">
+        <View style={[styles.modalOverlay, { backgroundColor: theme.modalOverlay }]}>
+          <View style={[styles.pendingModal, { backgroundColor: theme.card }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: theme.text }]}>Pending Sync</Text>
+              <TouchableOpacity onPress={() => setShowPendingModal(false)}>
+                <X color={theme.textMuted} size={24} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView
+              contentContainerStyle={styles.pendingContent}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+            >
+              <View style={[styles.pendingSummary, { borderColor: theme.cardBorder }]}>
+                <View style={styles.pendingSummaryRow}>
+                  <Text style={[styles.pendingSummaryLabel, { color: theme.textSecondary }]}>Sales</Text>
+                  <Text style={[styles.pendingSummaryValue, { color: theme.text }]}>{pendingSummary?.totals.sales ?? 0}</Text>
+                </View>
+                <View style={styles.pendingSummaryRow}>
+                  <Text style={[styles.pendingSummaryLabel, { color: theme.textSecondary }]}>Expenses</Text>
+                  <Text style={[styles.pendingSummaryValue, { color: theme.text }]}>{pendingSummary?.totals.expenses ?? 0}</Text>
+                </View>
+              </View>
+
+              {pendingItems.length === 0 ? (
+                <Text style={[styles.emptyText, { color: theme.textMuted }]}>All caught up</Text>
+              ) : (
+                <View style={styles.pendingList}>
+                  {pendingItems.map(item => (
+                    <View key={`${item.type}-${item.id}`} style={[styles.pendingItem, { borderColor: theme.cardBorder }]}>
+                      <View style={styles.pendingItemHeader}>
+                        <Text style={[styles.pendingItemType, { color: theme.text }]}>{item.type}</Text>
+                        <Text style={[styles.pendingItemStatus, { color: theme.warning }]}>{item.status}</Text>
+                      </View>
+                      <Text style={[styles.pendingItemName, { color: theme.textSecondary }]} numberOfLines={1}>
+                        {item.name}
+                      </Text>
+                      <View style={styles.pendingItemMeta}>
+                        <Text style={[styles.pendingItemDate, { color: theme.textMuted }]}>
+                          {item.date ? formatShortDate(item.date) : 'No date'}
+                        </Text>
+                        <Text style={[styles.pendingItemAmount, { color: item.type === 'Sale' ? theme.success : theme.error }]}>
+                          {formatCurrency(item.amount)}
+                        </Text>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              )}
+            </ScrollView>
+
+            <View style={styles.modalFooter}>
+              <TouchableOpacity
+                style={[styles.cancelButton, { borderColor: theme.cardBorder }]}
+                onPress={() => setShowPendingModal(false)}
+              >
+                <Text style={[styles.cancelButtonText, { color: theme.textSecondary }]}>Close</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.submitButton, { backgroundColor: theme.primary, opacity: isSyncingPending ? 0.7 : 1 }]}
+                onPress={handlePendingSync}
+                disabled={isSyncingPending}
+              >
+                {isSyncingPending ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <RefreshCw color="#fff" size={18} />
+                )}
+                <Text style={styles.submitButtonText}>
+                  {isSyncingPending ? 'Syncing...' : 'Synchronize'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -880,6 +1059,35 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     fontSize: 24,
+    fontWeight: '700' as const,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  pendingButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    borderWidth: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  pendingBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    paddingHorizontal: 4,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  pendingBadgeText: {
+    color: '#fff',
+    fontSize: 10,
     fontWeight: '700' as const,
   },
   calendarButton: {
@@ -997,11 +1205,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 20,
   },
+  keyboardAvoidingView: {
+    width: '100%',
+  },
   formModal: {
     width: '100%',
     maxWidth: 400,
+    maxHeight: '90%',
     borderRadius: 20,
     overflow: 'hidden',
+  },
+  formScrollContent: {
+    paddingBottom: 24,
   },
   modalHeader: {
     flexDirection: 'row',
@@ -1282,5 +1497,73 @@ const styles = StyleSheet.create({
   includeExpensesHint: {
     fontSize: 11,
     marginTop: 4,
+  },
+  pendingModal: {
+    width: '100%',
+    maxWidth: 420,
+    maxHeight: '85%',
+    borderRadius: 20,
+    overflow: 'hidden',
+  },
+  pendingContent: {
+    padding: 20,
+    paddingBottom: 10,
+  },
+  pendingSummary: {
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 16,
+    gap: 8,
+  },
+  pendingSummaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  pendingSummaryLabel: {
+    fontSize: 13,
+  },
+  pendingSummaryValue: {
+    fontSize: 14,
+    fontWeight: '600' as const,
+  },
+  pendingList: {
+    gap: 12,
+  },
+  pendingItem: {
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+  },
+  pendingItemHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  pendingItemType: {
+    fontSize: 14,
+    fontWeight: '600' as const,
+  },
+  pendingItemStatus: {
+    fontSize: 12,
+    fontWeight: '600' as const,
+    textTransform: 'capitalize' as const,
+  },
+  pendingItemName: {
+    fontSize: 13,
+    marginTop: 4,
+  },
+  pendingItemMeta: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  pendingItemDate: {
+    fontSize: 12,
+  },
+  pendingItemAmount: {
+    fontSize: 14,
+    fontWeight: '600' as const,
   },
 });
