@@ -52,6 +52,7 @@ interface PendingDeletion {
 }
 
 export const [SyncProvider, useSync] = createContextHook(() => {
+  const supabaseConfigured = isSupabaseConfigured();
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('synced');
   const [pendingCount, setPendingCount] = useState(0);
   const [isOnline, setIsOnline] = useState(true);
@@ -263,6 +264,9 @@ export const [SyncProvider, useSync] = createContextHook(() => {
     let isMounted = true;
 
     const loadLastSyncTime = async () => {
+      if (!supabaseConfigured) {
+        return;
+      }
       try {
         const stored = await AsyncStorage.getItem(LAST_SYNC_TIME_KEY);
         if (!stored) return;
@@ -312,10 +316,14 @@ export const [SyncProvider, useSync] = createContextHook(() => {
   }, [checkPendingCount]);
 
   const syncBeforeLogout = useCallback(async (): Promise<boolean> => {
+    if (!supabaseConfigured) {
+      console.log('Supabase not configured, skipping logout sync.');
+      return false;
+    }
     console.log('Syncing before logout...');
     const result = await triggerFullSync({ reason: 'logout' });
     return result.ok;
-  }, [triggerFullSync]);
+  }, [supabaseConfigured, triggerFullSync]);
 
   return {
     syncStatus,
