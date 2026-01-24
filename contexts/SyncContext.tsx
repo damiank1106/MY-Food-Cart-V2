@@ -1,4 +1,5 @@
 import createContextHook from '@nkzw/create-context-hook';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import NetInfo from '@react-native-community/netinfo';
 import {
@@ -43,6 +44,7 @@ export type SyncStatus = 'synced' | 'pending' | 'syncing' | 'offline';
 export type SyncReason = 'login' | 'logout' | 'manual' | 'auto';
 
 const DEVELOPER_PIN = '2345';
+const LAST_SYNC_TIME_KEY = '@myfoodcart_last_sync_time';
 
 interface PendingDeletion {
   table: string;
@@ -227,7 +229,13 @@ export const [SyncProvider, useSync] = createContextHook(() => {
 
       const newPendingCount = await getPendingSyncCount();
       setPendingCount(newPendingCount);
-      setLastSyncTime(new Date());
+      const syncSucceeded = pushSuccess && newPendingCount === 0;
+
+      if (syncSucceeded) {
+        const completedAt = new Date();
+        setLastSyncTime(completedAt);
+        await AsyncStorage.setItem(LAST_SYNC_TIME_KEY, completedAt.toISOString());
+      }
 
       if (newPendingCount === 0) {
         setSyncStatus('synced');
@@ -237,7 +245,7 @@ export const [SyncProvider, useSync] = createContextHook(() => {
         console.log(`Full sync completed - ${newPendingCount} items still pending`);
       }
 
-      return { ok: pushSuccess && newPendingCount === 0 };
+      return { ok: syncSucceeded };
     } catch (error) {
       console.log('Full sync error:', error);
       await checkPendingCountInternal(true);
@@ -250,6 +258,30 @@ export const [SyncProvider, useSync] = createContextHook(() => {
   const checkPendingCount = useCallback(async () => {
     await checkPendingCountInternal(isOnline);
   }, [checkPendingCountInternal, isOnline]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadLastSyncTime = async () => {
+      try {
+        const stored = await AsyncStorage.getItem(LAST_SYNC_TIME_KEY);
+        if (!stored) return;
+
+        const parsed = new Date(stored);
+        if (!Number.isNaN(parsed.getTime()) && isMounted) {
+          setLastSyncTime(parsed);
+        }
+      } catch (error) {
+        console.log('Error loading last sync time:', error);
+      }
+    };
+
+    loadLastSyncTime();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const triggerSync = useCallback(async (): Promise<boolean> => {
     const result = await triggerFullSync({ reason: 'manual' });
