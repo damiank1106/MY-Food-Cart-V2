@@ -5,7 +5,7 @@ import {
   User, Category, InventoryItem, Sale, Expense, ExpenseItem, Activity,
   DEFAULT_USERS, DEFAULT_CATEGORIES, generateId 
 } from '@/types';
-import { bucketByLocalDay, getDayKeysForRange, parseLocalDateString, toLocalDayKey } from '@/services/dateUtils';
+import { bucketByLocalDay, getDayKeysForWeek, parseLocalDateString, toLocalDayKey } from '@/services/dateUtils';
 
 let db: SQLite.SQLiteDatabase | null = null;
 let dbInitPromise: Promise<void> | null = null;
@@ -1838,26 +1838,25 @@ export async function getEntryDaysForMonth(year: number, month: number): Promise
   }
 }
 
-export async function getSalesTotalsForRange(startDate: string, endDate: string): Promise<Record<string, number>> {
+export async function getWeeklySalesTotals(startDate: string, endDate: string): Promise<Record<string, number>> {
   const result: Record<string, number> = {};
   const start = parseLocalDateString(startDate);
-  const end = parseLocalDateString(endDate);
-  const dayKeys = getDayKeysForRange(start, end);
+  const dayKeys = getDayKeysForWeek(start);
   const dayKeysSet = new Set(dayKeys);
-
+  
   if (Platform.OS === 'web') {
     const sales = await getFromStorage<Sale[]>(STORAGE_KEYS.sales, []);
     const totals = bucketByLocalDay(sales, dayKeysSet);
     for (const key of dayKeys) {
       result[key] = totals.get(key) || 0;
     }
-    console.log(`Web sales totals (${startDate} to ${endDate}):`, result);
+    console.log(`Web weekly sales totals (${startDate} to ${endDate}):`, result);
     return result;
   }
-
+  
   const database = await ensureDb();
   if (!database) return result;
-
+  
   try {
     const rows = await database.getAllAsync<{ date: string; total: number }>(
       `SELECT date, total FROM sales`
@@ -1871,32 +1870,31 @@ export async function getSalesTotalsForRange(startDate: string, endDate: string)
       result[key] = result[key] || 0;
     }
   } catch (error) {
-    console.log('Error getting sales totals:', error);
+    console.log('Error getting weekly sales totals:', error);
   }
-
+  
   return result;
 }
 
-export async function getExpenseTotalsForRange(startDate: string, endDate: string): Promise<Record<string, number>> {
+export async function getWeeklyExpenseTotals(startDate: string, endDate: string): Promise<Record<string, number>> {
   const result: Record<string, number> = {};
   const start = parseLocalDateString(startDate);
-  const end = parseLocalDateString(endDate);
-  const dayKeys = getDayKeysForRange(start, end);
+  const dayKeys = getDayKeysForWeek(start);
   const dayKeysSet = new Set(dayKeys);
-
+  
   if (Platform.OS === 'web') {
     const expenses = await getFromStorage<Expense[]>(STORAGE_KEYS.expenses, []);
     const totals = bucketByLocalDay(expenses, dayKeysSet);
     for (const key of dayKeys) {
       result[key] = totals.get(key) || 0;
     }
-    console.log(`Web expense totals (${startDate} to ${endDate}):`, result);
+    console.log(`Web weekly expense totals (${startDate} to ${endDate}):`, result);
     return result;
   }
-
+  
   const database = await ensureDb();
   if (!database) return result;
-
+  
   try {
     const rows = await database.getAllAsync<{ date: string; total: number }>(
       `SELECT date, total FROM expenses`
@@ -1910,18 +1908,10 @@ export async function getExpenseTotalsForRange(startDate: string, endDate: strin
       result[key] = result[key] || 0;
     }
   } catch (error) {
-    console.log('Error getting expense totals:', error);
+    console.log('Error getting weekly expense totals:', error);
   }
-
+  
   return result;
-}
-
-export async function getWeeklySalesTotals(startDate: string, endDate: string): Promise<Record<string, number>> {
-  return getSalesTotalsForRange(startDate, endDate);
-}
-
-export async function getWeeklyExpenseTotals(startDate: string, endDate: string): Promise<Record<string, number>> {
-  return getExpenseTotalsForRange(startDate, endDate);
 }
 
 export async function upsertActivitiesFromServer(serverActivities: Activity[]): Promise<void> {

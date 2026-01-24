@@ -60,21 +60,6 @@ export function getDayKeysForWeek(start: Date): string[] {
   });
 }
 
-export function getDayKeysForRange(start: Date, end: Date): string[] {
-  const rangeStart = new Date(start);
-  const rangeEnd = new Date(end);
-  rangeStart.setHours(0, 0, 0, 0);
-  rangeEnd.setHours(0, 0, 0, 0);
-  if (rangeStart > rangeEnd) return [];
-  const keys: string[] = [];
-  const cursor = new Date(rangeStart);
-  while (cursor <= rangeEnd) {
-    keys.push(toLocalDayKey(cursor));
-    cursor.setDate(cursor.getDate() + 1);
-  }
-  return keys;
-}
-
 export function getWeekdayLabels(weekStartsOn: number = DEFAULT_WEEK_START): string[] {
   return [...WEEKDAY_LABELS.slice(weekStartsOn), ...WEEKDAY_LABELS.slice(0, weekStartsOn)];
 }
