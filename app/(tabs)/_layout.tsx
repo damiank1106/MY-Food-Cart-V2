@@ -1,13 +1,15 @@
 import { Tabs } from "expo-router";
 import { Home, Package, TrendingUp, User, Settings } from "lucide-react-native";
 import React from "react";
-import { useWindowDimensions } from "react-native";
+import { useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/contexts/AuthContext";
+import { useSync } from "@/contexts/SyncContext";
 import { Colors } from "@/constants/colors";
 
 export default function TabLayout() {
   const { user, settings } = useAuth();
+  const { pendingCount } = useSync();
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const isTablet = width >= 768;
@@ -87,7 +89,24 @@ export default function TabLayout() {
         name="settings"
         options={{
           title: "Settings",
-          tabBarIcon: ({ color, size }) => <Settings color={color} size={size} />,
+          tabBarIcon: ({ color, size }) => (
+            <View style={{ width: size, height: size }}>
+              <Settings color={color} size={size} />
+              {pendingCount > 0 && (
+                <View
+                  style={{
+                    position: 'absolute',
+                    top: -1,
+                    right: -1,
+                    width: 8,
+                    height: 8,
+                    borderRadius: 4,
+                    backgroundColor: theme.warning,
+                  }}
+                />
+              )}
+            </View>
+          ),
         }}
       />
     </Tabs>
