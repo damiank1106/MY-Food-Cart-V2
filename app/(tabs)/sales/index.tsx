@@ -190,7 +190,7 @@ export default function SalesScreen() {
 
   const createSaleMutation = useMutation({
     mutationFn: (data: { name: string; total: number; items: string[] }) => 
-      createSale({ ...data, date: dateStr, createdBy: user?.id || '' }),
+      createSale({ ...data, date: dateStr, createdBy: user?.id || '', createdByRole: user?.role ?? null }),
     onSuccess: async () => {
       queryClient.invalidateQueries({ queryKey: ['sales'] });
       if (user) {
@@ -209,7 +209,7 @@ export default function SalesScreen() {
 
   const createExpenseMutation = useMutation({
     mutationFn: (data: { name: string; total: number; items: ExpenseItem[] }) => 
-      createExpense({ ...data, date: dateStr, createdBy: user?.id || '' }),
+      createExpense({ ...data, date: dateStr, createdBy: user?.id || '', createdByRole: user?.role ?? null }),
     onSuccess: async () => {
       queryClient.invalidateQueries({ queryKey: ['expenses'] });
       if (user) {
