@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -8,12 +8,15 @@ import {
   Dimensions,
   RefreshControl,
   useWindowDimensions,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Package, ShoppingCart, User, Settings } from 'lucide-react-native';
+import { Package, ShoppingCart, User, Settings, RefreshCw } from 'lucide-react-native';
 import { useQuery } from '@tanstack/react-query';
+import { useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '@/contexts/AuthContext';
+import { useSync } from '@/contexts/SyncContext';
 import { Colors } from '@/constants/colors';
 
 import { useRouter } from 'expo-router';
@@ -74,6 +77,7 @@ const AUTHOR_VISIBLE_ROLES: UserRole[] = ['general_manager', 'operation_manager'
 export default function HomeScreen() {
   const router = useRouter();
   const { settings, user: currentUser } = useAuth();
+  const { dataVersion } = useSync();
   const theme = settings.darkMode ? Colors.dark : Colors.light;
 
   useEffect(() => {
@@ -88,8 +92,10 @@ export default function HomeScreen() {
   }
   const [selectedWeek, setSelectedWeek] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
+  const [isOverviewRefreshing, setIsOverviewRefreshing] = useState(false);
   const [showSales, setShowSales] = useState(true);
   const [showExpenses, setShowExpenses] = useState(true);
+  const overviewRefreshInFlight = useRef(false);
 
   const { width: screenWidth } = useWindowDimensions();
   
@@ -234,6 +240,28 @@ export default function HomeScreen() {
     setRefreshing(false);
   }, [refetchSales, refetchExpenses, refetchActivities, refetchUsers]);
 
+  const handleOverviewRefresh = useCallback(async () => {
+    if (overviewRefreshInFlight.current) return;
+    overviewRefreshInFlight.current = true;
+    setIsOverviewRefreshing(true);
+    try {
+      await Promise.all([refetchSales(), refetchExpenses()]);
+    } finally {
+      setIsOverviewRefreshing(false);
+      overviewRefreshInFlight.current = false;
+    }
+  }, [refetchSales, refetchExpenses]);
+
+  useEffect(() => {
+    handleOverviewRefresh();
+  }, [dataVersion, handleOverviewRefresh]);
+
+  useFocusEffect(
+    useCallback(() => {
+      handleOverviewRefresh();
+    }, [handleOverviewRefresh])
+  );
+
   const pathData = chartData.map((point, index) => {
     const x = index * stepX;
     const y = chartHeight - (point.sales / maxValue) * chartHeight;
@@ -308,7 +336,20 @@ export default function HomeScreen() {
             </View>
 
             <View style={[styles.chartCard, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
-              <Text style={[styles.sectionTitle, { color: theme.text }]}>Weekly Overview</Text>
+              <View style={styles.overviewHeader}>
+                <Text style={[styles.sectionTitle, { color: theme.text }]}>Weekly Overview</Text>
+                <TouchableOpacity
+                  style={styles.overviewRefreshButton}
+                  onPress={handleOverviewRefresh}
+                  disabled={isOverviewRefreshing}
+                >
+                  {isOverviewRefreshing ? (
+                    <ActivityIndicator size="small" color={theme.textMuted} />
+                  ) : (
+                    <RefreshCw color={theme.textMuted} size={16} />
+                  )}
+                </TouchableOpacity>
+              </View>
               
               <View style={styles.weekTotalsRow}>
                 <View style={[styles.weekTotalCard, { backgroundColor: theme.chartLine + '15' }]}>
@@ -524,6 +565,14 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: 16,
     borderWidth: 1,
+  },
+  overviewHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  overviewRefreshButton: {
+    padding: 4,
   },
   chartContainer: {
     alignItems: 'center',

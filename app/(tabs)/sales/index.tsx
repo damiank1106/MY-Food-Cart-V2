@@ -33,7 +33,14 @@ import LaserBackground from '@/components/LaserBackground';
 
 export default function SalesScreen() {
   const { user, settings } = useAuth();
-  const { queueDeletion, pendingCount, triggerFullSync, checkPendingCount, isOnline } = useSync();
+  const {
+    queueDeletion,
+    pendingCount,
+    triggerFullSync,
+    checkPendingCount,
+    isOnline,
+    bumpDataVersion,
+  } = useSync();
   const theme = settings.darkMode ? Colors.dark : Colors.light;
   const queryClient = useQueryClient();
   
@@ -194,6 +201,8 @@ export default function SalesScreen() {
         });
         queryClient.invalidateQueries({ queryKey: ['activities'] });
       }
+      await checkPendingCount();
+      bumpDataVersion();
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     },
   });
@@ -211,6 +220,8 @@ export default function SalesScreen() {
         });
         queryClient.invalidateQueries({ queryKey: ['activities'] });
       }
+      await checkPendingCount();
+      bumpDataVersion();
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     },
   });
@@ -222,6 +233,7 @@ export default function SalesScreen() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sales'] });
+      bumpDataVersion();
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     },
   });
@@ -233,6 +245,7 @@ export default function SalesScreen() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['expenses'] });
+      bumpDataVersion();
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     },
   });
