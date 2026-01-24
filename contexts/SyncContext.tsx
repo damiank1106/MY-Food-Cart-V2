@@ -2,7 +2,7 @@ import createContextHook from '@nkzw/create-context-hook';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import NetInfo from '@react-native-community/netinfo';
-import { OutboxEntityType } from '@/types';
+import { OutboxEntityType, OutboxItem } from '@/types';
 import {
   getUsers,
   getCategories,
@@ -60,6 +60,7 @@ export const [SyncProvider, useSync] = createContextHook(() => {
   const [isOnline, setIsOnline] = useState(true);
   const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
   const isSyncing = useRef(false);
+  const needsResync = useRef(false);
 
   const checkPendingCountInternal = useCallback(async (online: boolean) => {
     const count = await getPendingSyncCount();
@@ -117,7 +118,9 @@ export const [SyncProvider, useSync] = createContextHook(() => {
       let pushSuccess = true;
 
       console.log('Processing pending deletions...');
-      const pendingDeletions = await getOutboxItems();
+      const pendingDeletions = (await getOutboxItems())
+        .filter(item => item.operation === 'delete')
+        .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
       for (const deletion of pendingDeletions) {
         if (deletion.operation !== 'delete') {
           continue;
@@ -143,16 +146,17 @@ export const [SyncProvider, useSync] = createContextHook(() => {
         })();
 
         if (!table) {
-          await updateOutboxItemStatus(deletion.id, 'error');
+          await updateOutboxItemStatus(deletion.id, 'failed');
           pushSuccess = false;
           continue;
         }
 
+        await updateOutboxItemStatus(deletion.id, 'in_progress');
         const deleted = await deleteFromSupabase(table, deletion.entityId);
         if (deleted) {
           await removeOutboxItem(deletion.id);
         } else {
-          await updateOutboxItemStatus(deletion.id, 'error');
+          await updateOutboxItemStatus(deletion.id, 'failed');
           pushSuccess = false;
         }
       }
@@ -166,6 +170,25 @@ export const [SyncProvider, useSync] = createContextHook(() => {
         getExpenses(),
         getActivities(),
       ]);
+      const outboxSnapshot = await getOutboxItems();
+
+      const saleById = new Map(sales.map(sale => [sale.id, sale]));
+      const expenseById = new Map(expenses.map(expense => [expense.id, expense]));
+      const staleUpserts = outboxSnapshot.filter(item => {
+        if (item.operation !== 'upsert') return false;
+        if (item.entityType === 'sale') {
+          const local = saleById.get(item.entityId);
+          return !local || local.syncStatus !== 'pending';
+        }
+        if (item.entityType === 'expense') {
+          const local = expenseById.get(item.entityId);
+          return !local || local.syncStatus !== 'pending';
+        }
+        return false;
+      });
+      for (const item of staleUpserts) {
+        await removeOutboxItem(item.id);
+      }
 
       let pendingUsers = users.filter(u => u.syncStatus === 'pending');
       const pendingCategories = categories.filter(c => c.syncStatus === 'pending');
@@ -218,14 +241,52 @@ export const [SyncProvider, useSync] = createContextHook(() => {
 
       if (pendingSales.length > 0) {
         console.log('Pushing sales...');
+        const saleUpserts = await getOutboxItems();
+        const saleUpsertItems = saleUpserts.filter(
+          (item): item is OutboxItem =>
+            item.operation === 'upsert' &&
+            item.entityType === 'sale' &&
+            pendingSales.some(sale => sale.id === item.entityId)
+        );
+        for (const item of saleUpsertItems) {
+          await updateOutboxItemStatus(item.id, 'in_progress');
+        }
         const result = await syncSalesToSupabase(pendingSales);
-        if (!result) pushSuccess = false;
+        if (result) {
+          for (const item of saleUpsertItems) {
+            await removeOutboxItem(item.id);
+          }
+        } else {
+          for (const item of saleUpsertItems) {
+            await updateOutboxItemStatus(item.id, 'failed');
+          }
+          pushSuccess = false;
+        }
       }
 
       if (pendingExpenses.length > 0) {
         console.log('Pushing expenses...');
+        const expenseUpserts = await getOutboxItems();
+        const expenseUpsertItems = expenseUpserts.filter(
+          (item): item is OutboxItem =>
+            item.operation === 'upsert' &&
+            item.entityType === 'expense' &&
+            pendingExpenses.some(expense => expense.id === item.entityId)
+        );
+        for (const item of expenseUpsertItems) {
+          await updateOutboxItemStatus(item.id, 'in_progress');
+        }
         const result = await syncExpensesToSupabase(pendingExpenses);
-        if (!result) pushSuccess = false;
+        if (result) {
+          for (const item of expenseUpsertItems) {
+            await removeOutboxItem(item.id);
+          }
+        } else {
+          for (const item of expenseUpsertItems) {
+            await updateOutboxItemStatus(item.id, 'failed');
+          }
+          pushSuccess = false;
+        }
       }
 
       if (pendingActivities.length > 0) {
@@ -289,6 +350,10 @@ export const [SyncProvider, useSync] = createContextHook(() => {
       return { ok: false };
     } finally {
       isSyncing.current = false;
+      if (needsResync.current) {
+        needsResync.current = false;
+        triggerFullSync({ reason: 'auto' });
+      }
     }
   }, [checkPendingCountInternal]);
 
@@ -363,7 +428,10 @@ export const [SyncProvider, useSync] = createContextHook(() => {
           return entityType as OutboxEntityType;
       }
     })();
-    await enqueueDeletion(mappedEntityType, id, metadata);
+    await enqueueDeletion(mappedEntityType, id, metadata, { isSyncing: isSyncing.current });
+    if (isSyncing.current) {
+      needsResync.current = true;
+    }
     checkPendingCount();
   }, [checkPendingCount]);
 
