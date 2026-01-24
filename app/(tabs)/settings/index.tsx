@@ -213,10 +213,18 @@ export default function SettingsScreen() {
 
   const handleLogout = async () => {
     setShowSyncModal(true);
+    let syncOk = false;
     try {
-      await syncBeforeLogout();
+      if (isOnline) {
+        syncOk = await syncBeforeLogout();
+      }
     } finally {
       setShowSyncModal(false);
+    }
+    if (!isOnline) {
+      Alert.alert('Offline', "You're offline. Pending items will sync next time.");
+    } else if (!syncOk) {
+      Alert.alert('Sync incomplete', 'Some items are still pending. They will sync next time.');
     }
     await logout();
     await updateSettings({ hasSeenIntro: false });
@@ -225,10 +233,18 @@ export default function SettingsScreen() {
 
   const handleGoToWelcome = async () => {
     setShowSyncModal(true);
+    let syncOk = false;
     try {
-      await syncBeforeLogout();
+      if (isOnline) {
+        syncOk = await syncBeforeLogout();
+      }
     } finally {
       setShowSyncModal(false);
+    }
+    if (!isOnline) {
+      Alert.alert('Offline', "You're offline. Pending items will sync next time.");
+    } else if (!syncOk) {
+      Alert.alert('Sync incomplete', 'Some items are still pending. They will sync next time.');
     }
     await logout();
     await updateSettings({ hasSeenIntro: false });
