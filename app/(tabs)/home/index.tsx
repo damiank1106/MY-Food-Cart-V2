@@ -5,25 +5,29 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Dimensions,
   RefreshControl,
   useWindowDimensions,
+  Modal,
+  ActivityIndicator,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Package, ShoppingCart, User, Settings } from 'lucide-react-native';
+import { Package, ShoppingCart, User, Settings, RefreshCw } from 'lucide-react-native';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { Colors } from '@/constants/colors';
 
 import { useRouter } from 'expo-router';
 import { formatDate, ROLE_DISPLAY_NAMES, UserRole } from '@/types';
-import { getWeeklySalesTotals, getWeeklyExpenseTotals, getActivities, getUsers } from '@/services/database';
-import { getDayKeysForWeek, getWeekdayLabels, getWeekRange, getWeekStart, toLocalDayKey } from '@/services/dateUtils';
+import { getSalesTotalsForRange, getExpenseTotalsForRange, getActivities, getUsers } from '@/services/database';
+import { getDayKeysForRange, getDayKeysForWeek, getWeekdayLabels, getWeekRange, getWeekStart, parseLocalDateString, toLocalDayKey } from '@/services/dateUtils';
 import Svg, { Path, Circle, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
 import LaserBackground from '@/components/LaserBackground';
+import DateTimePicker from '@react-native-community/datetimepicker';
+import { useSync } from '@/contexts/SyncContext';
+import { isSupabaseConfigured } from '@/services/supabase';
 
-const { width } = Dimensions.get('window');
 
 function formatWeekRange(start: Date, end: Date): string {
   const startMonth = start.toLocaleDateString('en-US', { month: 'short' });
@@ -35,6 +39,24 @@ function formatWeekRange(start: Date, end: Date): string {
     return `${startMonth}\n${startDay}-${endDay}`;
   }
   return `${startMonth} ${startDay}-\n${endMonth} ${endDay}`;
+}
+
+function formatRangeDisplay(start: Date, end: Date): string {
+  const sameMonth = start.getMonth() === end.getMonth() && start.getFullYear() === end.getFullYear();
+  const startMonth = start.toLocaleDateString('en-US', { month: 'short' });
+  const endMonth = end.toLocaleDateString('en-US', { month: 'short' });
+  const startDay = start.getDate();
+  const endDay = end.getDate();
+  if (sameMonth) {
+    return `${startMonth} ${startDay} – ${endDay}`;
+  }
+  return `${startMonth} ${startDay} – ${endMonth} ${endDay}`;
+}
+
+function formatRangeDayLabel(dateKey: string): string {
+  const date = parseLocalDateString(dateKey);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
 function getActivityIcon(type: string, color: string) {
@@ -87,11 +109,24 @@ export default function HomeScreen() {
     return null;
   }
   const [selectedWeek, setSelectedWeek] = useState(0);
+  const [selectedMode, setSelectedMode] = useState<'week' | 'custom'>('week');
+  const [customRange, setCustomRange] = useState<{ start: Date; end: Date }>({
+    start: new Date(),
+    end: new Date(),
+  });
+  const [isRangeModalVisible, setIsRangeModalVisible] = useState(false);
+  const [rangeDraft, setRangeDraft] = useState<{ start: Date; end: Date }>({
+    start: new Date(),
+    end: new Date(),
+  });
+  const [rangeError, setRangeError] = useState('');
   const [refreshing, setRefreshing] = useState(false);
+  const [overviewRefreshing, setOverviewRefreshing] = useState(false);
   const [showSales, setShowSales] = useState(true);
   const [showExpenses, setShowExpenses] = useState(true);
 
   const { width: screenWidth } = useWindowDimensions();
+  const { triggerSync, isOnline } = useSync();
   
   const welcomeFontSize = screenWidth < 360 ? 18 : screenWidth < 400 ? 20 : 24;
 
@@ -105,19 +140,25 @@ export default function HomeScreen() {
   }, [weekStartsOn]);
 
   const currentWeek = weeks[selectedWeek];
-  const startDateStr = toLocalDayKey(currentWeek.start);
-  const endDateStr = toLocalDayKey(currentWeek.end);
+  const selectedRange = useMemo(() => {
+    if (selectedMode === 'custom') {
+      return customRange;
+    }
+    return currentWeek;
+  }, [currentWeek, customRange, selectedMode]);
+  const startDateStr = toLocalDayKey(selectedRange.start);
+  const endDateStr = toLocalDayKey(selectedRange.end);
 
 
 
   const { data: salesTotalsMap = {}, refetch: refetchSales } = useQuery({
-    queryKey: ['weeklySalesTotals', startDateStr, endDateStr],
-    queryFn: () => getWeeklySalesTotals(startDateStr, endDateStr),
+    queryKey: ['rangeSalesTotals', startDateStr, endDateStr],
+    queryFn: () => getSalesTotalsForRange(startDateStr, endDateStr),
   });
 
   const { data: expensesTotalsMap = {}, refetch: refetchExpenses } = useQuery({
-    queryKey: ['weeklyExpenseTotals', startDateStr, endDateStr],
-    queryFn: () => getWeeklyExpenseTotals(startDateStr, endDateStr),
+    queryKey: ['rangeExpenseTotals', startDateStr, endDateStr],
+    queryFn: () => getExpenseTotalsForRange(startDateStr, endDateStr),
   });
 
   const { data: activities = [], refetch: refetchActivities } = useQuery({
@@ -149,24 +190,31 @@ export default function HomeScreen() {
 
   const canViewAuthor = currentUser && AUTHOR_VISIBLE_ROLES.includes(currentUser.role);
 
-  const weekStart = useMemo(
-    () => getWeekStart(currentWeek.start, weekStartsOn),
-    [currentWeek.start, weekStartsOn]
-  );
-  const weekDayKeys = useMemo(() => getDayKeysForWeek(weekStart), [weekStart]);
-  const weekDayLabels = useMemo(() => getWeekdayLabels(weekStartsOn), [weekStartsOn]);
+  const periodDayKeys = useMemo(() => {
+    if (selectedMode === 'custom') {
+      return getDayKeysForRange(selectedRange.start, selectedRange.end);
+    }
+    const weekStart = getWeekStart(currentWeek.start, weekStartsOn);
+    return getDayKeysForWeek(weekStart);
+  }, [currentWeek.start, selectedMode, selectedRange.end, selectedRange.start, weekStartsOn]);
+  const periodDayLabels = useMemo(() => {
+    if (selectedMode === 'custom') {
+      return periodDayKeys.map(formatRangeDayLabel);
+    }
+    return getWeekdayLabels(weekStartsOn);
+  }, [periodDayKeys, selectedMode, weekStartsOn]);
 
   useEffect(() => {
     if (process.env.EXPO_PUBLIC_DEBUG_WEEKLY_CHART === 'true') {
-      const labelCount = weekDayLabels.length;
-      const keyCount = weekDayKeys.length;
+      const labelCount = periodDayLabels.length;
+      const keyCount = periodDayKeys.length;
       if (labelCount !== keyCount) {
         console.warn('Weekly chart labels/day keys mismatch', { labelCount, keyCount });
       } else {
-        console.log('Weekly chart alignment check', { weekDayLabels, weekDayKeys });
+        console.log('Weekly chart alignment check', { periodDayLabels, periodDayKeys });
       }
     }
-  }, [weekDayKeys, weekDayLabels]);
+  }, [periodDayKeys, periodDayLabels]);
 
   const salesByDay = useMemo(() => {
     return new Map(Object.entries(salesTotalsMap).map(([key, value]) => [key, Number(value) || 0]));
@@ -177,29 +225,29 @@ export default function HomeScreen() {
   }, [expensesTotalsMap]);
 
   const salesSeries = useMemo(
-    () => weekDayKeys.map(key => salesByDay.get(key) ?? 0),
-    [salesByDay, weekDayKeys]
+    () => periodDayKeys.map(key => salesByDay.get(key) ?? 0),
+    [salesByDay, periodDayKeys]
   );
 
   const expensesSeries = useMemo(
-    () => weekDayKeys.map(key => expensesByDay.get(key) ?? 0),
-    [expensesByDay, weekDayKeys]
+    () => periodDayKeys.map(key => expensesByDay.get(key) ?? 0),
+    [expensesByDay, periodDayKeys]
   );
 
   const chartData = useMemo(() => {
-    return weekDayKeys.map((dateStr, index) => {
-      const day = weekDayLabels[index] ?? '';
+    return periodDayKeys.map((dateStr, index) => {
+      const day = periodDayLabels[index] ?? '';
       const daySales = salesSeries[index] ?? 0;
       const dayExpenses = expensesSeries[index] ?? 0;
 
       return { day, sales: daySales, expenses: dayExpenses, dateStr };
     });
-  }, [expensesSeries, salesSeries, weekDayKeys, weekDayLabels]);
+  }, [expensesSeries, salesSeries, periodDayKeys, periodDayLabels]);
 
-  const weekTotals = useMemo(() => {
+  const periodTotals = useMemo(() => {
     const salesTotal = salesSeries.reduce((sum, val) => sum + val, 0);
     const expensesTotal = expensesSeries.reduce((sum, val) => sum + val, 0);
-    console.log(`Week totals (${startDateStr} to ${endDateStr}): Sales=₱${salesTotal}, Expenses=₱${expensesTotal}`);
+    console.log(`Totals (${startDateStr} to ${endDateStr}): Sales=₱${salesTotal}, Expenses=₱${expensesTotal}`);
     return { sales: salesTotal, expenses: expensesTotal, net: salesTotal - expensesTotal };
   }, [expensesSeries, salesSeries, startDateStr, endDateStr]);
 
@@ -225,8 +273,9 @@ export default function HomeScreen() {
   
 
   const chartHeight = 150;
-  const chartWidth = width - 80;
-  const stepX = chartWidth / 6;
+  const chartStep = 48;
+  const chartDayCount = Math.max(chartData.length, 1);
+  const chartContentWidth = Math.max(screenWidth - 80, chartDayCount * chartStep);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -235,20 +284,34 @@ export default function HomeScreen() {
   }, [refetchSales, refetchExpenses, refetchActivities, refetchUsers]);
 
   const pathData = chartData.map((point, index) => {
-    const x = index * stepX;
+    const x = index * chartStep + chartStep / 2;
     const y = chartHeight - (point.sales / maxValue) * chartHeight;
     return `${index === 0 ? 'M' : 'L'} ${x} ${y}`;
   }).join(' ');
 
-  const areaPath = `${pathData} L ${(chartData.length - 1) * stepX} ${chartHeight} L 0 ${chartHeight} Z`;
+  const areaPath = `${pathData} L ${chartData.length * chartStep - chartStep / 2} ${chartHeight} L ${chartStep / 2} ${chartHeight} Z`;
 
   const expensePathData = chartData.map((point, index) => {
-    const x = index * stepX;
+    const x = index * chartStep + chartStep / 2;
     const y = chartHeight - (point.expenses / maxValue) * chartHeight;
     return `${index === 0 ? 'M' : 'L'} ${x} ${y}`;
   }).join(' ');
 
-  const expenseAreaPath = `${expensePathData} L ${(chartData.length - 1) * stepX} ${chartHeight} L 0 ${chartHeight} Z`;
+  const expenseAreaPath = `${expensePathData} L ${chartData.length * chartStep - chartStep / 2} ${chartHeight} L ${chartStep / 2} ${chartHeight} Z`;
+
+  const handleRangeConfirm = useCallback(() => {
+    if (rangeDraft.start > rangeDraft.end) {
+      setRangeError('From date must be on or before To date.');
+      return;
+    }
+    const normalizedStart = new Date(rangeDraft.start);
+    normalizedStart.setHours(0, 0, 0, 0);
+    const normalizedEnd = new Date(rangeDraft.end);
+    normalizedEnd.setHours(0, 0, 0, 0);
+    setCustomRange({ start: normalizedStart, end: normalizedEnd });
+    setIsRangeModalVisible(false);
+    setRangeError('');
+  }, [rangeDraft]);
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
@@ -283,6 +346,12 @@ export default function HomeScreen() {
             <View style={[styles.dateCard, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
               <Text style={[styles.dateLabel, { color: theme.textSecondary }]}>Date</Text>
               <Text style={[styles.dateText, { color: theme.text }]}>{formatDate(new Date())}</Text>
+              <View style={styles.selectedRange}>
+                <Text style={[styles.rangeLabel, { color: theme.textSecondary }]}>Selected range</Text>
+                <Text style={[styles.rangeText, { color: theme.text }]}>
+                  {formatRangeDisplay(selectedRange.start, selectedRange.end)}
+                </Text>
+              </View>
               
               <Text style={[styles.sectionTitle, { color: theme.text, marginTop: 16 }]}>Previous Weeks</Text>
               <View style={styles.weeksContainer}>
@@ -292,35 +361,81 @@ export default function HomeScreen() {
                     style={[
                       styles.weekButton,
                       { borderColor: theme.cardBorder },
-                      selectedWeek === index && { backgroundColor: theme.primary + '30', borderColor: theme.primary },
+                      selectedMode === 'week' &&
+                        selectedWeek === index && { backgroundColor: theme.primary + '30', borderColor: theme.primary },
                     ]}
-                    onPress={() => setSelectedWeek(index)}
+                    onPress={() => {
+                      setSelectedMode('week');
+                      setSelectedWeek(index);
+                    }}
                   >
                     <Text style={[
                       styles.weekText,
-                      { color: selectedWeek === index ? theme.primary : theme.textSecondary },
+                      { color: selectedMode === 'week' && selectedWeek === index ? theme.primary : theme.textSecondary },
                     ]}>
                       {week.label}
                     </Text>
                   </TouchableOpacity>
                 ))}
+                <TouchableOpacity
+                  style={[
+                    styles.weekButton,
+                    { borderColor: theme.cardBorder },
+                    selectedMode === 'custom' && { backgroundColor: theme.primary + '30', borderColor: theme.primary },
+                  ]}
+                  onPress={() => {
+                    setSelectedMode('custom');
+                    setRangeDraft(customRange);
+                    setRangeError('');
+                    setIsRangeModalVisible(true);
+                  }}
+                >
+                  <Text style={[
+                    styles.weekText,
+                    { color: selectedMode === 'custom' ? theme.primary : theme.textSecondary },
+                  ]}>
+                    Custom
+                  </Text>
+                </TouchableOpacity>
               </View>
             </View>
 
             <View style={[styles.chartCard, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
-              <Text style={[styles.sectionTitle, { color: theme.text }]}>Weekly Overview</Text>
+              <View style={styles.chartHeader}>
+                <Text style={[styles.sectionTitle, { color: theme.text, marginBottom: 0 }]}>Overview</Text>
+                <TouchableOpacity
+                  style={[styles.refreshIconButton, { borderColor: theme.cardBorder }]}
+                  onPress={async () => {
+                    if (overviewRefreshing) return;
+                    setOverviewRefreshing(true);
+                    await Promise.all([refetchSales(), refetchExpenses()]);
+                    if (isOnline && isSupabaseConfigured()) {
+                      await triggerSync();
+                      await Promise.all([refetchSales(), refetchExpenses()]);
+                    }
+                    setOverviewRefreshing(false);
+                  }}
+                  disabled={overviewRefreshing}
+                >
+                  {overviewRefreshing ? (
+                    <ActivityIndicator size="small" color={theme.primary} />
+                  ) : (
+                    <RefreshCw color={theme.textSecondary} size={16} />
+                  )}
+                </TouchableOpacity>
+              </View>
               
               <View style={styles.weekTotalsRow}>
                 <View style={[styles.weekTotalCard, { backgroundColor: theme.chartLine + '15' }]}>
                   <Text style={[styles.weekTotalLabel, { color: theme.textSecondary }]}>Sales</Text>
                   <Text style={[styles.weekTotalValue, { color: theme.chartLine }]}>
-                    ₱{weekTotals.sales.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    ₱{periodTotals.sales.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </Text>
                 </View>
                 <View style={[styles.weekTotalCard, { backgroundColor: theme.error + '15' }]}>
                   <Text style={[styles.weekTotalLabel, { color: theme.textSecondary }]}>Expenses</Text>
                   <Text style={[styles.weekTotalValue, { color: theme.error }]}>
-                    ₱{weekTotals.expenses.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    ₱{periodTotals.expenses.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </Text>
                 </View>
               </View>
@@ -351,62 +466,144 @@ export default function HomeScreen() {
               </View>
               
               <View style={styles.chartContainer}>
-                <Svg width={chartWidth + 48} height={chartHeight + 30} style={styles.chart}>
-                  <Defs>
-                    <SvgLinearGradient id="areaGradient" x1="0" y1="0" x2="0" y2="1">
-                      <Stop offset="0" stopColor={theme.chartLine} stopOpacity="0.3" />
-                      <Stop offset="1" stopColor={theme.chartLine} stopOpacity="0.05" />
-                    </SvgLinearGradient>
-                    <SvgLinearGradient id="expenseGradient" x1="0" y1="0" x2="0" y2="1">
-                      <Stop offset="0" stopColor={theme.error} stopOpacity="0.2" />
-                      <Stop offset="1" stopColor={theme.error} stopOpacity="0.02" />
-                    </SvgLinearGradient>
-                  </Defs>
-                  
-                  {showSales && (
-                    <>
-                      <Path d={areaPath} fill="url(#areaGradient)" />
-                      <Path d={pathData} stroke={theme.chartLine} strokeWidth={2} fill="none" />
-                    </>
-                  )}
-                  
-                  {showExpenses && (
-                    <>
-                      <Path d={expenseAreaPath} fill="url(#expenseGradient)" />
-                      <Path d={expensePathData} stroke={theme.error} strokeWidth={2} fill="none" strokeDasharray="4,4" />
-                    </>
-                  )}
-                  
-                  {showSales && chartData.map((point, index) => (
-                    <Circle
-                      key={`sales-${index}`}
-                      cx={index * stepX}
-                      cy={chartHeight - (point.sales / maxValue) * chartHeight}
-                      r={4}
-                      fill={theme.chartLine}
-                    />
-                  ))}
-                  {showExpenses && chartData.map((point, index) => (
-                    <Circle
-                      key={`expense-${index}`}
-                      cx={index * stepX}
-                      cy={chartHeight - (point.expenses / maxValue) * chartHeight}
-                      r={3}
-                      fill={theme.error}
-                    />
-                  ))}
-                </Svg>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={[styles.chartScrollContent, { width: chartContentWidth }]}
+                >
+                  <Svg width={chartContentWidth} height={chartHeight + 30} style={styles.chart}>
+                    <Defs>
+                      <SvgLinearGradient id="areaGradient" x1="0" y1="0" x2="0" y2="1">
+                        <Stop offset="0" stopColor={theme.chartLine} stopOpacity="0.3" />
+                        <Stop offset="1" stopColor={theme.chartLine} stopOpacity="0.05" />
+                      </SvgLinearGradient>
+                      <SvgLinearGradient id="expenseGradient" x1="0" y1="0" x2="0" y2="1">
+                        <Stop offset="0" stopColor={theme.error} stopOpacity="0.2" />
+                        <Stop offset="1" stopColor={theme.error} stopOpacity="0.02" />
+                      </SvgLinearGradient>
+                    </Defs>
+                    
+                    {showSales && (
+                      <>
+                        <Path d={areaPath} fill="url(#areaGradient)" />
+                        <Path d={pathData} stroke={theme.chartLine} strokeWidth={2} fill="none" />
+                      </>
+                    )}
+                    
+                    {showExpenses && (
+                      <>
+                        <Path d={expenseAreaPath} fill="url(#expenseGradient)" />
+                        <Path d={expensePathData} stroke={theme.error} strokeWidth={2} fill="none" strokeDasharray="4,4" />
+                      </>
+                    )}
+                    
+                    {showSales && chartData.map((point, index) => (
+                      <Circle
+                        key={`sales-${index}`}
+                        cx={index * chartStep + chartStep / 2}
+                        cy={chartHeight - (point.sales / maxValue) * chartHeight}
+                        r={4}
+                        fill={theme.chartLine}
+                      />
+                    ))}
+                    {showExpenses && chartData.map((point, index) => (
+                      <Circle
+                        key={`expense-${index}`}
+                        cx={index * chartStep + chartStep / 2}
+                        cy={chartHeight - (point.expenses / maxValue) * chartHeight}
+                        r={3}
+                        fill={theme.error}
+                      />
+                    ))}
+                  </Svg>
+                </ScrollView>
               </View>
               
               <View style={styles.xAxis}>
-                {chartData.map((point, index) => (
-                  <Text key={index} style={[styles.xAxisLabel, { color: theme.textMuted }]}>
-                    {point.day}
-                  </Text>
-                ))}
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={[styles.xAxisContent, { width: chartContentWidth }]}
+                >
+                  {chartData.map((point, index) => (
+                    <View key={index} style={[styles.xAxisLabelContainer, { width: chartStep }]}>
+                      <Text style={[styles.xAxisLabel, { color: theme.textMuted }]} numberOfLines={1}>
+                        {point.day}
+                      </Text>
+                    </View>
+                  ))}
+                </ScrollView>
               </View>
             </View>
           </View>
+
+          <Modal
+            visible={isRangeModalVisible}
+            transparent
+            animationType="fade"
+            onRequestClose={() => {
+              setIsRangeModalVisible(false);
+              setRangeError('');
+            }}
+          >
+            <View style={styles.modalOverlay}>
+              <View style={[styles.rangeModal, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
+                <Text style={[styles.modalTitle, { color: theme.text }]}>Pick custom range</Text>
+
+                <View style={styles.rangePickerRow}>
+                  <Text style={[styles.rangePickerLabel, { color: theme.textSecondary }]}>From</Text>
+                  <DateTimePicker
+                    value={rangeDraft.start}
+                    mode="date"
+                    display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                    onChange={(_, date) => {
+                      if (date) {
+                        setRangeDraft(prev => ({ ...prev, start: date }));
+                      }
+                    }}
+                    maximumDate={rangeDraft.end}
+                  />
+                </View>
+
+                <View style={styles.rangePickerRow}>
+                  <Text style={[styles.rangePickerLabel, { color: theme.textSecondary }]}>To</Text>
+                  <DateTimePicker
+                    value={rangeDraft.end}
+                    mode="date"
+                    display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                    onChange={(_, date) => {
+                      if (date) {
+                        setRangeDraft(prev => ({ ...prev, end: date }));
+                      }
+                    }}
+                    minimumDate={rangeDraft.start}
+                  />
+                </View>
+
+                {rangeError ? (
+                  <Text style={[styles.rangeError, { color: theme.error }]}>{rangeError}</Text>
+                ) : null}
+
+                <View style={styles.rangeActions}>
+                  <TouchableOpacity
+                    style={[styles.rangeActionButton, { borderColor: theme.cardBorder }]}
+                    onPress={() => {
+                      setIsRangeModalVisible(false);
+                      setRangeError('');
+                    }}
+                  >
+                    <Text style={[styles.rangeActionText, { color: theme.textSecondary }]}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.rangeActionButton, { borderColor: theme.primary, backgroundColor: theme.primary + '20' }]}
+                    onPress={handleRangeConfirm}
+                  >
+                    <Text style={[styles.rangeActionText, { color: theme.primary }]}>Confirm</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          </Modal>
 
           <View style={[styles.updatesCard, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
             <Text style={[styles.sectionTitle, { color: theme.text }]}>Latest Updates</Text>
@@ -496,6 +693,17 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600' as const,
   },
+  selectedRange: {
+    marginTop: 10,
+  },
+  rangeLabel: {
+    fontSize: 12,
+  },
+  rangeText: {
+    fontSize: 14,
+    fontWeight: '600' as const,
+    marginTop: 4,
+  },
   sectionTitle: {
     fontSize: 16,
     fontWeight: '600' as const,
@@ -525,21 +733,41 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     borderWidth: 1,
   },
+  chartHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  refreshIconButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   chartContainer: {
     alignItems: 'center',
   },
   chart: {
     marginLeft: 0,
   },
+  chartScrollContent: {
+    paddingHorizontal: 12,
+  },
   xAxis: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
     marginTop: 8,
-    paddingHorizontal: 24,
+  },
+  xAxisContent: {
+    paddingHorizontal: 12,
+  },
+  xAxisLabelContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   xAxisLabel: {
     fontSize: 10,
-    width: 30,
     textAlign: 'center',
   },
   chartLegend: {
@@ -569,6 +797,52 @@ const styles = StyleSheet.create({
   legendText: {
     fontSize: 12,
     fontWeight: '500' as const,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  rangeModal: {
+    width: '100%',
+    maxWidth: 420,
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 16,
+  },
+  modalTitle: {
+    fontSize: 16,
+    fontWeight: '600' as const,
+    marginBottom: 12,
+  },
+  rangePickerRow: {
+    marginBottom: 12,
+  },
+  rangePickerLabel: {
+    fontSize: 12,
+    marginBottom: 6,
+  },
+  rangeError: {
+    fontSize: 12,
+    marginTop: 4,
+  },
+  rangeActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 12,
+    marginTop: 12,
+  },
+  rangeActionButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  rangeActionText: {
+    fontSize: 13,
+    fontWeight: '600' as const,
   },
   updatesCard: {
     padding: 16,
