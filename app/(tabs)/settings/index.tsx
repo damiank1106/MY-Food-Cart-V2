@@ -324,8 +324,8 @@ export default function SettingsScreen() {
                 <Text style={[styles.pendingItemMeta, { color: theme.textMuted }]}>
                   Date: {item.date || item.createdAt}
                 </Text>
-                {item.syncStatus === 'error' && (
-                  <Text style={[styles.pendingItemMeta, { color: theme.error }]}>Status: error</Text>
+                {item.syncStatus === 'failed' && (
+                  <Text style={[styles.pendingItemMeta, { color: theme.error }]}>Status: failed</Text>
                 )}
               </View>
             ))}

@@ -237,14 +237,11 @@ export default function SalesScreen() {
 
   const deleteSaleMutation = useMutation({
     mutationFn: async (sale: Sale) => {
-      const shouldQueueDeletion = !(sale.syncStatus === 'pending' && sale.createdAt === sale.updatedAt);
-      if (shouldQueueDeletion) {
-        await queueDeletion('sales', sale.id, {
-          name: sale.name,
-          amount: sale.total,
-          date: sale.date,
-        });
-      }
+      await queueDeletion('sales', sale.id, {
+        name: sale.name,
+        amount: sale.total,
+        date: sale.date,
+      });
       return deleteSale(sale.id);
     },
     onSuccess: () => {
@@ -255,14 +252,11 @@ export default function SalesScreen() {
 
   const deleteExpenseMutation = useMutation({
     mutationFn: async (expense: Expense) => {
-      const shouldQueueDeletion = !(expense.syncStatus === 'pending' && expense.createdAt === expense.updatedAt);
-      if (shouldQueueDeletion) {
-        await queueDeletion('expenses', expense.id, {
-          name: expense.name,
-          amount: expense.total,
-          date: expense.date,
-        });
-      }
+      await queueDeletion('expenses', expense.id, {
+        name: expense.name,
+        amount: expense.total,
+        date: expense.date,
+      });
       return deleteExpense(expense.id);
     },
     onSuccess: () => {
@@ -1056,7 +1050,7 @@ export default function SalesScreen() {
                 <View style={styles.pendingList}>
                   {pendingItems.map(item => {
                     const amountText = typeof item.amount === 'number' ? formatCurrency(item.amount) : '—';
-                    const statusColor = item.status === 'error' ? theme.error : theme.warning;
+                    const statusColor = item.status === 'failed' ? theme.error : theme.warning;
                     const isSaleType = item.type.includes('Sale');
                     return (
                     <View key={`${item.type}-${item.id}`} style={[styles.pendingItem, { borderColor: theme.cardBorder }]}>

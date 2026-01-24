@@ -77,7 +77,9 @@ export interface Activity {
 
 export type OutboxEntityType = 'sale' | 'expense' | 'inventory' | 'category' | 'user' | 'activity';
 
-export type OutboxOperation = 'delete';
+export type OutboxOperation = 'upsert' | 'delete';
+
+export type OutboxStatus = 'pending' | 'in_progress' | 'done' | 'failed';
 
 export interface OutboxItem {
   id: string;
@@ -85,7 +87,7 @@ export interface OutboxItem {
   entityId: string;
   operation: OutboxOperation;
   createdAt: string;
-  syncStatus: 'pending' | 'error';
+  syncStatus: OutboxStatus;
   name?: string | null;
   amount?: number | null;
   date?: string | null;

@@ -3,7 +3,7 @@ import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { 
   User, Category, InventoryItem, Sale, Expense, ExpenseItem, Activity,
-  DEFAULT_USERS, DEFAULT_CATEGORIES, generateId, OutboxItem, OutboxEntityType
+  DEFAULT_USERS, DEFAULT_CATEGORIES, generateId, OutboxItem, OutboxEntityType, OutboxStatus
 } from '@/types';
 import { bucketByLocalDay, getDayKeysForWeek, parseLocalDateString, toLocalDayKey } from '@/services/dateUtils';
 
@@ -125,17 +125,151 @@ function normalizeExpenseRow(row: ExpenseRow): Expense {
 }
 
 function normalizeOutboxRow(row: OutboxRow): OutboxItem {
+  const normalizedStatus: OutboxStatus = (() => {
+    if (row.syncStatus === 'error') return 'failed';
+    if (row.syncStatus === 'failed') return 'failed';
+    if (row.syncStatus === 'in_progress') return 'in_progress';
+    if (row.syncStatus === 'done') return 'done';
+    return 'pending';
+  })();
+
   return {
     id: row.id,
     entityType: row.entityType,
     entityId: row.entityId,
     operation: row.operation,
     createdAt: row.createdAt,
-    syncStatus: row.syncStatus === 'error' ? 'error' : 'pending',
+    syncStatus: normalizedStatus,
     name: row.name ?? null,
     amount: typeof row.amount === 'number' ? row.amount : null,
     date: row.date ?? null,
   };
+}
+
+async function enqueueOutboxUpsert(
+  entityType: OutboxEntityType,
+  entityId: string,
+  metadata?: { name?: string; amount?: number | null; date?: string | null }
+): Promise<OutboxItem | null> {
+  const now = new Date().toISOString();
+
+  if (Platform.OS === 'web') {
+    const outbox = await getFromStorage<OutboxItem[]>(STORAGE_KEYS.outbox, []);
+    const existingDeleteIndex = outbox.findIndex(item => item.entityType === entityType && item.entityId === entityId && item.operation === 'delete');
+    if (existingDeleteIndex >= 0) {
+      const existingDelete = normalizeOutboxRow(outbox[existingDeleteIndex]);
+      if (existingDelete.syncStatus === 'pending') {
+        outbox.splice(existingDeleteIndex, 1);
+      }
+    }
+
+    const existingUpsertIndex = outbox.findIndex(item => item.entityType === entityType && item.entityId === entityId && item.operation === 'upsert');
+    if (existingUpsertIndex >= 0) {
+      const existingUpsert = normalizeOutboxRow(outbox[existingUpsertIndex]);
+      if (existingUpsert.syncStatus === 'pending') {
+        const updated: OutboxItem = {
+          ...existingUpsert,
+          createdAt: now,
+          name: metadata?.name ?? existingUpsert.name ?? null,
+          amount: typeof metadata?.amount === 'number' ? metadata.amount : existingUpsert.amount ?? null,
+          date: metadata?.date ?? existingUpsert.date ?? null,
+          syncStatus: 'pending',
+        };
+        outbox[existingUpsertIndex] = updated;
+        await setToStorage(STORAGE_KEYS.outbox, outbox);
+        return updated;
+      }
+    }
+
+    const newItem: OutboxItem = {
+      id: generateId(),
+      entityType,
+      entityId,
+      operation: 'upsert',
+      createdAt: now,
+      syncStatus: 'pending',
+      name: metadata?.name ?? null,
+      amount: typeof metadata?.amount === 'number' ? metadata.amount : null,
+      date: metadata?.date ?? null,
+    };
+    outbox.unshift(newItem);
+    await setToStorage(STORAGE_KEYS.outbox, outbox);
+    return newItem;
+  }
+
+  const database = await ensureDb();
+  if (!database) return null;
+  try {
+    const existingDelete = await database.getFirstAsync<OutboxRow>(
+      'SELECT * FROM outbox WHERE entityType = ? AND entityId = ? AND operation = ? LIMIT 1',
+      [entityType, entityId, 'delete']
+    );
+    if (existingDelete) {
+      const normalizedDelete = normalizeOutboxRow(existingDelete);
+      if (normalizedDelete.syncStatus === 'pending') {
+        await database.runAsync('DELETE FROM outbox WHERE id = ?', [normalizedDelete.id]);
+      }
+    }
+
+    const existingUpsert = await database.getFirstAsync<OutboxRow>(
+      'SELECT * FROM outbox WHERE entityType = ? AND entityId = ? AND operation = ? LIMIT 1',
+      [entityType, entityId, 'upsert']
+    );
+    if (existingUpsert) {
+      const normalizedUpsert = normalizeOutboxRow(existingUpsert);
+      if (normalizedUpsert.syncStatus === 'pending') {
+        await database.runAsync(
+          'UPDATE outbox SET createdAt = ?, syncStatus = ?, name = ?, amount = ?, date = ? WHERE id = ?',
+          [
+            now,
+            'pending',
+            metadata?.name ?? normalizedUpsert.name ?? null,
+            typeof metadata?.amount === 'number' ? metadata.amount : normalizedUpsert.amount ?? null,
+            metadata?.date ?? normalizedUpsert.date ?? null,
+            normalizedUpsert.id,
+          ]
+        );
+        return {
+          ...normalizedUpsert,
+          createdAt: now,
+          syncStatus: 'pending',
+          name: metadata?.name ?? normalizedUpsert.name ?? null,
+          amount: typeof metadata?.amount === 'number' ? metadata.amount : normalizedUpsert.amount ?? null,
+          date: metadata?.date ?? normalizedUpsert.date ?? null,
+        };
+      }
+    }
+
+    const id = generateId();
+    await database.runAsync(
+      'INSERT INTO outbox (id, entityType, entityId, operation, createdAt, syncStatus, name, amount, date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [
+        id,
+        entityType,
+        entityId,
+        'upsert',
+        now,
+        'pending',
+        metadata?.name ?? null,
+        typeof metadata?.amount === 'number' ? metadata.amount : null,
+        metadata?.date ?? null,
+      ]
+    );
+    return {
+      id,
+      entityType,
+      entityId,
+      operation: 'upsert',
+      createdAt: now,
+      syncStatus: 'pending',
+      name: metadata?.name ?? null,
+      amount: typeof metadata?.amount === 'number' ? metadata.amount : null,
+      date: metadata?.date ?? null,
+    };
+  } catch (error) {
+    console.log('Error enqueueing upsert:', error);
+    return null;
+  }
 }
 
 async function ensureDb(): Promise<SQLite.SQLiteDatabase | null> {
@@ -695,6 +829,11 @@ export async function createSale(sale: Omit<Sale, 'id' | 'createdAt' | 'updatedA
     const sales = await getFromStorage<Sale[]>(STORAGE_KEYS.sales, []);
     sales.push(newSale);
     await setToStorage(STORAGE_KEYS.sales, sales);
+    await enqueueOutboxUpsert('sale', newSale.id, {
+      name: newSale.name,
+      amount: newSale.total,
+      date: newSale.date,
+    });
     return newSale;
   }
 
@@ -704,6 +843,11 @@ export async function createSale(sale: Omit<Sale, 'id' | 'createdAt' | 'updatedA
     'INSERT INTO sales (id, name, items, total, date, createdBy, createdAt, updatedAt, syncStatus) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
     [newSale.id, newSale.name, serializeItems(newSale.items), newSale.total, newSale.date, newSale.createdBy, now, now, 'pending']
   );
+  await enqueueOutboxUpsert('sale', newSale.id, {
+    name: newSale.name,
+    amount: newSale.total,
+    date: newSale.date,
+  });
   return newSale;
 }
 
@@ -785,6 +929,11 @@ export async function createExpense(expense: Omit<Expense, 'id' | 'createdAt' | 
     const expenses = await getFromStorage<Expense[]>(STORAGE_KEYS.expenses, []);
     expenses.push(newExpense);
     await setToStorage(STORAGE_KEYS.expenses, expenses);
+    await enqueueOutboxUpsert('expense', newExpense.id, {
+      name: newExpense.name,
+      amount: newExpense.total,
+      date: newExpense.date,
+    });
     return newExpense;
   }
 
@@ -794,6 +943,11 @@ export async function createExpense(expense: Omit<Expense, 'id' | 'createdAt' | 
     'INSERT INTO expenses (id, name, items, total, date, createdBy, createdAt, updatedAt, syncStatus) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
     [newExpense.id, newExpense.name, serializeItems(newExpense.items), newExpense.total, newExpense.date, newExpense.createdBy, now, now, 'pending']
   );
+  await enqueueOutboxUpsert('expense', newExpense.id, {
+    name: newExpense.name,
+    amount: newExpense.total,
+    date: newExpense.date,
+  });
   return newExpense;
 }
 
@@ -867,14 +1021,30 @@ export async function getOutboxItems(): Promise<OutboxItem[]> {
 export async function enqueueDeletion(
   entityType: OutboxEntityType,
   entityId: string,
-  metadata?: { name?: string; amount?: number | null; date?: string | null }
+  metadata?: { name?: string; amount?: number | null; date?: string | null },
+  options?: { isSyncing?: boolean }
 ): Promise<OutboxItem | null> {
   const now = new Date().toISOString();
+  const isSyncing = options?.isSyncing ?? false;
 
   if (Platform.OS === 'web') {
     const outbox = await getFromStorage<OutboxItem[]>(STORAGE_KEYS.outbox, []);
+    const upsertIndex = outbox.findIndex(item => item.entityType === entityType && item.entityId === entityId && item.operation === 'upsert');
+    if (upsertIndex >= 0) {
+      const existingUpsert = normalizeOutboxRow(outbox[upsertIndex]);
+      if (existingUpsert.syncStatus === 'pending' && !isSyncing) {
+        outbox.splice(upsertIndex, 1);
+        await setToStorage(STORAGE_KEYS.outbox, outbox);
+        return null;
+      }
+      if (existingUpsert.syncStatus !== 'in_progress' && !isSyncing) {
+        outbox.splice(upsertIndex, 1);
+      }
+    }
+
     const existing = outbox.find(item => item.entityType === entityType && item.entityId === entityId && item.operation === 'delete');
     if (existing) {
+      await setToStorage(STORAGE_KEYS.outbox, outbox);
       return normalizeOutboxRow(existing);
     }
     const newItem: OutboxItem = {
@@ -896,6 +1066,21 @@ export async function enqueueDeletion(
   const database = await ensureDb();
   if (!database) return null;
   try {
+    const existingUpsert = await database.getFirstAsync<OutboxRow>(
+      'SELECT * FROM outbox WHERE entityType = ? AND entityId = ? AND operation = ? LIMIT 1',
+      [entityType, entityId, 'upsert']
+    );
+    if (existingUpsert) {
+      const normalizedUpsert = normalizeOutboxRow(existingUpsert);
+      if (normalizedUpsert.syncStatus === 'pending' && !isSyncing) {
+        await database.runAsync('DELETE FROM outbox WHERE id = ?', [normalizedUpsert.id]);
+        return null;
+      }
+      if (normalizedUpsert.syncStatus !== 'in_progress' && !isSyncing) {
+        await database.runAsync('DELETE FROM outbox WHERE id = ?', [normalizedUpsert.id]);
+      }
+    }
+
     const existing = await database.getFirstAsync<OutboxRow>(
       'SELECT * FROM outbox WHERE entityType = ? AND entityId = ? AND operation = ? LIMIT 1',
       [entityType, entityId, 'delete']
@@ -935,7 +1120,7 @@ export async function enqueueDeletion(
   }
 }
 
-export async function updateOutboxItemStatus(id: string, status: 'pending' | 'error'): Promise<void> {
+export async function updateOutboxItemStatus(id: string, status: OutboxStatus): Promise<void> {
   if (Platform.OS === 'web') {
     const outbox = await getFromStorage<OutboxItem[]>(STORAGE_KEYS.outbox, []);
     const index = outbox.findIndex(item => item.id === id);
@@ -970,6 +1155,7 @@ export async function getPendingSyncCount(): Promise<number> {
     const expenses = await getFromStorage<Expense[]>(STORAGE_KEYS.expenses, []);
     const activities = await getFromStorage<Activity[]>(STORAGE_KEYS.activities, []);
     const outbox = await getFromStorage<OutboxItem[]>(STORAGE_KEYS.outbox, []);
+    const deletionOutbox = outbox.filter(item => item.operation === 'delete');
     
     return [
       ...users.filter(u => u.syncStatus === 'pending'),
@@ -978,7 +1164,7 @@ export async function getPendingSyncCount(): Promise<number> {
       ...sales.filter(s => s.syncStatus === 'pending'),
       ...expenses.filter(e => e.syncStatus === 'pending'),
       ...activities.filter(a => a.syncStatus === 'pending'),
-      ...outbox,
+      ...deletionOutbox,
     ].length;
   }
 
@@ -991,7 +1177,7 @@ export async function getPendingSyncCount(): Promise<number> {
     db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM sales WHERE syncStatus = ?', ['pending']),
     db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM expenses WHERE syncStatus = ?', ['pending']),
     db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM activities WHERE syncStatus = ?', ['pending']),
-    db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM outbox'),
+    db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM outbox WHERE operation = ?', ['delete']),
   ]);
 
   return counts.reduce((sum, result) => sum + (result?.count || 0), 0);
@@ -1847,7 +2033,7 @@ export async function getPendingSummaryAndItems(limitPerTable = 50): Promise<Pen
       const pendingSales = sales.filter(s => s.syncStatus === 'pending');
       const pendingExpenses = expenses.filter(e => e.syncStatus === 'pending');
       const pendingActivities = activities.filter(a => a.syncStatus === 'pending');
-      const pendingDeletions = outbox.map(normalizeOutboxRow);
+      const pendingDeletions = outbox.filter(item => item.operation === 'delete').map(normalizeOutboxRow);
 
       result.totals.users = pendingUsers.length;
       result.totals.categories = pendingCategories.length;
@@ -1890,7 +2076,7 @@ export async function getPendingSummaryAndItems(limitPerTable = 50): Promise<Pen
       db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM sales WHERE syncStatus = ?', ['pending']),
       db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM expenses WHERE syncStatus = ?', ['pending']),
       db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM activities WHERE syncStatus = ?', ['pending']),
-      db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM outbox'),
+      db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM outbox WHERE operation = ?', ['delete']),
     ]);
 
     result.totals.users = usersCount?.count || 0;
@@ -1909,7 +2095,7 @@ export async function getPendingSummaryAndItems(limitPerTable = 50): Promise<Pen
       db.getAllAsync<Sale>(`SELECT * FROM sales WHERE syncStatus = 'pending' LIMIT ?`, [limitPerTable]),
       db.getAllAsync<Expense>(`SELECT * FROM expenses WHERE syncStatus = 'pending' LIMIT ?`, [limitPerTable]),
       db.getAllAsync<Activity>(`SELECT * FROM activities WHERE syncStatus = 'pending' LIMIT ?`, [limitPerTable]),
-      db.getAllAsync<OutboxRow>(`SELECT * FROM outbox ORDER BY createdAt DESC LIMIT ?`, [limitPerTable]),
+      db.getAllAsync<OutboxRow>(`SELECT * FROM outbox WHERE operation = 'delete' ORDER BY createdAt DESC LIMIT ?`, [limitPerTable]),
     ]);
 
     result.itemsByTable.users = pendingUsers.map(u => ({
