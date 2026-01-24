@@ -33,14 +33,7 @@ import LaserBackground from '@/components/LaserBackground';
 
 export default function SalesScreen() {
   const { user, settings } = useAuth();
-  const {
-    queueDeletion,
-    pendingCount,
-    triggerFullSync,
-    checkPendingCount,
-    isOnline,
-    bumpDataVersion,
-  } = useSync();
+  const { queueDeletion, pendingCount, triggerFullSync, checkPendingCount, isOnline } = useSync();
   const theme = settings.darkMode ? Colors.dark : Colors.light;
   const queryClient = useQueryClient();
   
@@ -190,7 +183,7 @@ export default function SalesScreen() {
 
   const createSaleMutation = useMutation({
     mutationFn: (data: { name: string; total: number; items: string[] }) => 
-      createSale({ ...data, date: dateStr, createdBy: user?.id || '', createdByRole: user?.role ?? null }),
+      createSale({ ...data, date: dateStr, createdBy: user?.id || '' }),
     onSuccess: async () => {
       queryClient.invalidateQueries({ queryKey: ['sales'] });
       if (user) {
@@ -201,15 +194,13 @@ export default function SalesScreen() {
         });
         queryClient.invalidateQueries({ queryKey: ['activities'] });
       }
-      await checkPendingCount();
-      bumpDataVersion();
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     },
   });
 
   const createExpenseMutation = useMutation({
     mutationFn: (data: { name: string; total: number; items: ExpenseItem[] }) => 
-      createExpense({ ...data, date: dateStr, createdBy: user?.id || '', createdByRole: user?.role ?? null }),
+      createExpense({ ...data, date: dateStr, createdBy: user?.id || '' }),
     onSuccess: async () => {
       queryClient.invalidateQueries({ queryKey: ['expenses'] });
       if (user) {
@@ -220,8 +211,6 @@ export default function SalesScreen() {
         });
         queryClient.invalidateQueries({ queryKey: ['activities'] });
       }
-      await checkPendingCount();
-      bumpDataVersion();
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     },
   });
@@ -233,7 +222,6 @@ export default function SalesScreen() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sales'] });
-      bumpDataVersion();
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     },
   });
@@ -245,7 +233,6 @@ export default function SalesScreen() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['expenses'] });
-      bumpDataVersion();
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     },
   });

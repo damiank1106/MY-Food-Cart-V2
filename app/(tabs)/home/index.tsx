@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,22 +8,19 @@ import {
   Dimensions,
   RefreshControl,
   useWindowDimensions,
-  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Package, ShoppingCart, User, Settings, RefreshCw } from 'lucide-react-native';
+import { Package, ShoppingCart, User, Settings } from 'lucide-react-native';
 import { useQuery } from '@tanstack/react-query';
-import { useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '@/contexts/AuthContext';
-import { useSync } from '@/contexts/SyncContext';
 import { Colors } from '@/constants/colors';
 
 import { useRouter } from 'expo-router';
 import { formatDate, ROLE_DISPLAY_NAMES, UserRole } from '@/types';
-import { getWeeklySalesTotals, getWeeklyExpenseTotals, getActivities, getUsers, getSalesByDateRange, getExpensesByDateRange } from '@/services/database';
+import { getWeeklySalesTotals, getWeeklyExpenseTotals, getActivities, getUsers } from '@/services/database';
 import { getDayKeysForWeek, getWeekdayLabels, getWeekRange, getWeekStart, toLocalDayKey } from '@/services/dateUtils';
-import WeeklyLineChart, { WeeklyLineSeries } from '@/components/WeeklyLineChart';
+import Svg, { Path, Circle, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
 import LaserBackground from '@/components/LaserBackground';
 
 const { width } = Dimensions.get('window');
@@ -73,27 +70,10 @@ function getRelativeTime(dateString: string): string {
 }
 
 const AUTHOR_VISIBLE_ROLES: UserRole[] = ['general_manager', 'operation_manager', 'developer'];
-type SplitKey = 'op' | 'gm' | 'fd';
-
-const normalizeSplitRole = (value: string): SplitKey | null => {
-  const normalized = value.toLowerCase().replace(/[\s_-]/g, '');
-  if (['operationmanager', 'operationsmanager', 'op', 'operations'].includes(normalized)) return 'op';
-  if (['generalmanager', 'gm', 'general'].includes(normalized)) return 'gm';
-  if (['foodcart', 'fd', 'food'].includes(normalized)) return 'fd';
-  if (['inventoryclerk', 'developer', 'worker', 'staff'].includes(normalized)) return 'fd';
-  return null;
-};
-
-const roleToSplitKey = (role?: UserRole | null): SplitKey => {
-  if (role === 'operation_manager') return 'op';
-  if (role === 'general_manager') return 'gm';
-  return 'fd';
-};
 
 export default function HomeScreen() {
   const router = useRouter();
   const { settings, user: currentUser } = useAuth();
-  const { dataVersion, pendingCount, lastSyncTime } = useSync();
   const theme = settings.darkMode ? Colors.dark : Colors.light;
 
   useEffect(() => {
@@ -108,31 +88,12 @@ export default function HomeScreen() {
   }
   const [selectedWeek, setSelectedWeek] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
-  const [isOverviewRefreshing, setIsOverviewRefreshing] = useState(false);
   const [showSales, setShowSales] = useState(true);
   const [showExpenses, setShowExpenses] = useState(true);
-  const [showSplitOp, setShowSplitOp] = useState(true);
-  const [showSplitGm, setShowSplitGm] = useState(true);
-  const [showSplitFd, setShowSplitFd] = useState(true);
-  const [overviewTab, setOverviewTab] = useState<'overview' | 'netSplit'>('overview');
-  const overviewRefreshInFlight = useRef(false);
-
-  const toggleSplitSeries = useCallback((key: SplitKey) => {
-    if (key === 'op') {
-      setShowSplitOp(prev => !prev);
-      return;
-    }
-    if (key === 'gm') {
-      setShowSplitGm(prev => !prev);
-      return;
-    }
-    setShowSplitFd(prev => !prev);
-  }, []);
 
   const { width: screenWidth } = useWindowDimensions();
   
   const welcomeFontSize = screenWidth < 360 ? 18 : screenWidth < 400 ? 20 : 24;
-  const isSmallScreen = screenWidth < 360;
 
   const weekStartsOn = 0;
 
@@ -159,16 +120,6 @@ export default function HomeScreen() {
     queryFn: () => getWeeklyExpenseTotals(startDateStr, endDateStr),
   });
 
-  const { data: weeklySales = [], refetch: refetchWeeklySales } = useQuery({
-    queryKey: ['weeklySalesEntries', startDateStr, endDateStr],
-    queryFn: () => getSalesByDateRange(startDateStr, endDateStr),
-  });
-
-  const { data: weeklyExpenses = [], refetch: refetchWeeklyExpenses } = useQuery({
-    queryKey: ['weeklyExpenseEntries', startDateStr, endDateStr],
-    queryFn: () => getExpensesByDateRange(startDateStr, endDateStr),
-  });
-
   const { data: activities = [], refetch: refetchActivities } = useQuery({
     queryKey: ['activities'],
     queryFn: getActivities,
@@ -183,17 +134,6 @@ export default function HomeScreen() {
     const map = new Map<string, { name: string; role: UserRole }>();
     for (const u of users) {
       map.set(u.id, { name: u.name, role: u.role });
-    }
-    return map;
-  }, [users]);
-
-  const userNameMap = useMemo(() => {
-    const map = new Map<string, UserRole>();
-    for (const u of users) {
-      const normalizedName = u.name?.trim().toLowerCase();
-      if (normalizedName) {
-        map.set(normalizedName, u.role);
-      }
     }
     return map;
   }, [users]);
@@ -263,114 +203,6 @@ export default function HomeScreen() {
     return { sales: salesTotal, expenses: expensesTotal, net: salesTotal - expensesTotal };
   }, [expensesSeries, salesSeries, startDateStr, endDateStr]);
 
-  const netSplitByDay = useMemo(() => {
-    const dayTotals = new Map(
-      weekDayKeys.map(key => [key, { op: 0, gm: 0, fd: 0 }])
-    );
-
-    const getRoleHint = (record: Record<string, unknown>) => {
-      const candidates = [
-        record.createdByRole,
-        record['created_by_role'],
-        record.userRole,
-        record['user_role'],
-        record.role,
-        record.source,
-        record.accountType,
-        record['account_type'],
-        record.postedBy,
-        record['posted_by'],
-        record.device_user_role,
-      ];
-      for (const candidate of candidates) {
-        if (typeof candidate === 'string' && candidate.trim()) return candidate;
-      }
-      return null;
-    };
-
-    const resolveBucket = (record: { createdBy?: string; createdByRole?: string | null }) => {
-      const recordHint = getRoleHint(record as Record<string, unknown>);
-      if (recordHint) {
-        const normalizedHint = normalizeSplitRole(recordHint);
-        if (normalizedHint) return normalizedHint;
-      }
-
-      const createdBy = record.createdBy ?? '';
-      if (createdBy) {
-        const userRole = userMap.get(createdBy)?.role;
-        if (userRole) return roleToSplitKey(userRole);
-        const nameRole = userNameMap.get(createdBy.trim().toLowerCase());
-        if (nameRole) return roleToSplitKey(nameRole);
-        const normalizedCreatedBy = normalizeSplitRole(createdBy);
-        if (normalizedCreatedBy) return normalizedCreatedBy;
-      }
-
-      return 'fd';
-    };
-
-    for (const sale of weeklySales) {
-      const dayKey = toLocalDayKey(sale.date);
-      const bucket = dayTotals.get(dayKey);
-      if (!bucket) continue;
-      const key = resolveBucket(sale);
-      bucket[key] += Number(sale.total || 0);
-    }
-
-    for (const expense of weeklyExpenses) {
-      const dayKey = toLocalDayKey(expense.date);
-      const bucket = dayTotals.get(dayKey);
-      if (!bucket) continue;
-      const key = resolveBucket(expense);
-      bucket[key] -= Number(expense.total || 0);
-    }
-
-    return dayTotals;
-  }, [userMap, userNameMap, weekDayKeys, weeklyExpenses, weeklySales]);
-
-  const netSplitChartData = useMemo(() => {
-    return weekDayKeys.map((dateStr, index) => {
-      const day = weekDayLabels[index] ?? '';
-      const bucket = netSplitByDay.get(dateStr) ?? { op: 0, gm: 0, fd: 0 };
-      return {
-        day,
-        dateStr,
-        op: bucket.op,
-        gm: bucket.gm,
-        fd: bucket.fd,
-      };
-    });
-  }, [netSplitByDay, weekDayKeys, weekDayLabels]);
-
-  const netSplitTotals = useMemo(() => {
-    return netSplitChartData.reduce(
-      (totals, day) => {
-        totals.op += day.op;
-        totals.gm += day.gm;
-        totals.fd += day.fd;
-        return totals;
-      },
-      { op: 0, gm: 0, fd: 0 }
-    );
-  }, [netSplitChartData]);
-
-  const splitSeriesConfig = useMemo(
-    () => ([
-      { key: 'op' as const, label: 'OP', color: theme.success, enabled: showSplitOp },
-      { key: 'gm' as const, label: 'GM', color: theme.primary, enabled: showSplitGm },
-      { key: 'fd' as const, label: 'FD', color: theme.warning, enabled: showSplitFd },
-    ]),
-    [showSplitOp, showSplitGm, showSplitFd, theme.primary, theme.success, theme.warning]
-  );
-
-  const visibleNetSplitTotals = useMemo(
-    () => ({
-      op: showSplitOp ? netSplitTotals.op : 0,
-      gm: showSplitGm ? netSplitTotals.gm : 0,
-      fd: showSplitFd ? netSplitTotals.fd : 0,
-    }),
-    [netSplitTotals, showSplitOp, showSplitGm, showSplitFd]
-  );
-
   const rawMaxValue = Math.max(...chartData.map(d => Math.max(d.sales, d.expenses)), 100);
   
   const getYAxisConfig = (maxVal: number) => {
@@ -394,87 +226,29 @@ export default function HomeScreen() {
 
   const chartHeight = 150;
   const chartWidth = width - 80;
+  const stepX = chartWidth / 6;
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await Promise.all([
-      refetchSales(),
-      refetchExpenses(),
-      refetchWeeklySales(),
-      refetchWeeklyExpenses(),
-      refetchActivities(),
-      refetchUsers(),
-    ]);
+    await Promise.all([refetchSales(), refetchExpenses(), refetchActivities(), refetchUsers()]);
     setRefreshing(false);
-  }, [refetchSales, refetchExpenses, refetchWeeklySales, refetchWeeklyExpenses, refetchActivities, refetchUsers]);
+  }, [refetchSales, refetchExpenses, refetchActivities, refetchUsers]);
 
-  const handleOverviewRefresh = useCallback(async () => {
-    if (overviewRefreshInFlight.current) return;
-    overviewRefreshInFlight.current = true;
-    setIsOverviewRefreshing(true);
-    try {
-      await Promise.all([
-        refetchSales(),
-        refetchExpenses(),
-        refetchWeeklySales(),
-        refetchWeeklyExpenses(),
-        refetchUsers(),
-      ]);
-    } finally {
-      setIsOverviewRefreshing(false);
-      overviewRefreshInFlight.current = false;
-    }
-  }, [refetchSales, refetchExpenses, refetchWeeklySales, refetchWeeklyExpenses, refetchUsers]);
+  const pathData = chartData.map((point, index) => {
+    const x = index * stepX;
+    const y = chartHeight - (point.sales / maxValue) * chartHeight;
+    return `${index === 0 ? 'M' : 'L'} ${x} ${y}`;
+  }).join(' ');
 
-  useEffect(() => {
-    handleOverviewRefresh();
-  }, [dataVersion, handleOverviewRefresh, pendingCount, lastSyncTime]);
+  const areaPath = `${pathData} L ${(chartData.length - 1) * stepX} ${chartHeight} L 0 ${chartHeight} Z`;
 
-  useFocusEffect(
-    useCallback(() => {
-      handleOverviewRefresh();
-    }, [handleOverviewRefresh])
-  );
+  const expensePathData = chartData.map((point, index) => {
+    const x = index * stepX;
+    const y = chartHeight - (point.expenses / maxValue) * chartHeight;
+    return `${index === 0 ? 'M' : 'L'} ${x} ${y}`;
+  }).join(' ');
 
-  const overviewSeries = useMemo<WeeklyLineSeries[]>(() => ([
-    {
-      key: 'sales',
-      color: theme.chartLine,
-      values: chartData.map(point => point.sales),
-      enabled: showSales,
-      pointRadius: 4,
-      gradientOpacity: { start: 0.3, end: 0.05 },
-    },
-    {
-      key: 'expenses',
-      color: theme.error,
-      values: chartData.map(point => point.expenses),
-      enabled: showExpenses,
-      dashed: true,
-      pointRadius: 3,
-      gradientOpacity: { start: 0.2, end: 0.02 },
-    },
-  ]), [chartData, showSales, showExpenses, theme.chartLine, theme.error]);
-
-  const netSplitSeries = useMemo<WeeklyLineSeries[]>(() => (
-    splitSeriesConfig.map(series => ({
-      key: series.key,
-      color: series.color,
-      values: netSplitChartData.map(point => point[series.key]),
-      enabled: series.enabled,
-      pointRadius: 4,
-      gradientOpacity: { start: 0.3, end: 0.05 },
-    }))
-  ), [netSplitChartData, splitSeriesConfig]);
-
-  const netSplitValues = useMemo(
-    () => netSplitChartData.flatMap(point => [point.op, point.gm, point.fd]),
-    [netSplitChartData]
-  );
-  const splitRawMaxValue = Math.max(...netSplitValues, 100);
-  const splitMinValue = Math.min(...netSplitValues, 0);
-  const splitYAxisConfig = getYAxisConfig(splitRawMaxValue);
-  const splitMaxValue = splitYAxisConfig.max;
+  const expenseAreaPath = `${expensePathData} L ${(chartData.length - 1) * stepX} ${chartHeight} L 0 ${chartHeight} Z`;
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
@@ -534,191 +308,103 @@ export default function HomeScreen() {
             </View>
 
             <View style={[styles.chartCard, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
-              <View style={styles.overviewHeader}>
-                <View style={styles.tabRow}>
-                  <TouchableOpacity
-                    style={[
-                      styles.tabButton,
-                      isSmallScreen && styles.tabButtonSmall,
-                      { borderColor: theme.cardBorder },
-                      overviewTab === 'overview' && { backgroundColor: theme.primary + '20', borderColor: theme.primary },
-                    ]}
-                    onPress={() => setOverviewTab('overview')}
-                  >
-                    <Text
-                      style={[
-                        styles.tabLabel,
-                        isSmallScreen && styles.tabLabelSmall,
-                        { color: overviewTab === 'overview' ? theme.primary : theme.textSecondary },
-                      ]}
-                      numberOfLines={1}
-                    >
-                      Overview
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[
-                      styles.tabButton,
-                      isSmallScreen && styles.tabButtonSmall,
-                      { borderColor: theme.cardBorder },
-                      overviewTab === 'netSplit' && { backgroundColor: theme.primary + '20', borderColor: theme.primary },
-                    ]}
-                    onPress={() => setOverviewTab('netSplit')}
-                  >
-                    <Text
-                      style={[
-                        styles.tabLabel,
-                        isSmallScreen && styles.tabLabelSmall,
-                        { color: overviewTab === 'netSplit' ? theme.primary : theme.textSecondary },
-                      ]}
-                      numberOfLines={1}
-                    >
-                      Net Split
-                    </Text>
-                  </TouchableOpacity>
+              <Text style={[styles.sectionTitle, { color: theme.text }]}>Weekly Overview</Text>
+              
+              <View style={styles.weekTotalsRow}>
+                <View style={[styles.weekTotalCard, { backgroundColor: theme.chartLine + '15' }]}>
+                  <Text style={[styles.weekTotalLabel, { color: theme.textSecondary }]}>Sales</Text>
+                  <Text style={[styles.weekTotalValue, { color: theme.chartLine }]}>
+                    ₱{weekTotals.sales.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </Text>
                 </View>
-                <TouchableOpacity
-                  style={styles.overviewRefreshButton}
-                  onPress={handleOverviewRefresh}
-                  disabled={isOverviewRefreshing}
+                <View style={[styles.weekTotalCard, { backgroundColor: theme.error + '15' }]}>
+                  <Text style={[styles.weekTotalLabel, { color: theme.textSecondary }]}>Expenses</Text>
+                  <Text style={[styles.weekTotalValue, { color: theme.error }]}>
+                    ₱{weekTotals.expenses.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </Text>
+                </View>
+              </View>
+              
+              <View style={styles.chartLegend}>
+                <TouchableOpacity 
+                  style={[
+                    styles.legendToggle,
+                    { borderColor: showSales ? theme.chartLine : theme.cardBorder },
+                    showSales && { backgroundColor: theme.chartLine + '20' }
+                  ]}
+                  onPress={() => setShowSales(!showSales)}
                 >
-                  {isOverviewRefreshing ? (
-                    <ActivityIndicator size="small" color={theme.textMuted} />
-                  ) : (
-                    <RefreshCw color={theme.textMuted} size={16} />
-                  )}
+                  <View style={[styles.legendDot, { backgroundColor: theme.chartLine, opacity: showSales ? 1 : 0.4 }]} />
+                  <Text style={[styles.legendText, { color: showSales ? theme.chartLine : theme.textMuted }]}>Sales</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={[
+                    styles.legendToggle,
+                    { borderColor: showExpenses ? theme.error : theme.cardBorder },
+                    showExpenses && { backgroundColor: theme.error + '20' }
+                  ]}
+                  onPress={() => setShowExpenses(!showExpenses)}
+                >
+                  <View style={[styles.legendDot, { backgroundColor: theme.error, opacity: showExpenses ? 1 : 0.4 }]} />
+                  <Text style={[styles.legendText, { color: showExpenses ? theme.error : theme.textMuted }]}>Expenses</Text>
                 </TouchableOpacity>
               </View>
               
-              {overviewTab === 'overview' ? (
-                <>
-                  <View style={styles.weekTotalsRow}>
-                    <View style={[styles.weekTotalCard, { backgroundColor: theme.chartLine + '15' }]}> 
-                      <Text style={[styles.weekTotalLabel, { color: theme.textSecondary }]}>Sales</Text>
-                      <Text style={[styles.weekTotalValue, { color: theme.chartLine }]}>
-                        ₱{weekTotals.sales.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </Text>
-                    </View>
-                    <View style={[styles.weekTotalCard, { backgroundColor: theme.error + '15' }]}> 
-                      <Text style={[styles.weekTotalLabel, { color: theme.textSecondary }]}>Expenses</Text>
-                      <Text style={[styles.weekTotalValue, { color: theme.error }]}>
-                        ₱{weekTotals.expenses.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </Text>
-                    </View>
-                  </View>
+              <View style={styles.chartContainer}>
+                <Svg width={chartWidth + 48} height={chartHeight + 30} style={styles.chart}>
+                  <Defs>
+                    <SvgLinearGradient id="areaGradient" x1="0" y1="0" x2="0" y2="1">
+                      <Stop offset="0" stopColor={theme.chartLine} stopOpacity="0.3" />
+                      <Stop offset="1" stopColor={theme.chartLine} stopOpacity="0.05" />
+                    </SvgLinearGradient>
+                    <SvgLinearGradient id="expenseGradient" x1="0" y1="0" x2="0" y2="1">
+                      <Stop offset="0" stopColor={theme.error} stopOpacity="0.2" />
+                      <Stop offset="1" stopColor={theme.error} stopOpacity="0.02" />
+                    </SvgLinearGradient>
+                  </Defs>
                   
-                  <View style={styles.chartLegend}>
-                    <TouchableOpacity 
-                      style={[
-                        styles.legendToggle,
-                        { borderColor: showSales ? theme.chartLine : theme.cardBorder },
-                        showSales && { backgroundColor: theme.chartLine + '20' }
-                      ]}
-                      onPress={() => setShowSales(!showSales)}
-                    >
-                      <View style={[styles.legendDot, { backgroundColor: theme.chartLine, opacity: showSales ? 1 : 0.4 }]} />
-                      <Text style={[styles.legendText, { color: showSales ? theme.chartLine : theme.textMuted }]}>Sales</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity 
-                      style={[
-                        styles.legendToggle,
-                        { borderColor: showExpenses ? theme.error : theme.cardBorder },
-                        showExpenses && { backgroundColor: theme.error + '20' }
-                      ]}
-                      onPress={() => setShowExpenses(!showExpenses)}
-                    >
-                      <View style={[styles.legendDot, { backgroundColor: theme.error, opacity: showExpenses ? 1 : 0.4 }]} />
-                      <Text style={[styles.legendText, { color: showExpenses ? theme.error : theme.textMuted }]}>Expenses</Text>
-                    </TouchableOpacity>
-                  </View>
+                  {showSales && (
+                    <>
+                      <Path d={areaPath} fill="url(#areaGradient)" />
+                      <Path d={pathData} stroke={theme.chartLine} strokeWidth={2} fill="none" />
+                    </>
+                  )}
                   
-                  <View style={styles.chartContainer}>
-                    <WeeklyLineChart
-                      data={chartData}
-                      series={overviewSeries}
-                      chartHeight={chartHeight}
-                      chartWidth={chartWidth}
-                      maxValue={maxValue}
-                      minValue={0}
+                  {showExpenses && (
+                    <>
+                      <Path d={expenseAreaPath} fill="url(#expenseGradient)" />
+                      <Path d={expensePathData} stroke={theme.error} strokeWidth={2} fill="none" strokeDasharray="4,4" />
+                    </>
+                  )}
+                  
+                  {showSales && chartData.map((point, index) => (
+                    <Circle
+                      key={`sales-${index}`}
+                      cx={index * stepX}
+                      cy={chartHeight - (point.sales / maxValue) * chartHeight}
+                      r={4}
+                      fill={theme.chartLine}
                     />
-                  </View>
-                  
-                  <View style={styles.xAxis}>
-                    {chartData.map((point, index) => (
-                      <Text key={index} style={[styles.xAxisLabel, { color: theme.textMuted }]}>
-                        {point.day}
-                      </Text>
-                    ))}
-                  </View>
-                </>
-              ) : (
-                <>
-                  <View style={styles.weekTotalsRow}>
-                    {showSplitOp && (
-                      <View style={[styles.weekTotalCard, { backgroundColor: theme.success + '15' }]}> 
-                        <Text style={[styles.weekTotalLabel, { color: theme.textSecondary }]}>OP</Text>
-                        <Text style={[styles.weekTotalValue, { color: theme.success }]}>
-                          ₱{visibleNetSplitTotals.op.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </Text>
-                      </View>
-                    )}
-                    {showSplitGm && (
-                      <View style={[styles.weekTotalCard, { backgroundColor: theme.primary + '15' }]}> 
-                        <Text style={[styles.weekTotalLabel, { color: theme.textSecondary }]}>GM</Text>
-                        <Text style={[styles.weekTotalValue, { color: theme.primary }]}>
-                          ₱{visibleNetSplitTotals.gm.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </Text>
-                      </View>
-                    )}
-                    {showSplitFd && (
-                      <View style={[styles.weekTotalCard, { backgroundColor: theme.warning + '15' }]}> 
-                        <Text style={[styles.weekTotalLabel, { color: theme.textSecondary }]}>FD</Text>
-                        <Text style={[styles.weekTotalValue, { color: theme.warning }]}>
-                          ₱{visibleNetSplitTotals.fd.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </Text>
-                      </View>
-                    )}
-                  </View>
-
-                  <View style={styles.chartLegend}>
-                    {splitSeriesConfig.map(series => (
-                      <TouchableOpacity
-                        key={series.key}
-                        style={[
-                          styles.legendToggle,
-                          { borderColor: series.enabled ? series.color : theme.cardBorder },
-                          series.enabled && { backgroundColor: series.color + '20' },
-                        ]}
-                        onPress={() => toggleSplitSeries(series.key)}
-                      >
-                        <View style={[styles.legendDot, { backgroundColor: series.color, opacity: series.enabled ? 1 : 0.4 }]} />
-                        <Text style={[styles.legendText, { color: series.enabled ? series.color : theme.textMuted }]}>
-                          {series.label}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-
-                  <View style={styles.chartContainer}>
-                    <WeeklyLineChart
-                      data={netSplitChartData}
-                      series={netSplitSeries}
-                      chartHeight={chartHeight}
-                      chartWidth={chartWidth}
-                      maxValue={splitMaxValue}
-                      minValue={splitMinValue}
+                  ))}
+                  {showExpenses && chartData.map((point, index) => (
+                    <Circle
+                      key={`expense-${index}`}
+                      cx={index * stepX}
+                      cy={chartHeight - (point.expenses / maxValue) * chartHeight}
+                      r={3}
+                      fill={theme.error}
                     />
-                  </View>
-
-                  <View style={styles.xAxis}>
-                    {netSplitChartData.map((point, index) => (
-                      <Text key={index} style={[styles.xAxisLabel, { color: theme.textMuted }]}>
-                        {point.day}
-                      </Text>
-                    ))}
-                  </View>
-                </>
-              )}
+                  ))}
+                </Svg>
+              </View>
+              
+              <View style={styles.xAxis}>
+                {chartData.map((point, index) => (
+                  <Text key={index} style={[styles.xAxisLabel, { color: theme.textMuted }]}>
+                    {point.day}
+                  </Text>
+                ))}
+              </View>
             </View>
           </View>
 
@@ -838,40 +524,6 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: 16,
     borderWidth: 1,
-  },
-  overviewHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  tabRow: {
-    flexDirection: 'row',
-    flex: 1,
-    gap: 8,
-    marginRight: 12,
-  },
-  tabButton: {
-    flex: 1,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 12,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  tabButtonSmall: {
-    paddingVertical: 4,
-    paddingHorizontal: 6,
-  },
-  tabLabel: {
-    fontSize: 12,
-    fontWeight: '600' as const,
-  },
-  tabLabelSmall: {
-    fontSize: 10,
-  },
-  overviewRefreshButton: {
-    padding: 4,
   },
   chartContainer: {
     alignItems: 'center',

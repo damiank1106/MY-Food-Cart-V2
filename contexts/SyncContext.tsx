@@ -54,7 +54,6 @@ export const [SyncProvider, useSync] = createContextHook(() => {
   const [pendingCount, setPendingCount] = useState(0);
   const [isOnline, setIsOnline] = useState(true);
   const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
-  const [dataVersion, setDataVersion] = useState(0);
   const isSyncing = useRef(false);
   const pendingDeletions = useRef<PendingDeletion[]>([]);
 
@@ -67,10 +66,6 @@ export const [SyncProvider, useSync] = createContextHook(() => {
     } else if (online) {
       setSyncStatus('synced');
     }
-  }, []);
-
-  const bumpDataVersion = useCallback(() => {
-    setDataVersion(prev => prev + 1);
   }, []);
 
   const triggerFullSync = useCallback(async (options?: { reason: SyncReason }): Promise<{ ok: boolean }> => {
@@ -233,7 +228,6 @@ export const [SyncProvider, useSync] = createContextHook(() => {
       const newPendingCount = await getPendingSyncCount();
       setPendingCount(newPendingCount);
       setLastSyncTime(new Date());
-      bumpDataVersion();
 
       if (newPendingCount === 0) {
         setSyncStatus('synced');
@@ -251,7 +245,7 @@ export const [SyncProvider, useSync] = createContextHook(() => {
     } finally {
       isSyncing.current = false;
     }
-  }, [bumpDataVersion, checkPendingCountInternal]);
+  }, [checkPendingCountInternal]);
 
   const checkPendingCount = useCallback(async () => {
     await checkPendingCountInternal(isOnline);
@@ -296,12 +290,10 @@ export const [SyncProvider, useSync] = createContextHook(() => {
     pendingCount,
     isOnline,
     lastSyncTime,
-    dataVersion,
     triggerSync,
     triggerFullSync,
     checkPendingCount,
     queueDeletion,
     syncBeforeLogout,
-    bumpDataVersion,
   };
 });
