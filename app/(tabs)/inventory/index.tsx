@@ -100,7 +100,7 @@ export default function InventoryScreen() {
 
   const deleteItemMutation = useMutation({
     mutationFn: async (id: string) => {
-      queueDeletion('inventory', id);
+      await queueDeletion('inventory', id);
       return deleteInventoryItem(id);
     },
     onSuccess: async () => {
@@ -129,7 +129,7 @@ export default function InventoryScreen() {
 
   const deleteCategoryMutation = useMutation({
     mutationFn: async (id: string) => {
-      queueDeletion('categories', id);
+      await queueDeletion('categories', id);
       return deleteCategory(id);
     },
     onSuccess: () => {

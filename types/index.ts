@@ -75,6 +75,22 @@ export interface Activity {
   syncStatus: 'synced' | 'pending';
 }
 
+export type OutboxEntityType = 'sale' | 'expense' | 'inventory' | 'category' | 'user' | 'activity';
+
+export type OutboxOperation = 'delete';
+
+export interface OutboxItem {
+  id: string;
+  entityType: OutboxEntityType;
+  entityId: string;
+  operation: OutboxOperation;
+  createdAt: string;
+  syncStatus: 'pending' | 'error';
+  name?: string | null;
+  amount?: number | null;
+  date?: string | null;
+}
+
 export type BackgroundColorPalette = 'blue' | 'purple' | 'green' | 'orange' | 'pink' | 'cyan';
 
 export type BackgroundIntensity = 'low' | 'medium' | 'high';

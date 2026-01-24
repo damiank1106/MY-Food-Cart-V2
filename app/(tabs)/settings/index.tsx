@@ -290,6 +290,48 @@ export default function SettingsScreen() {
           </View>
         )}
 
+        {pendingSummary.totals.deletions > 0 && (
+          <View style={styles.tableGroup}>
+            <TouchableOpacity
+              style={styles.tableHeader}
+              onPress={() => toggleTableExpanded('deletions')}
+            >
+              {expandedTables.deletions ? (
+                <ChevronDown color={theme.textMuted} size={16} />
+              ) : (
+                <ChevronRight color={theme.textMuted} size={16} />
+              )}
+              <Text style={[styles.tableTitle, { color: theme.text }]}>
+                Deletions ({pendingSummary.totals.deletions})
+              </Text>
+            </TouchableOpacity>
+            {expandedTables.deletions && pendingSummary.itemsByTable.deletions.map(item => (
+              <View key={item.id} style={[styles.pendingItem, { borderColor: theme.divider }]}>
+                <Text style={[styles.pendingItemName, { color: theme.text }]}>
+                  {item.entityType === 'sale' && 'Deleted Sale'}
+                  {item.entityType === 'expense' && 'Deleted Expense'}
+                  {item.entityType === 'inventory' && 'Deleted Inventory'}
+                  {item.entityType === 'category' && 'Deleted Category'}
+                  {item.entityType === 'user' && 'Deleted User'}
+                  {item.entityType === 'activity' && 'Deleted Activity'}
+                </Text>
+                <Text style={[styles.pendingItemId, { color: theme.textMuted }]}>ID: {truncateId(item.entityId)}</Text>
+                <Text style={[styles.pendingItemMeta, { color: theme.textMuted }]}>
+                  {item.name?.trim()
+                    ? `${item.name}${typeof item.amount === 'number' ? ` • ₱${item.amount.toFixed(2)}` : ''}`
+                    : 'Name/amount unavailable (deleted locally)'}
+                </Text>
+                <Text style={[styles.pendingItemMeta, { color: theme.textMuted }]}>
+                  Date: {item.date || item.createdAt}
+                </Text>
+                {item.syncStatus === 'error' && (
+                  <Text style={[styles.pendingItemMeta, { color: theme.error }]}>Status: error</Text>
+                )}
+              </View>
+            ))}
+          </View>
+        )}
+
         {pendingSummary.totals.total === 0 && (
           <View style={styles.allSyncedContainer}>
             <Cloud color={theme.success} size={24} />

@@ -23,7 +23,7 @@ import * as Haptics from 'expo-haptics';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSync } from '@/contexts/SyncContext';
 import { Colors } from '@/constants/colors';
-import { ExpenseItem, formatCurrency, formatDate, formatShortDate } from '@/types';
+import { Expense, ExpenseItem, Sale, formatCurrency, formatDate, formatShortDate } from '@/types';
 import { 
   getSalesByDate, getExpensesByDate, createSale, createExpense,
   deleteSale, deleteExpense, createActivity, getPendingSummaryAndItems, PendingSummary
@@ -236,9 +236,16 @@ export default function SalesScreen() {
   });
 
   const deleteSaleMutation = useMutation({
-    mutationFn: async (id: string) => {
-      queueDeletion('sales', id);
-      return deleteSale(id);
+    mutationFn: async (sale: Sale) => {
+      const shouldQueueDeletion = !(sale.syncStatus === 'pending' && sale.createdAt === sale.updatedAt);
+      if (shouldQueueDeletion) {
+        await queueDeletion('sales', sale.id, {
+          name: sale.name,
+          amount: sale.total,
+          date: sale.date,
+        });
+      }
+      return deleteSale(sale.id);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sales'] });
@@ -247,9 +254,16 @@ export default function SalesScreen() {
   });
 
   const deleteExpenseMutation = useMutation({
-    mutationFn: async (id: string) => {
-      queueDeletion('expenses', id);
-      return deleteExpense(id);
+    mutationFn: async (expense: Expense) => {
+      const shouldQueueDeletion = !(expense.syncStatus === 'pending' && expense.createdAt === expense.updatedAt);
+      if (shouldQueueDeletion) {
+        await queueDeletion('expenses', expense.id, {
+          name: expense.name,
+          amount: expense.total,
+          date: expense.date,
+        });
+      }
+      return deleteExpense(expense.id);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['expenses'] });
@@ -323,28 +337,28 @@ export default function SalesScreen() {
     setExpenseItemPriceInput('');
   };
 
-  const handleDeleteSale = (id: string, name: string) => {
+  const handleDeleteSale = (sale: Sale) => {
     if (Platform.OS === 'web') {
-      if (confirm(`Delete sale "${name}"?`)) {
-        deleteSaleMutation.mutate(id);
+      if (confirm(`Delete sale "${sale.name}"?`)) {
+        deleteSaleMutation.mutate(sale);
       }
     } else {
-      Alert.alert('Delete Sale', `Delete "${name}"?`, [
+      Alert.alert('Delete Sale', `Delete "${sale.name}"?`, [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Delete', style: 'destructive', onPress: () => deleteSaleMutation.mutate(id) },
+        { text: 'Delete', style: 'destructive', onPress: () => deleteSaleMutation.mutate(sale) },
       ]);
     }
   };
 
-  const handleDeleteExpense = (id: string, name: string) => {
+  const handleDeleteExpense = (expense: Expense) => {
     if (Platform.OS === 'web') {
-      if (confirm(`Delete expense "${name}"?`)) {
-        deleteExpenseMutation.mutate(id);
+      if (confirm(`Delete expense "${expense.name}"?`)) {
+        deleteExpenseMutation.mutate(expense);
       }
     } else {
-      Alert.alert('Delete Expense', `Delete "${name}"?`, [
+      Alert.alert('Delete Expense', `Delete "${expense.name}"?`, [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Delete', style: 'destructive', onPress: () => deleteExpenseMutation.mutate(id) },
+        { text: 'Delete', style: 'destructive', onPress: () => deleteExpenseMutation.mutate(expense) },
       ]);
     }
   };
@@ -356,6 +370,7 @@ export default function SalesScreen() {
 
   const pendingSales = pendingSummary?.itemsByTable.sales ?? [];
   const pendingExpenses = pendingSummary?.itemsByTable.expenses ?? [];
+  const pendingDeletions = pendingSummary?.itemsByTable.deletions ?? [];
   const pendingItems = [
     ...pendingSales.map(item => ({
       id: item.id,
@@ -373,6 +388,18 @@ export default function SalesScreen() {
       date: item.date,
       status: item.syncStatus || 'pending',
     })),
+    ...pendingDeletions
+      .filter(item => item.entityType === 'sale' || item.entityType === 'expense')
+      .map(item => ({
+        id: item.id,
+        type: item.entityType === 'sale' ? 'Deleted Sale' : 'Deleted Expense',
+        name: item.name?.trim()
+          ? item.name
+          : `${item.entityId} (deleted locally)`,
+        amount: item.amount ?? null,
+        date: item.date || item.createdAt,
+        status: item.syncStatus || 'pending',
+      })),
   ];
 
   const handlePendingSync = async () => {
@@ -585,7 +612,7 @@ export default function SalesScreen() {
                 </View>
                 <TouchableOpacity
                   style={[styles.deleteButton, { backgroundColor: theme.error + '20' }]}
-                  onPress={() => handleDeleteSale(sale.id, saleNameLabel)}
+                  onPress={() => handleDeleteSale(sale)}
                 >
                   <Trash2 color={theme.error} size={18} />
                 </TouchableOpacity>
@@ -617,7 +644,7 @@ export default function SalesScreen() {
                 </View>
                 <TouchableOpacity
                   style={[styles.deleteButton, { backgroundColor: theme.error + '20' }]}
-                  onPress={() => handleDeleteExpense(expense.id, expenseNameLabel)}
+                  onPress={() => handleDeleteExpense(expense)}
                 >
                   <Trash2 color={theme.error} size={18} />
                 </TouchableOpacity>
@@ -1017,17 +1044,25 @@ export default function SalesScreen() {
                   <Text style={[styles.pendingSummaryLabel, { color: theme.textSecondary }]}>Expenses</Text>
                   <Text style={[styles.pendingSummaryValue, { color: theme.text }]}>{pendingSummary?.totals.expenses ?? 0}</Text>
                 </View>
+                <View style={styles.pendingSummaryRow}>
+                  <Text style={[styles.pendingSummaryLabel, { color: theme.textSecondary }]}>Deletes</Text>
+                  <Text style={[styles.pendingSummaryValue, { color: theme.text }]}>{pendingSummary?.totals.deletions ?? 0}</Text>
+                </View>
               </View>
 
               {pendingItems.length === 0 ? (
                 <Text style={[styles.emptyText, { color: theme.textMuted }]}>All caught up</Text>
               ) : (
                 <View style={styles.pendingList}>
-                  {pendingItems.map(item => (
+                  {pendingItems.map(item => {
+                    const amountText = typeof item.amount === 'number' ? formatCurrency(item.amount) : '—';
+                    const statusColor = item.status === 'error' ? theme.error : theme.warning;
+                    const isSaleType = item.type.includes('Sale');
+                    return (
                     <View key={`${item.type}-${item.id}`} style={[styles.pendingItem, { borderColor: theme.cardBorder }]}>
                       <View style={styles.pendingItemHeader}>
                         <Text style={[styles.pendingItemType, { color: theme.text }]}>{item.type}</Text>
-                        <Text style={[styles.pendingItemStatus, { color: theme.warning }]}>{item.status}</Text>
+                        <Text style={[styles.pendingItemStatus, { color: statusColor }]}>{item.status}</Text>
                       </View>
                       <Text style={[styles.pendingItemName, { color: theme.textSecondary }]} numberOfLines={1}>
                         {item.name}
@@ -1036,12 +1071,13 @@ export default function SalesScreen() {
                         <Text style={[styles.pendingItemDate, { color: theme.textMuted }]}>
                           {item.date ? formatShortDate(item.date) : 'No date'}
                         </Text>
-                        <Text style={[styles.pendingItemAmount, { color: item.type === 'Sale' ? theme.success : theme.error }]}>
-                          {formatCurrency(item.amount)}
+                        <Text style={[styles.pendingItemAmount, { color: isSaleType ? theme.success : theme.error }]}>
+                          {amountText}
                         </Text>
                       </View>
                     </View>
-                  ))}
+                    );
+                  })}
                 </View>
               )}
             </ScrollView>
