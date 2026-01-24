@@ -186,6 +186,7 @@ export default function SalesScreen() {
       createSale({ ...data, date: dateStr, createdBy: user?.id || '' }),
     onSuccess: async () => {
       queryClient.invalidateQueries({ queryKey: ['sales'] });
+      queryClient.invalidateQueries({ queryKey: ['weeklySalesTotals'] });
       if (user) {
         await createActivity({
           type: 'sale_add',
@@ -194,6 +195,7 @@ export default function SalesScreen() {
         });
         queryClient.invalidateQueries({ queryKey: ['activities'] });
       }
+      await checkPendingCount();
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     },
   });
@@ -203,6 +205,7 @@ export default function SalesScreen() {
       createExpense({ ...data, date: dateStr, createdBy: user?.id || '' }),
     onSuccess: async () => {
       queryClient.invalidateQueries({ queryKey: ['expenses'] });
+      queryClient.invalidateQueries({ queryKey: ['weeklyExpenseTotals'] });
       if (user) {
         await createActivity({
           type: 'expense_add',
@@ -211,6 +214,7 @@ export default function SalesScreen() {
         });
         queryClient.invalidateQueries({ queryKey: ['activities'] });
       }
+      await checkPendingCount();
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     },
   });
