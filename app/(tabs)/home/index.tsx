@@ -23,7 +23,7 @@ import { useRouter } from 'expo-router';
 import { formatDate, ROLE_DISPLAY_NAMES, UserRole } from '@/types';
 import { getWeeklySalesTotals, getWeeklyExpenseTotals, getActivities, getUsers, getSalesByDateRange, getExpensesByDateRange } from '@/services/database';
 import { getDayKeysForWeek, getWeekdayLabels, getWeekRange, getWeekStart, toLocalDayKey } from '@/services/dateUtils';
-import Svg, { Path, Circle, Defs, LinearGradient as SvgLinearGradient, Stop, Rect, Line } from 'react-native-svg';
+import WeeklyLineChart, { WeeklyLineSeries } from '@/components/WeeklyLineChart';
 import LaserBackground from '@/components/LaserBackground';
 
 const { width } = Dimensions.get('window');
@@ -93,7 +93,7 @@ const roleToSplitKey = (role?: UserRole | null): SplitKey => {
 export default function HomeScreen() {
   const router = useRouter();
   const { settings, user: currentUser } = useAuth();
-  const { dataVersion } = useSync();
+  const { dataVersion, pendingCount, lastSyncTime } = useSync();
   const theme = settings.darkMode ? Colors.dark : Colors.light;
 
   useEffect(() => {
@@ -362,11 +362,6 @@ export default function HomeScreen() {
     [showSplitOp, showSplitGm, showSplitFd, theme.primary, theme.success, theme.warning]
   );
 
-  const activeSplitSeries = useMemo(
-    () => splitSeriesConfig.filter(series => series.enabled),
-    [splitSeriesConfig]
-  );
-
   const visibleNetSplitTotals = useMemo(
     () => ({
       op: showSplitOp ? netSplitTotals.op : 0,
@@ -399,19 +394,6 @@ export default function HomeScreen() {
 
   const chartHeight = 150;
   const chartWidth = width - 80;
-  const stepX = chartWidth / 6;
-
-  const splitStepX = chartWidth / 7;
-  const splitGroupWidth = splitStepX * 0.7;
-  const splitBarCount = Math.max(activeSplitSeries.length, 1);
-  const splitBarWidth = splitGroupWidth / splitBarCount;
-  const splitValues = activeSplitSeries.length
-    ? netSplitChartData.flatMap(day => activeSplitSeries.map(series => day[series.key]))
-    : [0];
-  const splitMaxValue = Math.max(...splitValues, 0);
-  const splitMinValue = Math.min(...splitValues, 0);
-  const splitRange = splitMaxValue - splitMinValue || 1;
-  const splitZeroY = chartHeight - ((0 - splitMinValue) / splitRange) * chartHeight;
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -446,7 +428,7 @@ export default function HomeScreen() {
 
   useEffect(() => {
     handleOverviewRefresh();
-  }, [dataVersion, handleOverviewRefresh]);
+  }, [dataVersion, handleOverviewRefresh, pendingCount, lastSyncTime]);
 
   useFocusEffect(
     useCallback(() => {
@@ -454,21 +436,45 @@ export default function HomeScreen() {
     }, [handleOverviewRefresh])
   );
 
-  const pathData = chartData.map((point, index) => {
-    const x = index * stepX;
-    const y = chartHeight - (point.sales / maxValue) * chartHeight;
-    return `${index === 0 ? 'M' : 'L'} ${x} ${y}`;
-  }).join(' ');
+  const overviewSeries = useMemo<WeeklyLineSeries[]>(() => ([
+    {
+      key: 'sales',
+      color: theme.chartLine,
+      values: chartData.map(point => point.sales),
+      enabled: showSales,
+      pointRadius: 4,
+      gradientOpacity: { start: 0.3, end: 0.05 },
+    },
+    {
+      key: 'expenses',
+      color: theme.error,
+      values: chartData.map(point => point.expenses),
+      enabled: showExpenses,
+      dashed: true,
+      pointRadius: 3,
+      gradientOpacity: { start: 0.2, end: 0.02 },
+    },
+  ]), [chartData, showSales, showExpenses, theme.chartLine, theme.error]);
 
-  const areaPath = `${pathData} L ${(chartData.length - 1) * stepX} ${chartHeight} L 0 ${chartHeight} Z`;
+  const netSplitSeries = useMemo<WeeklyLineSeries[]>(() => (
+    splitSeriesConfig.map(series => ({
+      key: series.key,
+      color: series.color,
+      values: netSplitChartData.map(point => point[series.key]),
+      enabled: series.enabled,
+      pointRadius: 4,
+      gradientOpacity: { start: 0.3, end: 0.05 },
+    }))
+  ), [netSplitChartData, splitSeriesConfig]);
 
-  const expensePathData = chartData.map((point, index) => {
-    const x = index * stepX;
-    const y = chartHeight - (point.expenses / maxValue) * chartHeight;
-    return `${index === 0 ? 'M' : 'L'} ${x} ${y}`;
-  }).join(' ');
-
-  const expenseAreaPath = `${expensePathData} L ${(chartData.length - 1) * stepX} ${chartHeight} L 0 ${chartHeight} Z`;
+  const netSplitValues = useMemo(
+    () => netSplitChartData.flatMap(point => [point.op, point.gm, point.fd]),
+    [netSplitChartData]
+  );
+  const splitRawMaxValue = Math.max(...netSplitValues, 100);
+  const splitMinValue = Math.min(...netSplitValues, 0);
+  const splitYAxisConfig = getYAxisConfig(splitRawMaxValue);
+  const splitMaxValue = splitYAxisConfig.max;
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
@@ -627,51 +633,14 @@ export default function HomeScreen() {
                   </View>
                   
                   <View style={styles.chartContainer}>
-                    <Svg width={chartWidth + 48} height={chartHeight + 30} style={styles.chart}>
-                      <Defs>
-                        <SvgLinearGradient id="areaGradient" x1="0" y1="0" x2="0" y2="1">
-                          <Stop offset="0" stopColor={theme.chartLine} stopOpacity="0.3" />
-                          <Stop offset="1" stopColor={theme.chartLine} stopOpacity="0.05" />
-                        </SvgLinearGradient>
-                        <SvgLinearGradient id="expenseGradient" x1="0" y1="0" x2="0" y2="1">
-                          <Stop offset="0" stopColor={theme.error} stopOpacity="0.2" />
-                          <Stop offset="1" stopColor={theme.error} stopOpacity="0.02" />
-                        </SvgLinearGradient>
-                      </Defs>
-                      
-                      {showSales && (
-                        <>
-                          <Path d={areaPath} fill="url(#areaGradient)" />
-                          <Path d={pathData} stroke={theme.chartLine} strokeWidth={2} fill="none" />
-                        </>
-                      )}
-                      
-                      {showExpenses && (
-                        <>
-                          <Path d={expenseAreaPath} fill="url(#expenseGradient)" />
-                          <Path d={expensePathData} stroke={theme.error} strokeWidth={2} fill="none" strokeDasharray="4,4" />
-                        </>
-                      )}
-                      
-                      {showSales && chartData.map((point, index) => (
-                        <Circle
-                          key={`sales-${index}`}
-                          cx={index * stepX}
-                          cy={chartHeight - (point.sales / maxValue) * chartHeight}
-                          r={4}
-                          fill={theme.chartLine}
-                        />
-                      ))}
-                      {showExpenses && chartData.map((point, index) => (
-                        <Circle
-                          key={`expense-${index}`}
-                          cx={index * stepX}
-                          cy={chartHeight - (point.expenses / maxValue) * chartHeight}
-                          r={3}
-                          fill={theme.error}
-                        />
-                      ))}
-                    </Svg>
+                    <WeeklyLineChart
+                      data={chartData}
+                      series={overviewSeries}
+                      chartHeight={chartHeight}
+                      chartWidth={chartWidth}
+                      maxValue={maxValue}
+                      minValue={0}
+                    />
                   </View>
                   
                   <View style={styles.xAxis}>
@@ -731,34 +700,14 @@ export default function HomeScreen() {
                   </View>
 
                   <View style={styles.chartContainer}>
-                    <Svg width={chartWidth + 48} height={chartHeight + 30} style={styles.chart}>
-                      <Line x1={0} y1={splitZeroY} x2={chartWidth} y2={splitZeroY} stroke={theme.chartGrid} strokeWidth={1} />
-                      {netSplitChartData.map((point, index) => {
-                        const groupX = index * splitStepX + (splitStepX - splitGroupWidth) / 2;
-                        if (activeSplitSeries.length === 0) {
-                          return null;
-                        }
-                        return activeSplitSeries.map((series, seriesIndex) => {
-                          const value = point[series.key];
-                          const barX = groupX + seriesIndex * splitBarWidth;
-                          const barY = value >= 0
-                            ? splitZeroY - ((value - 0) / splitRange) * chartHeight
-                            : splitZeroY;
-                          const barHeight = Math.abs((value / splitRange) * chartHeight);
-                          return (
-                            <Rect
-                              key={`split-${index}-${series.key}`}
-                              x={barX}
-                              y={barY}
-                              width={splitBarWidth * 0.8}
-                              height={barHeight}
-                              fill={series.color}
-                              rx={3}
-                            />
-                          );
-                        });
-                      })}
-                    </Svg>
+                    <WeeklyLineChart
+                      data={netSplitChartData}
+                      series={netSplitSeries}
+                      chartHeight={chartHeight}
+                      chartWidth={chartWidth}
+                      maxValue={splitMaxValue}
+                      minValue={splitMinValue}
+                    />
                   </View>
 
                   <View style={styles.xAxis}>
