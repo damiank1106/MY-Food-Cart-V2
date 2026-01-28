@@ -22,7 +22,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { formatDate, ROLE_DISPLAY_NAMES, UserRole } from '@/types';
 import { getWeeklySalesTotals, getWeeklyExpenseTotals, getActivities, getUsers } from '@/services/database';
 import { getDayKeysForWeek, getWeekdayLabels, getWeekRange, getWeekStart, toLocalDayKey } from '@/services/dateUtils';
-import Svg, { Path, Circle, Defs, LinearGradient as SvgLinearGradient, Stop, Text as SvgText, Rect } from 'react-native-svg';
+import Svg, { Path, Circle, Defs, LinearGradient as SvgLinearGradient, Stop, Text as SvgText, Rect, G } from 'react-native-svg';
 import LaserBackground from '@/components/LaserBackground';
 import { useSync } from '@/contexts/SyncContext';
 
@@ -176,7 +176,18 @@ export default function HomeScreen() {
     [currentWeek.start, weekStartsOn]
   );
   const weekDayKeys = useMemo(() => getDayKeysForWeek(weekStart), [weekStart]);
-  const weekDayLabels = useMemo(() => getWeekdayLabels(weekStartsOn), [weekStartsOn]);
+  const weekDayLabels = useMemo(() => {
+    const shortLabels: Record<string, string> = {
+      Sun: 'S',
+      Mon: 'M',
+      Tue: 'T',
+      Wed: 'W',
+      Thu: 'T',
+      Fri: 'F',
+      Sat: 'S',
+    };
+    return getWeekdayLabels(weekStartsOn).map(label => shortLabels[label] ?? label);
+  }, [weekStartsOn]);
 
   useEffect(() => {
     if (process.env.EXPO_PUBLIC_DEBUG_WEEKLY_CHART === 'true') {
@@ -250,17 +261,27 @@ export default function HomeScreen() {
   const chartTopPadding = 20;
   const chartBottomPadding = 10;
   const chartWidth = width - 80;
-  const chartSvgWidth = chartWidth + 48;
+  const chartXOffset = 10;
+  const chartSvgWidth = chartWidth + 48 + chartXOffset;
   const chartSvgHeight = chartHeight + chartTopPadding + chartBottomPadding;
   const stepX = chartWidth / 6;
-  const dayLabelSpacingMin = 36;
+  const dayLabelSpacingMin = 18;
   const dayLabelSpacingMax = 90;
+  const dayLabelSpacingStep = 2;
+  const normalizeDayLabelSpacing = useCallback(
+    (value: number) => {
+      const clamped = Math.min(dayLabelSpacingMax, Math.max(dayLabelSpacingMin, value));
+      const rounded = Math.round(clamped / dayLabelSpacingStep) * dayLabelSpacingStep;
+      return Math.min(dayLabelSpacingMax, Math.max(dayLabelSpacingMin, rounded));
+    },
+    [dayLabelSpacingMax, dayLabelSpacingMin, dayLabelSpacingStep]
+  );
   const defaultDayLabelSpacing = useMemo(() => {
     const baseSpacing = Math.round(chartWidth / 6);
-    return Math.min(dayLabelSpacingMax, Math.max(dayLabelSpacingMin, baseSpacing));
-  }, [chartWidth, dayLabelSpacingMax, dayLabelSpacingMin]);
+    return normalizeDayLabelSpacing(baseSpacing);
+  }, [chartWidth, normalizeDayLabelSpacing]);
   const [dayLabelSpacing, setDayLabelSpacing] = useState<number>(
-    settings.weeklyDayLabelSpacing ?? defaultDayLabelSpacing
+    normalizeDayLabelSpacing(settings.weeklyDayLabelSpacing ?? defaultDayLabelSpacing)
   );
   const scaleY = useCallback(
     (value: number) => chartTopPadding + chartHeight - (value / maxValue) * chartHeight,
@@ -268,19 +289,21 @@ export default function HomeScreen() {
   );
 
   useEffect(() => {
-    const nextSpacing = settings.weeklyDayLabelSpacing ?? defaultDayLabelSpacing;
+    const nextSpacing = normalizeDayLabelSpacing(
+      settings.weeklyDayLabelSpacing ?? defaultDayLabelSpacing
+    );
     setDayLabelSpacing(prev => (prev === nextSpacing ? prev : nextSpacing));
-  }, [defaultDayLabelSpacing, settings.weeklyDayLabelSpacing]);
+  }, [defaultDayLabelSpacing, normalizeDayLabelSpacing, settings.weeklyDayLabelSpacing]);
 
   const updateDayLabelSpacing = useCallback(
     (value: number) => {
-      const clamped = Math.min(dayLabelSpacingMax, Math.max(dayLabelSpacingMin, value));
-      setDayLabelSpacing(clamped);
-      if (settings.weeklyDayLabelSpacing !== clamped) {
-        updateSettings({ weeklyDayLabelSpacing: clamped });
+      const normalized = normalizeDayLabelSpacing(value);
+      setDayLabelSpacing(normalized);
+      if (settings.weeklyDayLabelSpacing !== normalized) {
+        updateSettings({ weeklyDayLabelSpacing: normalized });
       }
     },
-    [dayLabelSpacingMax, dayLabelSpacingMin, settings.weeklyDayLabelSpacing, updateSettings]
+    [normalizeDayLabelSpacing, settings.weeklyDayLabelSpacing, updateSettings]
   );
 
   const onRefresh = useCallback(async () => {
@@ -517,84 +540,86 @@ export default function HomeScreen() {
                     </SvgLinearGradient>
                   </Defs>
                   
-                  {showSales && (
-                    <>
-                      <Path d={areaPath} fill="url(#areaGradient)" />
-                      <Path d={pathData} stroke={theme.chartLine} strokeWidth={2} fill="none" />
-                    </>
-                  )}
-                  
-                  {showExpenses && (
-                    <>
-                      <Path d={expenseAreaPath} fill="url(#expenseGradient)" />
-                      <Path d={expensePathData} stroke={theme.error} strokeWidth={2} fill="none" strokeDasharray="4,4" />
-                    </>
-                  )}
-                  
-                  {showSales && chartData.map((point, index) => (
-                    <Circle
-                      key={`sales-${index}`}
-                      cx={index * stepX}
-                      cy={scaleY(point.sales)}
-                      r={4}
-                      fill={theme.chartLine}
-                    />
-                  ))}
-                  {showExpenses && chartData.map((point, index) => (
-                    <Circle
-                      key={`expense-${index}`}
-                      cx={index * stepX}
-                      cy={scaleY(point.expenses)}
-                      r={3}
-                      fill={theme.error}
-                    />
-                  ))}
-                  {showSales && labelData.map((label, index) => (
-                    <React.Fragment key={`sales-label-${index}`}>
-                      <Rect
-                        x={label.salesLabelX - label.salesLabelWidth / 2 - label.labelPaddingX}
-                        y={label.salesLabelY - label.labelHeight / 2}
-                        width={label.salesLabelWidth + label.labelPaddingX * 2}
-                        height={label.labelHeight}
-                        rx={3}
-                        fill={theme.card}
-                        opacity={0.85}
+                  <G transform={`translate(${chartXOffset}, 0)`}>
+                    {showSales && (
+                      <>
+                        <Path d={areaPath} fill="url(#areaGradient)" />
+                        <Path d={pathData} stroke={theme.chartLine} strokeWidth={2} fill="none" />
+                      </>
+                    )}
+
+                    {showExpenses && (
+                      <>
+                        <Path d={expenseAreaPath} fill="url(#expenseGradient)" />
+                        <Path d={expensePathData} stroke={theme.error} strokeWidth={2} fill="none" strokeDasharray="4,4" />
+                      </>
+                    )}
+
+                    {showSales && chartData.map((point, index) => (
+                      <Circle
+                        key={`sales-${index}`}
+                        cx={index * stepX}
+                        cy={scaleY(point.sales)}
+                        r={4}
+                        fill={theme.chartLine}
                       />
-                      <SvgText
-                        x={label.salesLabelX}
-                        y={label.salesLabelY}
-                        fontSize={9}
-                        textAnchor="middle"
-                        alignmentBaseline="middle"
-                        fill={chartLabelColor}
-                      >
-                        {label.salesLabel}
-                      </SvgText>
-                    </React.Fragment>
-                  ))}
-                  {showExpenses && labelData.map((label, index) => (
-                    <React.Fragment key={`expense-label-${index}`}>
-                      <Rect
-                        x={label.expenseLabelX - label.expenseLabelWidth / 2 - label.labelPaddingX}
-                        y={label.expenseLabelY - label.labelHeight / 2}
-                        width={label.expenseLabelWidth + label.labelPaddingX * 2}
-                        height={label.labelHeight}
-                        rx={3}
-                        fill={theme.card}
-                        opacity={0.85}
+                    ))}
+                    {showExpenses && chartData.map((point, index) => (
+                      <Circle
+                        key={`expense-${index}`}
+                        cx={index * stepX}
+                        cy={scaleY(point.expenses)}
+                        r={3}
+                        fill={theme.error}
                       />
-                      <SvgText
-                        x={label.expenseLabelX}
-                        y={label.expenseLabelY}
-                        fontSize={9}
-                        textAnchor="middle"
-                        alignmentBaseline="middle"
-                        fill={chartLabelColor}
-                      >
-                        {label.expenseLabel}
-                      </SvgText>
-                    </React.Fragment>
-                  ))}
+                    ))}
+                    {showSales && labelData.map((label, index) => (
+                      <React.Fragment key={`sales-label-${index}`}>
+                        <Rect
+                          x={label.salesLabelX - label.salesLabelWidth / 2 - label.labelPaddingX}
+                          y={label.salesLabelY - label.labelHeight / 2}
+                          width={label.salesLabelWidth + label.labelPaddingX * 2}
+                          height={label.labelHeight}
+                          rx={3}
+                          fill={theme.card}
+                          opacity={0.85}
+                        />
+                        <SvgText
+                          x={label.salesLabelX}
+                          y={label.salesLabelY}
+                          fontSize={9}
+                          textAnchor="middle"
+                          alignmentBaseline="middle"
+                          fill={chartLabelColor}
+                        >
+                          {label.salesLabel}
+                        </SvgText>
+                      </React.Fragment>
+                    ))}
+                    {showExpenses && labelData.map((label, index) => (
+                      <React.Fragment key={`expense-label-${index}`}>
+                        <Rect
+                          x={label.expenseLabelX - label.expenseLabelWidth / 2 - label.labelPaddingX}
+                          y={label.expenseLabelY - label.labelHeight / 2}
+                          width={label.expenseLabelWidth + label.labelPaddingX * 2}
+                          height={label.labelHeight}
+                          rx={3}
+                          fill={theme.card}
+                          opacity={0.85}
+                        />
+                        <SvgText
+                          x={label.expenseLabelX}
+                          y={label.expenseLabelY}
+                          fontSize={9}
+                          textAnchor="middle"
+                          alignmentBaseline="middle"
+                          fill={chartLabelColor}
+                        >
+                          {label.expenseLabel}
+                        </SvgText>
+                      </React.Fragment>
+                    ))}
+                  </G>
                 </Svg>
               </View>
               
@@ -607,7 +632,7 @@ export default function HomeScreen() {
                       { borderColor: theme.cardBorder, backgroundColor: theme.cardHighlight },
                       dayLabelSpacing <= dayLabelSpacingMin && styles.stretchButtonDisabled,
                     ]}
-                    onPress={() => updateDayLabelSpacing(dayLabelSpacing - 4)}
+                    onPress={() => updateDayLabelSpacing(dayLabelSpacing - dayLabelSpacingStep)}
                     disabled={dayLabelSpacing <= dayLabelSpacingMin}
                   >
                     <Text style={[styles.stretchButtonText, { color: theme.text }]}>-</Text>
@@ -619,7 +644,7 @@ export default function HomeScreen() {
                       { borderColor: theme.cardBorder, backgroundColor: theme.cardHighlight },
                       dayLabelSpacing >= dayLabelSpacingMax && styles.stretchButtonDisabled,
                     ]}
-                    onPress={() => updateDayLabelSpacing(dayLabelSpacing + 4)}
+                    onPress={() => updateDayLabelSpacing(dayLabelSpacing + dayLabelSpacingStep)}
                     disabled={dayLabelSpacing >= dayLabelSpacingMax}
                   >
                     <Text style={[styles.stretchButtonText, { color: theme.text }]}>+</Text>
