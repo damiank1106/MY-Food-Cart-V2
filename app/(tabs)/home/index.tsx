@@ -92,7 +92,7 @@ const AUTHOR_VISIBLE_ROLES: UserRole[] = ['general_manager', 'operation_manager'
 
 export default function HomeScreen() {
   const router = useRouter();
-  const { settings, user: currentUser } = useAuth();
+  const { settings, user: currentUser, updateSettings } = useAuth();
   const { lastSyncTime } = useSync();
   const theme = settings.darkMode ? Colors.dark : Colors.light;
   const chartLabelColor = settings.darkMode ? '#FFFFFF' : '#000000';
@@ -253,9 +253,34 @@ export default function HomeScreen() {
   const chartSvgWidth = chartWidth + 48;
   const chartSvgHeight = chartHeight + chartTopPadding + chartBottomPadding;
   const stepX = chartWidth / 6;
+  const dayLabelSpacingMin = 36;
+  const dayLabelSpacingMax = 90;
+  const defaultDayLabelSpacing = useMemo(() => {
+    const baseSpacing = Math.round(chartWidth / 6);
+    return Math.min(dayLabelSpacingMax, Math.max(dayLabelSpacingMin, baseSpacing));
+  }, [chartWidth, dayLabelSpacingMax, dayLabelSpacingMin]);
+  const [dayLabelSpacing, setDayLabelSpacing] = useState<number>(
+    settings.weeklyDayLabelSpacing ?? defaultDayLabelSpacing
+  );
   const scaleY = useCallback(
     (value: number) => chartTopPadding + chartHeight - (value / maxValue) * chartHeight,
     [chartHeight, chartTopPadding, maxValue]
+  );
+
+  useEffect(() => {
+    const nextSpacing = settings.weeklyDayLabelSpacing ?? defaultDayLabelSpacing;
+    setDayLabelSpacing(prev => (prev === nextSpacing ? prev : nextSpacing));
+  }, [defaultDayLabelSpacing, settings.weeklyDayLabelSpacing]);
+
+  const updateDayLabelSpacing = useCallback(
+    (value: number) => {
+      const clamped = Math.min(dayLabelSpacingMax, Math.max(dayLabelSpacingMin, value));
+      setDayLabelSpacing(clamped);
+      if (settings.weeklyDayLabelSpacing !== clamped) {
+        updateSettings({ weeklyDayLabelSpacing: clamped });
+      }
+    },
+    [dayLabelSpacingMax, dayLabelSpacingMin, settings.weeklyDayLabelSpacing, updateSettings]
   );
 
   const onRefresh = useCallback(async () => {
@@ -573,12 +598,49 @@ export default function HomeScreen() {
                 </Svg>
               </View>
               
-              <View style={styles.xAxis}>
-                {chartData.map((point, index) => (
-                  <Text key={index} style={[styles.xAxisLabel, { color: theme.textMuted }]}>
-                    {point.day}
-                  </Text>
-                ))}
+              <View style={styles.stretchControls}>
+                <Text style={[styles.stretchLabel, { color: theme.textSecondary }]}>Stretch Days</Text>
+                <View style={styles.stretchButtons}>
+                  <TouchableOpacity
+                    style={[
+                      styles.stretchButton,
+                      { borderColor: theme.cardBorder, backgroundColor: theme.cardHighlight },
+                      dayLabelSpacing <= dayLabelSpacingMin && styles.stretchButtonDisabled,
+                    ]}
+                    onPress={() => updateDayLabelSpacing(dayLabelSpacing - 4)}
+                    disabled={dayLabelSpacing <= dayLabelSpacingMin}
+                  >
+                    <Text style={[styles.stretchButtonText, { color: theme.text }]}>-</Text>
+                  </TouchableOpacity>
+                  <Text style={[styles.stretchValue, { color: theme.text }]}>{dayLabelSpacing}</Text>
+                  <TouchableOpacity
+                    style={[
+                      styles.stretchButton,
+                      { borderColor: theme.cardBorder, backgroundColor: theme.cardHighlight },
+                      dayLabelSpacing >= dayLabelSpacingMax && styles.stretchButtonDisabled,
+                    ]}
+                    onPress={() => updateDayLabelSpacing(dayLabelSpacing + 4)}
+                    disabled={dayLabelSpacing >= dayLabelSpacingMax}
+                  >
+                    <Text style={[styles.stretchButtonText, { color: theme.text }]}>+</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              <View style={styles.xAxisContainer}>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.xAxisContent}
+                >
+                  {chartData.map((point, index) => (
+                    <View key={index} style={[styles.xAxisLabelWrapper, { width: dayLabelSpacing }]}>
+                      <Text style={[styles.xAxisLabel, { color: theme.textMuted }]}>
+                        {point.day}
+                      </Text>
+                    </View>
+                  ))}
+                </ScrollView>
               </View>
             </View>
           </View>
@@ -720,15 +782,56 @@ const styles = StyleSheet.create({
   chart: {
     marginLeft: 0,
   },
-  xAxis: {
+  stretchControls: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
     marginTop: 8,
+  },
+  stretchLabel: {
+    fontSize: 12,
+    fontWeight: '500' as const,
+  },
+  stretchButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  stretchButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stretchButtonDisabled: {
+    opacity: 0.5,
+  },
+  stretchButtonText: {
+    fontSize: 16,
+    fontWeight: '600' as const,
+  },
+  stretchValue: {
+    fontSize: 12,
+    fontWeight: '600' as const,
+    minWidth: 32,
+    textAlign: 'center',
+  },
+  xAxisContainer: {
+    marginTop: 8,
+    overflow: 'hidden',
+  },
+  xAxisContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: 24,
+  },
+  xAxisLabelWrapper: {
+    alignItems: 'center',
   },
   xAxisLabel: {
     fontSize: 10,
-    width: 30,
     textAlign: 'center',
   },
   chartLegend: {

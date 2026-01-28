@@ -104,6 +104,7 @@ export interface AppSettings {
   laserBackground: boolean;
   backgroundColorPalette: BackgroundColorPalette;
   backgroundIntensity: BackgroundIntensity;
+  weeklyDayLabelSpacing?: number;
 }
 
 export const DEFAULT_CATEGORIES: string[] = ['Cart', 'Freezer', 'Condiments', 'Packing Supply'];
