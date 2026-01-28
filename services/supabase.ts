@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { User, Category, InventoryItem, Sale, Expense, ExpenseItem, Activity } from '@/types';
+import { User, Category, InventoryItem, Sale, Expense, ExpenseItem, Activity, generateId } from '@/types';
 
 const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
 const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '';
@@ -21,16 +21,19 @@ function normalizeExpenseItems(items: unknown): ExpenseItem[] {
   return items.reduce<ExpenseItem[]>((acc, item) => {
     if (typeof item === 'string') {
       const name = item.trim();
-      if (name) acc.push({ name });
+      if (name) acc.push({ id: generateId(), name });
       return acc;
     }
     if (item && typeof item === 'object') {
-      const maybeItem = item as { name?: unknown; price?: unknown };
+      const maybeItem = item as { id?: unknown; name?: unknown; price?: unknown };
       if (typeof maybeItem.name === 'string' && maybeItem.name.trim()) {
         const priceValue = typeof maybeItem.price === 'number' && !Number.isNaN(maybeItem.price)
           ? maybeItem.price
           : null;
-        acc.push({ name: maybeItem.name.trim(), price: priceValue });
+        const idValue = typeof maybeItem.id === 'string' && maybeItem.id.trim()
+          ? maybeItem.id
+          : generateId();
+        acc.push({ id: idValue, name: maybeItem.name.trim(), price: priceValue });
       }
     }
     return acc;
