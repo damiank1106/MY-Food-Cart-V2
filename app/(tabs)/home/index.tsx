@@ -851,7 +851,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingLeft: 1,
-    paddingRight: 24,
+    paddingRight: 12,
   },
   xAxisLabelWrapper: {
     alignItems: 'center',
