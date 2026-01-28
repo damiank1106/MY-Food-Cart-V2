@@ -805,7 +805,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   chart: {
-    marginLeft: 0,
+    marginLeft: 2,
   },
   stretchControls: {
     flexDirection: 'row',
