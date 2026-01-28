@@ -97,6 +97,14 @@ function formatCompactNumber(value: number): string {
   return `${value}`;
 }
 
+function getWritablePdfDirectory(): string | null {
+  const documentDirectory = FileSystem.documentDirectory;
+  const cacheDirectory = FileSystem.cacheDirectory;
+  console.log('documentDirectory', documentDirectory);
+  console.log('cacheDirectory', cacheDirectory);
+  return cacheDirectory ?? documentDirectory ?? null;
+}
+
 const AUTHOR_VISIBLE_ROLES: UserRole[] = ['general_manager', 'operation_manager', 'developer'];
 const WEEKLY_DAY_LABEL_SPACING_KEY = '@myfoodcart_weekly_day_label_spacing';
 
@@ -275,15 +283,37 @@ export default function HomeScreen() {
 
       updateProgress(40, 'Building HTML...');
       updateProgress(70, 'Creating PDF...');
-      const { uri } = await Print.printToFileAsync({ html });
-      const documentDirectory = FileSystem.documentDirectory;
-      if (!documentDirectory) {
-        throw new Error('Document directory unavailable');
+      let tempPdfUri: string;
+      try {
+        const { uri } = await Print.printToFileAsync({ html });
+        tempPdfUri = uri;
+      } catch (error) {
+        console.log('Error generating PDF summary:', error);
+        setShowProgressModal(false);
+        setIsGeneratingPdf(false);
+        Alert.alert('Export Failed', 'Unable to generate the PDF summary. Please try again.');
+        return;
       }
-      const targetUri = `${documentDirectory}${fileName}`;
-      updateProgress(90, 'Saving file...');
-      await FileSystem.deleteAsync(targetUri, { idempotent: true });
-      await FileSystem.copyAsync({ from: uri, to: targetUri });
+
+      console.log('tempPdfUri', tempPdfUri);
+
+      const baseDirectory = getWritablePdfDirectory();
+      let outputUri: string | null = null;
+
+      if (baseDirectory) {
+        outputUri = `${baseDirectory}${fileName}`;
+        updateProgress(90, 'Saving file...');
+        try {
+          await FileSystem.deleteAsync(outputUri, { idempotent: true });
+          await FileSystem.copyAsync({ from: tempPdfUri, to: outputUri });
+        } catch (error) {
+          console.log('Error saving PDF summary:', error);
+          outputUri = null;
+        }
+      }
+
+      const finalUri = outputUri ?? tempPdfUri;
+      console.log('finalUri', finalUri);
       updateProgress(100, 'Ready!');
       setShowProgressModal(false);
       setIsGeneratingPdf(false);
@@ -292,7 +322,7 @@ export default function HomeScreen() {
       const shareAvailable = await Sharing.isAvailableAsync();
 
       if (!mailAvailable && !shareAvailable) {
-        Alert.alert('PDF Summary Ready', `Saved to ${targetUri}`);
+        Alert.alert('PDF Summary Ready', `Saved to ${finalUri}`);
         return;
       }
 
@@ -306,7 +336,7 @@ export default function HomeScreen() {
           onPress: () => MailComposer.composeAsync({
             subject: 'MY Food Cart – PDF Summary',
             body: 'Hi! Please find the attached PDF summary report.',
-            attachments: [targetUri],
+            attachments: [finalUri],
           }),
         });
       }
@@ -314,16 +344,15 @@ export default function HomeScreen() {
       if (shareAvailable) {
         buttons.push({
           text: 'Share',
-          onPress: () => Sharing.shareAsync(targetUri),
+          onPress: () => Sharing.shareAsync(finalUri),
         });
       }
 
       Alert.alert('PDF Summary Ready', 'Choose how you want to send your PDF summary.', buttons);
     } catch (error) {
-      console.log('Error generating PDF summary:', error);
+      console.log('Unexpected error preparing PDF summary:', error);
       setShowProgressModal(false);
       setIsGeneratingPdf(false);
-      Alert.alert('Export Failed', 'Unable to generate the PDF summary. Please try again.');
     }
   }, [isGeneratingPdf, selectedWeek, updateProgress, weeks]);
 
