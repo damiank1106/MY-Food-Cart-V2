@@ -48,6 +48,7 @@ export interface Sale {
 }
 
 export interface ExpenseItem {
+  id: string;
   name: string;
   price?: number | null;
 }

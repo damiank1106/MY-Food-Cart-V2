@@ -30,6 +30,7 @@ import {
 } from '@/services/database';
 import { formatLocalDate } from '@/services/dateUtils';
 import LaserBackground from '@/components/LaserBackground';
+import ExpenseModal from '@/components/ExpenseModal';
 
 export default function SalesScreen() {
   const { user, settings } = useAuth();
@@ -48,13 +49,8 @@ export default function SalesScreen() {
   
   const [saleName, setSaleName] = useState('');
   const [saleTotal, setSaleTotal] = useState('');
-  const [expenseName, setExpenseName] = useState('');
-  const [expenseTotal, setExpenseTotal] = useState('');
   const [saleItems, setSaleItems] = useState<string[]>([]);
   const [saleItemInput, setSaleItemInput] = useState('');
-  const [expenseItems, setExpenseItems] = useState<ExpenseItem[]>([]);
-  const [expenseItemNameInput, setExpenseItemNameInput] = useState('');
-  const [expenseItemPriceInput, setExpenseItemPriceInput] = useState('');
   
   
 
@@ -86,18 +82,6 @@ export default function SalesScreen() {
   useEffect(() => {
     loadSplitPercentages();
   }, []);
-
-  const expenseItemsTotal = expenseItems.reduce((sum, item) => {
-    return sum + (typeof item.price === 'number' ? item.price : 0);
-  }, 0);
-  const isExpenseTotalLocked = expenseItemsTotal > 0;
-  const isExpenseItemsLocked = !isExpenseTotalLocked && expenseTotal.trim() !== '';
-
-  useEffect(() => {
-    if (expenseItemsTotal > 0) {
-      setExpenseTotal(expenseItemsTotal.toFixed(2));
-    }
-  }, [expenseItemsTotal]);
 
   const loadSplitPercentages = async () => {
     try {
@@ -282,20 +266,9 @@ export default function SalesScreen() {
     setShowSaleModal(false);
   };
 
-  const handleAddExpense = async () => {
-    const manualTotal = parseFloat(expenseTotal);
-    const hasManualTotal = !Number.isNaN(manualTotal) && manualTotal > 0;
-    const hasPricedItems = expenseItemsTotal > 0;
-    if (!hasPricedItems && !hasManualTotal) return;
-    const totalValue = hasPricedItems ? Number(expenseItemsTotal.toFixed(2)) : manualTotal;
-    await createExpenseMutation.mutateAsync({
-      name: expenseName.trim(),
-      total: totalValue,
-      items: expenseItems,
-    });
-    resetExpenseForm();
-    setShowExpenseModal(false);
-  };
+  const handleSubmitExpense = useCallback(async (payload: { name: string; total: number; items: ExpenseItem[] }) => {
+    await createExpenseMutation.mutateAsync(payload);
+  }, [createExpenseMutation]);
 
   const resetSaleForm = () => {
     setSaleName('');
@@ -304,31 +277,11 @@ export default function SalesScreen() {
     setSaleItemInput('');
   };
 
-  const resetExpenseForm = () => {
-    setExpenseName('');
-    setExpenseTotal('');
-    setExpenseItems([]);
-    setExpenseItemNameInput('');
-    setExpenseItemPriceInput('');
-  };
-
   const addSaleItem = () => {
     const trimmed = saleItemInput.trim();
     if (!trimmed) return;
     setSaleItems(prev => [...prev, trimmed]);
     setSaleItemInput('');
-  };
-
-  const addExpenseItem = () => {
-    if (isExpenseItemsLocked) return;
-    const trimmed = expenseItemNameInput.trim();
-    if (!trimmed) return;
-    const priceValue = expenseItemPriceInput.trim();
-    const parsedPrice = priceValue ? Number.parseFloat(priceValue) : null;
-    const normalizedPrice = parsedPrice !== null && !Number.isNaN(parsedPrice) ? parsedPrice : null;
-    setExpenseItems(prev => [...prev, { name: trimmed, price: normalizedPrice }]);
-    setExpenseItemNameInput('');
-    setExpenseItemPriceInput('');
   };
 
   const handleDeleteSale = (sale: Sale) => {
@@ -627,8 +580,8 @@ export default function SalesScreen() {
                   <Text style={[styles.itemName, { color: theme.text }]}>{expenseNameLabel}</Text>
                   {expenseItemsList.length > 0 && (
                     <View style={styles.itemList}>
-                      {expenseItemsList.map((item, index) => (
-                        <Text key={`${expense.id}-item-${index}`} style={[styles.itemListText, { color: theme.textSecondary }]}>
+                      {expenseItemsList.map(item => (
+                        <Text key={item.id} style={[styles.itemListText, { color: theme.textSecondary }]}>
                           • {item.name}{typeof item.price === 'number' ? ` (${formatCurrency(item.price)})` : ''}
                         </Text>
                       ))}
@@ -752,135 +705,12 @@ export default function SalesScreen() {
         </View>
       </Modal>
 
-      <Modal visible={showExpenseModal} transparent animationType="fade">
-        <View style={[styles.modalOverlay, { backgroundColor: theme.modalOverlay }]}>
-          <KeyboardAvoidingView
-            style={styles.keyboardAvoidingView}
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
-          >
-            <View style={[styles.formModal, { backgroundColor: theme.card }]}>
-              <ScrollView
-                contentContainerStyle={styles.formScrollContent}
-                keyboardShouldPersistTaps="handled"
-                showsVerticalScrollIndicator={false}
-              >
-                <View style={styles.modalHeader}>
-                  <Text style={[styles.modalTitle, { color: theme.text }]}>Add New Expense</Text>
-                  <TouchableOpacity onPress={() => { setShowExpenseModal(false); resetExpenseForm(); }}>
-                    <X color={theme.textMuted} size={24} />
-                  </TouchableOpacity>
-                </View>
-                
-                <View style={styles.formContent}>
-                  <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Name (optional)</Text>
-                  <TextInput
-                    style={[styles.input, { backgroundColor: theme.inputBackground, borderColor: theme.inputBorder, color: theme.text }]}
-                    placeholder="Expense description"
-                    placeholderTextColor={theme.textMuted}
-                    value={expenseName}
-                    onChangeText={setExpenseName}
-                  />
-                  
-                  <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Total (₱)</Text>
-                  <TextInput
-                    style={[
-                      styles.input,
-                      { backgroundColor: theme.inputBackground, borderColor: theme.inputBorder, color: theme.text },
-                      isExpenseTotalLocked && styles.inputDisabled,
-                    ]}
-                    placeholder="0.00"
-                    placeholderTextColor={theme.textMuted}
-                    value={expenseTotal}
-                    onChangeText={setExpenseTotal}
-                    keyboardType="decimal-pad"
-                    editable={!isExpenseTotalLocked}
-                  />
-                  {isExpenseTotalLocked && (
-                    <Text style={[styles.helperText, { color: theme.textMuted }]}>Total calculated from items.</Text>
-                  )}
-
-                  <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Items (optional)</Text>
-                  <View style={styles.itemsInputRow}>
-                    <TextInput
-                      style={[
-                        styles.itemsInput,
-                        { backgroundColor: theme.inputBackground, borderColor: theme.inputBorder, color: theme.text },
-                        isExpenseItemsLocked && styles.inputDisabled,
-                      ]}
-                      placeholder="Item name"
-                      placeholderTextColor={theme.textMuted}
-                      value={expenseItemNameInput}
-                      onChangeText={setExpenseItemNameInput}
-                      editable={!isExpenseItemsLocked}
-                    />
-                    <TextInput
-                      style={[
-                        styles.itemsPriceInput,
-                        { backgroundColor: theme.inputBackground, borderColor: theme.inputBorder, color: theme.text },
-                        isExpenseItemsLocked && styles.inputDisabled,
-                      ]}
-                      placeholder="₱0.00"
-                      placeholderTextColor={theme.textMuted}
-                      value={expenseItemPriceInput}
-                      onChangeText={setExpenseItemPriceInput}
-                      keyboardType="decimal-pad"
-                      editable={!isExpenseItemsLocked}
-                    />
-                    <TouchableOpacity
-                      style={[
-                        styles.itemsAddButton,
-                        { backgroundColor: theme.primary, opacity: isExpenseItemsLocked ? 0.5 : 1 },
-                      ]}
-                      onPress={addExpenseItem}
-                      disabled={isExpenseItemsLocked}
-                    >
-                      <Text style={styles.itemsAddButtonText}>Add Item</Text>
-                    </TouchableOpacity>
-                  </View>
-                  {isExpenseItemsLocked && (
-                    <Text style={[styles.helperText, { color: theme.textMuted }]}>Clear Total to enter item prices.</Text>
-                  )}
-                  {expenseItems.length > 0 && (
-                    <View style={styles.itemsList}>
-                      {expenseItems.map((item, index) => (
-                        <View key={`${item.name}-${index}`} style={[styles.itemsListItem, { borderColor: theme.cardBorder }]}>
-                          <Text style={[styles.itemsListText, { color: theme.text }]}>
-                            {item.name}
-                            {typeof item.price === 'number' ? ` (${formatCurrency(item.price)})` : ''}
-                          </Text>
-                          <TouchableOpacity
-                            style={styles.itemsRemoveButton}
-                            onPress={() => setExpenseItems(prev => prev.filter((_, i) => i !== index))}
-                            disabled={isExpenseItemsLocked}
-                          >
-                            <X color={theme.textMuted} size={16} />
-                          </TouchableOpacity>
-                        </View>
-                      ))}
-                    </View>
-                  )}
-                </View>
-                
-                <View style={styles.modalFooter}>
-                  <TouchableOpacity
-                    style={[styles.cancelButton, { borderColor: theme.cardBorder }]}
-                    onPress={() => { setShowExpenseModal(false); resetExpenseForm(); }}
-                  >
-                    <Text style={[styles.cancelButtonText, { color: theme.textSecondary }]}>Cancel</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.submitButton, { backgroundColor: theme.error }]}
-                    onPress={handleAddExpense}
-                  >
-                    <Text style={styles.submitButtonText}>Add Expense</Text>
-                  </TouchableOpacity>
-                </View>
-              </ScrollView>
-            </View>
-          </KeyboardAvoidingView>
-        </View>
-      </Modal>
+      <ExpenseModal
+        visible={showExpenseModal}
+        theme={theme}
+        onClose={() => setShowExpenseModal(false)}
+        onSubmit={handleSubmitExpense}
+      />
 
       {/* Net Sales Split Adjustment Modal */}
       <Modal visible={showSplitModal} transparent animationType="fade">
