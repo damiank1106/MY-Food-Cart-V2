@@ -95,6 +95,7 @@ export default function HomeScreen() {
   const { settings, user: currentUser } = useAuth();
   const { lastSyncTime } = useSync();
   const theme = settings.darkMode ? Colors.dark : Colors.light;
+  const chartLabelColor = settings.darkMode ? '#FFFFFF' : '#000000';
 
   useEffect(() => {
     if (currentUser?.role === 'inventory_clerk') {
@@ -540,7 +541,7 @@ export default function HomeScreen() {
                         fontSize={9}
                         textAnchor="middle"
                         alignmentBaseline="middle"
-                        fill={theme.textSecondary}
+                        fill={chartLabelColor}
                       >
                         {label.salesLabel}
                       </SvgText>
@@ -563,7 +564,7 @@ export default function HomeScreen() {
                         fontSize={9}
                         textAnchor="middle"
                         alignmentBaseline="middle"
-                        fill={theme.textSecondary}
+                        fill={chartLabelColor}
                       >
                         {label.expenseLabel}
                       </SvgText>
