@@ -5,7 +5,6 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Dimensions,
   RefreshControl,
   useWindowDimensions,
   ActivityIndicator,
@@ -25,8 +24,6 @@ import { getDayKeysForWeek, getWeekdayLabels, getWeekRange, getWeekStart, toLoca
 import Svg, { Path, Circle, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
 import LaserBackground from '@/components/LaserBackground';
 import { useSync } from '@/contexts/SyncContext';
-
-const { width } = Dimensions.get('window');
 
 function formatWeekRange(start: Date, end: Date): string {
   const startMonth = start.toLocaleDateString('en-US', { month: 'short' });
@@ -230,8 +227,12 @@ export default function HomeScreen() {
   
 
   const chartHeight = 150;
-  const chartWidth = width - 80;
-  const stepX = chartWidth / 6;
+  const chartSidePadding = 24;
+  const dayColumnWidth = 56;
+  const minChartWidth = Math.max(screenWidth - 64, 280);
+  const plotWidth = Math.max(dayColumnWidth * (chartData.length - 1), minChartWidth - chartSidePadding * 2);
+  const chartContentWidth = plotWidth + chartSidePadding * 2;
+  const stepX = plotWidth / Math.max(chartData.length - 1, 1);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -261,20 +262,20 @@ export default function HomeScreen() {
   }, [lastSyncTime, refreshOverview]);
 
   const pathData = chartData.map((point, index) => {
-    const x = index * stepX;
+    const x = chartSidePadding + index * stepX;
     const y = chartHeight - (point.sales / maxValue) * chartHeight;
     return `${index === 0 ? 'M' : 'L'} ${x} ${y}`;
   }).join(' ');
 
-  const areaPath = `${pathData} L ${(chartData.length - 1) * stepX} ${chartHeight} L 0 ${chartHeight} Z`;
+  const areaPath = `${pathData} L ${chartSidePadding + (chartData.length - 1) * stepX} ${chartHeight} L ${chartSidePadding} ${chartHeight} Z`;
 
   const expensePathData = chartData.map((point, index) => {
-    const x = index * stepX;
+    const x = chartSidePadding + index * stepX;
     const y = chartHeight - (point.expenses / maxValue) * chartHeight;
     return `${index === 0 ? 'M' : 'L'} ${x} ${y}`;
   }).join(' ');
 
-  const expenseAreaPath = `${expensePathData} L ${(chartData.length - 1) * stepX} ${chartHeight} L 0 ${chartHeight} Z`;
+  const expenseAreaPath = `${expensePathData} L ${chartSidePadding + (chartData.length - 1) * stepX} ${chartHeight} L ${chartSidePadding} ${chartHeight} Z`;
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
@@ -389,61 +390,74 @@ export default function HomeScreen() {
                 </TouchableOpacity>
               </View>
               
-              <View style={styles.chartContainer}>
-                <Svg width={chartWidth + 48} height={chartHeight + 30} style={styles.chart}>
-                  <Defs>
-                    <SvgLinearGradient id="areaGradient" x1="0" y1="0" x2="0" y2="1">
-                      <Stop offset="0" stopColor={theme.chartLine} stopOpacity="0.3" />
-                      <Stop offset="1" stopColor={theme.chartLine} stopOpacity="0.05" />
-                    </SvgLinearGradient>
-                    <SvgLinearGradient id="expenseGradient" x1="0" y1="0" x2="0" y2="1">
-                      <Stop offset="0" stopColor={theme.error} stopOpacity="0.2" />
-                      <Stop offset="1" stopColor={theme.error} stopOpacity="0.02" />
-                    </SvgLinearGradient>
-                  </Defs>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.chartScrollContent}
+              >
+                <View
+                  style={[
+                    styles.chartContent,
+                    { width: chartContentWidth, alignSelf: chartContentWidth < minChartWidth ? 'center' : 'flex-start' },
+                  ]}
+                >
+                  <View style={styles.chartContainer}>
+                    <Svg width={chartContentWidth} height={chartHeight + 30} style={styles.chart}>
+                      <Defs>
+                        <SvgLinearGradient id="areaGradient" x1="0" y1="0" x2="0" y2="1">
+                          <Stop offset="0" stopColor={theme.chartLine} stopOpacity="0.3" />
+                          <Stop offset="1" stopColor={theme.chartLine} stopOpacity="0.05" />
+                        </SvgLinearGradient>
+                        <SvgLinearGradient id="expenseGradient" x1="0" y1="0" x2="0" y2="1">
+                          <Stop offset="0" stopColor={theme.error} stopOpacity="0.2" />
+                          <Stop offset="1" stopColor={theme.error} stopOpacity="0.02" />
+                        </SvgLinearGradient>
+                      </Defs>
+                      
+                      {showSales && (
+                        <>
+                          <Path d={areaPath} fill="url(#areaGradient)" />
+                          <Path d={pathData} stroke={theme.chartLine} strokeWidth={2} fill="none" />
+                        </>
+                      )}
+                      
+                      {showExpenses && (
+                        <>
+                          <Path d={expenseAreaPath} fill="url(#expenseGradient)" />
+                          <Path d={expensePathData} stroke={theme.error} strokeWidth={2} fill="none" strokeDasharray="4,4" />
+                        </>
+                      )}
+                      
+                      {showSales && chartData.map((point, index) => (
+                        <Circle
+                          key={`sales-${index}`}
+                          cx={chartSidePadding + index * stepX}
+                          cy={chartHeight - (point.sales / maxValue) * chartHeight}
+                          r={4}
+                          fill={theme.chartLine}
+                        />
+                      ))}
+                      {showExpenses && chartData.map((point, index) => (
+                        <Circle
+                          key={`expense-${index}`}
+                          cx={chartSidePadding + index * stepX}
+                          cy={chartHeight - (point.expenses / maxValue) * chartHeight}
+                          r={3}
+                          fill={theme.error}
+                        />
+                      ))}
+                    </Svg>
+                  </View>
                   
-                  {showSales && (
-                    <>
-                      <Path d={areaPath} fill="url(#areaGradient)" />
-                      <Path d={pathData} stroke={theme.chartLine} strokeWidth={2} fill="none" />
-                    </>
-                  )}
-                  
-                  {showExpenses && (
-                    <>
-                      <Path d={expenseAreaPath} fill="url(#expenseGradient)" />
-                      <Path d={expensePathData} stroke={theme.error} strokeWidth={2} fill="none" strokeDasharray="4,4" />
-                    </>
-                  )}
-                  
-                  {showSales && chartData.map((point, index) => (
-                    <Circle
-                      key={`sales-${index}`}
-                      cx={index * stepX}
-                      cy={chartHeight - (point.sales / maxValue) * chartHeight}
-                      r={4}
-                      fill={theme.chartLine}
-                    />
-                  ))}
-                  {showExpenses && chartData.map((point, index) => (
-                    <Circle
-                      key={`expense-${index}`}
-                      cx={index * stepX}
-                      cy={chartHeight - (point.expenses / maxValue) * chartHeight}
-                      r={3}
-                      fill={theme.error}
-                    />
-                  ))}
-                </Svg>
-              </View>
-              
-              <View style={styles.xAxis}>
-                {chartData.map((point, index) => (
-                  <Text key={index} style={[styles.xAxisLabel, { color: theme.textMuted }]}>
-                    {point.day}
-                  </Text>
-                ))}
-              </View>
+                  <View style={[styles.xAxis, { paddingHorizontal: chartSidePadding }]}>
+                    {chartData.map((point, index) => (
+                      <Text key={index} style={[styles.xAxisLabel, { color: theme.textMuted }]}>
+                        {point.day}
+                      </Text>
+                    ))}
+                  </View>
+                </View>
+              </ScrollView>
             </View>
           </View>
 
@@ -584,11 +598,16 @@ const styles = StyleSheet.create({
   chart: {
     marginLeft: 0,
   },
+  chartScrollContent: {
+    paddingVertical: 4,
+  },
+  chartContent: {
+    alignItems: 'center',
+  },
   xAxis: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginTop: 8,
-    paddingHorizontal: 24,
   },
   xAxisLabel: {
     fontSize: 10,
