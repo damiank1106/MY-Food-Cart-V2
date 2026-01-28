@@ -264,7 +264,9 @@ export default function HomeScreen() {
   const chartXOffset = 10;
   const chartSvgWidth = chartWidth + 48 + chartXOffset;
   const chartSvgHeight = chartHeight + chartTopPadding + chartBottomPadding;
-  const stepX = chartWidth / 6;
+  const baseDaySpacing = Math.round(chartWidth / 6);
+  const dayPointSpacing = Math.round(baseDaySpacing * 0.92);
+  const stepX = dayPointSpacing;
   const dayLabelSpacingMin = 18;
   const dayLabelSpacingMax = 90;
   const dayLabelSpacingStep = 2;
@@ -277,9 +279,8 @@ export default function HomeScreen() {
     [dayLabelSpacingMax, dayLabelSpacingMin, dayLabelSpacingStep]
   );
   const defaultDayLabelSpacing = useMemo(() => {
-    const baseSpacing = Math.round(chartWidth / 6);
-    return normalizeDayLabelSpacing(baseSpacing);
-  }, [chartWidth, normalizeDayLabelSpacing]);
+    return normalizeDayLabelSpacing(dayPointSpacing);
+  }, [dayPointSpacing, normalizeDayLabelSpacing]);
   const [dayLabelSpacing, setDayLabelSpacing] = useState<number>(
     normalizeDayLabelSpacing(settings.weeklyDayLabelSpacing ?? defaultDayLabelSpacing)
   );
