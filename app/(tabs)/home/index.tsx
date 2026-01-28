@@ -862,7 +862,7 @@ const styles = StyleSheet.create({
   },
   chartLegend: {
     flexDirection: 'row',
-    gap: 16,
+    gap: 12,
     marginBottom: 12,
   },
   legendItem: {
