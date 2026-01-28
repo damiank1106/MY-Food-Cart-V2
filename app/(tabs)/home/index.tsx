@@ -9,12 +9,19 @@ import {
   RefreshControl,
   useWindowDimensions,
   ActivityIndicator,
+  Modal,
+  Alert,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Package, ShoppingCart, User, Settings, RefreshCw } from 'lucide-react-native';
 import { useQuery } from '@tanstack/react-query';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Print from 'expo-print';
+import * as FileSystem from 'expo-file-system';
+import * as MailComposer from 'expo-mail-composer';
+import * as Sharing from 'expo-sharing';
 import { useAuth } from '@/contexts/AuthContext';
 import { Colors } from '@/constants/colors';
 
@@ -23,6 +30,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { formatDate, ROLE_DISPLAY_NAMES, UserRole } from '@/types';
 import { getWeeklySalesTotals, getWeeklyExpenseTotals, getActivities, getUsers } from '@/services/database';
 import { getDayKeysForWeek, getWeekdayLabels, getWeekRange, getWeekStart, toLocalDayKey } from '@/services/dateUtils';
+import { buildPdfSummaryHtml } from '@/services/pdf-summary';
 import Svg, { Path, Circle, Defs, LinearGradient as SvgLinearGradient, Stop, Text as SvgText, Rect, G } from 'react-native-svg';
 import LaserBackground from '@/components/LaserBackground';
 import { useSync } from '@/contexts/SyncContext';
@@ -114,6 +122,10 @@ export default function HomeScreen() {
   const [isOverviewRefreshing, setIsOverviewRefreshing] = useState(false);
   const [showSales, setShowSales] = useState(true);
   const [showExpenses, setShowExpenses] = useState(true);
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+  const [progressValue, setProgressValue] = useState(0);
+  const [progressMessage, setProgressMessage] = useState('');
+  const [showProgressModal, setShowProgressModal] = useState(false);
 
   const { width: screenWidth } = useWindowDimensions();
   
@@ -237,6 +249,83 @@ export default function HomeScreen() {
     console.log(`Week totals (${startDateStr} to ${endDateStr}): Sales=₱${salesTotal}, Expenses=₱${expensesTotal}`);
     return { sales: salesTotal, expenses: expensesTotal, net: salesTotal - expensesTotal };
   }, [expensesSeries, salesSeries, startDateStr, endDateStr]);
+
+  const updateProgress = useCallback((value: number, message: string) => {
+    setProgressValue(value);
+    setProgressMessage(message);
+  }, []);
+
+  const handleGeneratePdf = useCallback(async () => {
+    if (isGeneratingPdf) return;
+    if (Platform.OS === 'web') {
+      Alert.alert('PDF export not supported', 'PDF export is not supported on web yet.');
+      return;
+    }
+
+    setIsGeneratingPdf(true);
+    setShowProgressModal(true);
+    updateProgress(10, 'Collecting data...');
+
+    try {
+      const { html, fileName } = await buildPdfSummaryHtml({
+        weeks,
+        selectedWeekIndex: selectedWeek,
+        appName: 'MY Food Cart',
+      });
+
+      updateProgress(40, 'Building HTML...');
+      updateProgress(70, 'Creating PDF...');
+      const { uri } = await Print.printToFileAsync({ html });
+      const documentDirectory = FileSystem.documentDirectory;
+      if (!documentDirectory) {
+        throw new Error('Document directory unavailable');
+      }
+      const targetUri = `${documentDirectory}${fileName}`;
+      updateProgress(90, 'Saving file...');
+      await FileSystem.deleteAsync(targetUri, { idempotent: true });
+      await FileSystem.copyAsync({ from: uri, to: targetUri });
+      updateProgress(100, 'Ready!');
+      setShowProgressModal(false);
+      setIsGeneratingPdf(false);
+
+      const mailAvailable = await MailComposer.isAvailableAsync();
+      const shareAvailable = await Sharing.isAvailableAsync();
+
+      if (!mailAvailable && !shareAvailable) {
+        Alert.alert('PDF Summary Ready', `Saved to ${targetUri}`);
+        return;
+      }
+
+      const buttons = [
+        { text: 'Cancel', style: 'cancel' as const },
+      ];
+
+      if (mailAvailable) {
+        buttons.unshift({
+          text: 'Send via Email',
+          onPress: () => MailComposer.composeAsync({
+            subject: 'MY Food Cart – PDF Summary',
+            body: 'Hi! Please find the attached PDF summary report.',
+            attachments: [targetUri],
+          }),
+        });
+      }
+
+      if (shareAvailable) {
+        buttons.push({
+          text: 'Share',
+          onPress: () => Sharing.shareAsync(targetUri),
+        });
+      }
+
+      Alert.alert('PDF Summary Ready', 'Choose how you want to send your PDF summary.', buttons);
+    } catch (error) {
+      console.log('Error generating PDF summary:', error);
+      setShowProgressModal(false);
+      setIsGeneratingPdf(false);
+      Alert.alert('Export Failed', 'Unable to generate the PDF summary. Please try again.');
+    }
+  }, [isGeneratingPdf, selectedWeek, updateProgress, weeks]);
 
   const rawMaxValue = Math.max(...chartData.map(d => Math.max(d.sales, d.expenses)), 100);
   
@@ -715,6 +804,21 @@ export default function HomeScreen() {
             </View>
           </View>
 
+          <View style={[styles.exportCard, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
+            <Text style={[styles.sectionTitle, { color: theme.text }]}>Export PDF Summary</Text>
+            <TouchableOpacity
+              style={[
+                styles.primaryButton,
+                { backgroundColor: theme.primary },
+                isGeneratingPdf && styles.primaryButtonDisabled,
+              ]}
+              onPress={handleGeneratePdf}
+              disabled={isGeneratingPdf}
+            >
+              <Text style={styles.primaryButtonText}>Generate PDF Summary</Text>
+            </TouchableOpacity>
+          </View>
+
           <View style={[styles.updatesCard, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
             <Text style={[styles.sectionTitle, { color: theme.text }]}>Latest Updates</Text>
             
@@ -753,6 +857,25 @@ export default function HomeScreen() {
             </View>
           </View>
         </ScrollView>
+        <Modal visible={showProgressModal} transparent animationType="fade">
+          <View style={[styles.progressOverlay, { backgroundColor: theme.modalOverlay }]}>
+            <View style={[styles.progressCard, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
+              <Text style={[styles.progressTitle, { color: theme.text }]}>Exporting PDF</Text>
+              <Text style={[styles.progressMessage, { color: theme.textSecondary }]}>{progressMessage}</Text>
+              <View style={[styles.progressBar, { backgroundColor: theme.cardHighlight }]}>
+                <View
+                  style={[
+                    styles.progressFill,
+                    { backgroundColor: theme.primary, width: `${progressValue}%` },
+                  ]}
+                />
+              </View>
+              <Text style={[styles.progressPercent, { color: theme.text }]}>
+                Generating… {Math.round(progressValue)}%
+              </Text>
+            </View>
+          </View>
+        </Modal>
       </SafeAreaView>
     </View>
   );
@@ -933,6 +1056,26 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '500' as const,
   },
+  exportCard: {
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    marginTop: 16,
+    marginBottom: 16,
+  },
+  primaryButton: {
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  primaryButtonDisabled: {
+    opacity: 0.6,
+  },
+  primaryButtonText: {
+    color: '#ffffff',
+    fontWeight: '600' as const,
+    fontSize: 14,
+  },
   updatesCard: {
     padding: 16,
     borderRadius: 16,
@@ -996,5 +1139,40 @@ const styles = StyleSheet.create({
   weekTotalValue: {
     fontSize: 16,
     fontWeight: '700' as const,
+  },
+  progressOverlay: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  progressCard: {
+    width: '100%',
+    borderRadius: 16,
+    padding: 20,
+    borderWidth: 1,
+  },
+  progressTitle: {
+    fontSize: 18,
+    fontWeight: '600' as const,
+    marginBottom: 8,
+  },
+  progressMessage: {
+    fontSize: 13,
+    marginBottom: 12,
+  },
+  progressBar: {
+    height: 8,
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: 8,
+    borderRadius: 8,
+  },
+  progressPercent: {
+    marginTop: 10,
+    fontSize: 12,
+    fontWeight: '500' as const,
   },
 });
