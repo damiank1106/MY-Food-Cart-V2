@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -71,6 +71,124 @@ function getRelativeTime(dateString: string): string {
 
 const AUTHOR_VISIBLE_ROLES: UserRole[] = ['general_manager', 'operation_manager', 'developer'];
 
+type ChartDatum = {
+  day: string;
+  sales: number;
+  expenses: number;
+  dateStr: string;
+};
+
+type WeeklyChartDiagramProps = {
+  chartData: ChartDatum[];
+  chartHeight: number;
+  chartSidePadding: number;
+  chartContentWidth: number;
+  maxValue: number;
+  stepX: number;
+  pathData: string;
+  areaPath: string;
+  expensePathData: string;
+  expenseAreaPath: string;
+  theme: typeof Colors.light;
+  showSales: boolean;
+  showExpenses: boolean;
+};
+
+const WeeklyChartDiagram = React.memo(
+  ({
+    chartData,
+    chartHeight,
+    chartSidePadding,
+    chartContentWidth,
+    maxValue,
+    stepX,
+    pathData,
+    areaPath,
+    expensePathData,
+    expenseAreaPath,
+    theme,
+    showSales,
+    showExpenses,
+  }: WeeklyChartDiagramProps) => {
+    return (
+      <View style={styles.chartContainer}>
+        <Svg width={chartContentWidth} height={chartHeight + 30} style={styles.chart}>
+          <Defs>
+            <SvgLinearGradient id="areaGradient" x1="0" y1="0" x2="0" y2="1">
+              <Stop offset="0" stopColor={theme.chartLine} stopOpacity="0.3" />
+              <Stop offset="1" stopColor={theme.chartLine} stopOpacity="0.05" />
+            </SvgLinearGradient>
+            <SvgLinearGradient id="expenseGradient" x1="0" y1="0" x2="0" y2="1">
+              <Stop offset="0" stopColor={theme.error} stopOpacity="0.2" />
+              <Stop offset="1" stopColor={theme.error} stopOpacity="0.02" />
+            </SvgLinearGradient>
+          </Defs>
+
+          {showSales && (
+            <>
+              <Path d={areaPath} fill="url(#areaGradient)" />
+              <Path d={pathData} stroke={theme.chartLine} strokeWidth={2} fill="none" />
+            </>
+          )}
+
+          {showExpenses && (
+            <>
+              <Path d={expenseAreaPath} fill="url(#expenseGradient)" />
+              <Path d={expensePathData} stroke={theme.error} strokeWidth={2} fill="none" strokeDasharray="4,4" />
+            </>
+          )}
+
+          {showSales &&
+            chartData.map((point, index) => (
+              <Circle
+                key={`sales-${index}`}
+                cx={chartSidePadding + index * stepX}
+                cy={chartHeight - (point.sales / maxValue) * chartHeight}
+                r={4}
+                fill={theme.chartLine}
+              />
+            ))}
+          {showExpenses &&
+            chartData.map((point, index) => (
+              <Circle
+                key={`expense-${index}`}
+                cx={chartSidePadding + index * stepX}
+                cy={chartHeight - (point.expenses / maxValue) * chartHeight}
+                r={3}
+                fill={theme.error}
+              />
+            ))}
+        </Svg>
+      </View>
+    );
+  }
+);
+
+WeeklyChartDiagram.displayName = 'WeeklyChartDiagram';
+
+type WeeklyLabelsRowProps = {
+  labels: string[];
+  labelColumnWidth: number;
+  textColor: string;
+  contentWidth: number;
+};
+
+const WeeklyLabelsRow = React.memo(
+  ({ labels, labelColumnWidth, textColor, contentWidth }: WeeklyLabelsRowProps) => {
+    return (
+      <View style={[styles.labelsRow, { width: contentWidth }]}>
+        {labels.map((label, index) => (
+          <View key={`${label}-${index}`} style={[styles.labelCell, { width: labelColumnWidth }]}>
+            <Text style={[styles.labelText, { color: textColor }]}>{label}</Text>
+          </View>
+        ))}
+      </View>
+    );
+  }
+);
+
+WeeklyLabelsRow.displayName = 'WeeklyLabelsRow';
+
 export default function HomeScreen() {
   const router = useRouter();
   const { settings, user: currentUser } = useAuth();
@@ -92,6 +210,8 @@ export default function HomeScreen() {
   const [isOverviewRefreshing, setIsOverviewRefreshing] = useState(false);
   const [showSales, setShowSales] = useState(true);
   const [showExpenses, setShowExpenses] = useState(true);
+  const diagramScrollRef = useRef<ScrollView>(null);
+  const labelsScrollRef = useRef<ScrollView>(null);
 
   const { width: screenWidth } = useWindowDimensions();
   
@@ -198,6 +318,8 @@ export default function HomeScreen() {
     });
   }, [expensesSeries, salesSeries, weekDayKeys, weekDayLabels]);
 
+  const labelRowData = useMemo(() => chartData.map(point => point.day), [chartData]);
+
   const weekTotals = useMemo(() => {
     const salesTotal = salesSeries.reduce((sum, val) => sum + val, 0);
     const expensesTotal = expensesSeries.reduce((sum, val) => sum + val, 0);
@@ -229,9 +351,19 @@ export default function HomeScreen() {
   const chartHeight = 150;
   const chartSidePadding = 24;
   const dayColumnWidth = 56;
+  const labelColumnWidth = 48;
+  const diagramScrollPadding = 24;
+  const labelsScrollPadding = 24;
   const minChartWidth = Math.max(screenWidth - 64, 280);
-  const plotWidth = Math.max(dayColumnWidth * (chartData.length - 1), minChartWidth - chartSidePadding * 2);
-  const chartContentWidth = plotWidth + chartSidePadding * 2;
+  const diagramContentWidth = useMemo(
+    () => Math.max(screenWidth, chartData.length * dayColumnWidth + chartSidePadding * 2),
+    [screenWidth, chartData.length, dayColumnWidth, chartSidePadding]
+  );
+  const labelsContentWidth = useMemo(
+    () => Math.max(screenWidth, chartData.length * labelColumnWidth),
+    [screenWidth, chartData.length, labelColumnWidth]
+  );
+  const plotWidth = diagramContentWidth - chartSidePadding * 2;
   const stepX = plotWidth / Math.max(chartData.length - 1, 1);
 
   const onRefresh = useCallback(async () => {
@@ -261,21 +393,46 @@ export default function HomeScreen() {
     }
   }, [lastSyncTime, refreshOverview]);
 
-  const pathData = chartData.map((point, index) => {
-    const x = chartSidePadding + index * stepX;
-    const y = chartHeight - (point.sales / maxValue) * chartHeight;
-    return `${index === 0 ? 'M' : 'L'} ${x} ${y}`;
-  }).join(' ');
+  const pathData = useMemo(
+    () =>
+      chartData
+        .map((point, index) => {
+          const x = chartSidePadding + index * stepX;
+          const y = chartHeight - (point.sales / maxValue) * chartHeight;
+          return `${index === 0 ? 'M' : 'L'} ${x} ${y}`;
+        })
+        .join(' '),
+    [chartData, chartSidePadding, chartHeight, maxValue, stepX]
+  );
 
-  const areaPath = `${pathData} L ${chartSidePadding + (chartData.length - 1) * stepX} ${chartHeight} L ${chartSidePadding} ${chartHeight} Z`;
+  const areaPath = useMemo(
+    () =>
+      `${pathData} L ${chartSidePadding + (chartData.length - 1) * stepX} ${chartHeight} L ${chartSidePadding} ${chartHeight} Z`,
+    [chartData.length, chartHeight, chartSidePadding, pathData, stepX]
+  );
 
-  const expensePathData = chartData.map((point, index) => {
-    const x = chartSidePadding + index * stepX;
-    const y = chartHeight - (point.expenses / maxValue) * chartHeight;
-    return `${index === 0 ? 'M' : 'L'} ${x} ${y}`;
-  }).join(' ');
+  const expensePathData = useMemo(
+    () =>
+      chartData
+        .map((point, index) => {
+          const x = chartSidePadding + index * stepX;
+          const y = chartHeight - (point.expenses / maxValue) * chartHeight;
+          return `${index === 0 ? 'M' : 'L'} ${x} ${y}`;
+        })
+        .join(' '),
+    [chartData, chartSidePadding, chartHeight, maxValue, stepX]
+  );
 
-  const expenseAreaPath = `${expensePathData} L ${chartSidePadding + (chartData.length - 1) * stepX} ${chartHeight} L ${chartSidePadding} ${chartHeight} Z`;
+  const expenseAreaPath = useMemo(
+    () =>
+      `${expensePathData} L ${chartSidePadding + (chartData.length - 1) * stepX} ${chartHeight} L ${chartSidePadding} ${chartHeight} Z`,
+    [chartData.length, chartHeight, chartSidePadding, expensePathData, stepX]
+  );
+
+  const resetAlignment = useCallback(() => {
+    diagramScrollRef.current?.scrollTo({ x: 0, animated: true });
+    labelsScrollRef.current?.scrollTo({ x: 0, animated: true });
+  }, []);
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
@@ -390,72 +547,68 @@ export default function HomeScreen() {
                 </TouchableOpacity>
               </View>
               
+              <View style={styles.adjustRow}>
+                <Text style={[styles.adjustHint, { color: theme.textMuted }]}>Adjust Diagram</Text>
+                <TouchableOpacity
+                  style={[styles.resetButton, { borderColor: theme.cardBorder }]}
+                  onPress={resetAlignment}
+                >
+                  <Text style={[styles.resetText, { color: theme.textSecondary }]}>Reset Alignment</Text>
+                </TouchableOpacity>
+              </View>
+
               <ScrollView
+                ref={diagramScrollRef}
                 horizontal
                 showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.chartScrollContent}
+                contentContainerStyle={[styles.diagramScrollContent, { paddingHorizontal: diagramScrollPadding }]}
               >
                 <View
                   style={[
                     styles.chartContent,
-                    { width: chartContentWidth, alignSelf: chartContentWidth < minChartWidth ? 'center' : 'flex-start' },
+                    { width: diagramContentWidth, alignSelf: diagramContentWidth < minChartWidth ? 'center' : 'flex-start' },
                   ]}
                 >
-                  <View style={styles.chartContainer}>
-                    <Svg width={chartContentWidth} height={chartHeight + 30} style={styles.chart}>
-                      <Defs>
-                        <SvgLinearGradient id="areaGradient" x1="0" y1="0" x2="0" y2="1">
-                          <Stop offset="0" stopColor={theme.chartLine} stopOpacity="0.3" />
-                          <Stop offset="1" stopColor={theme.chartLine} stopOpacity="0.05" />
-                        </SvgLinearGradient>
-                        <SvgLinearGradient id="expenseGradient" x1="0" y1="0" x2="0" y2="1">
-                          <Stop offset="0" stopColor={theme.error} stopOpacity="0.2" />
-                          <Stop offset="1" stopColor={theme.error} stopOpacity="0.02" />
-                        </SvgLinearGradient>
-                      </Defs>
-                      
-                      {showSales && (
-                        <>
-                          <Path d={areaPath} fill="url(#areaGradient)" />
-                          <Path d={pathData} stroke={theme.chartLine} strokeWidth={2} fill="none" />
-                        </>
-                      )}
-                      
-                      {showExpenses && (
-                        <>
-                          <Path d={expenseAreaPath} fill="url(#expenseGradient)" />
-                          <Path d={expensePathData} stroke={theme.error} strokeWidth={2} fill="none" strokeDasharray="4,4" />
-                        </>
-                      )}
-                      
-                      {showSales && chartData.map((point, index) => (
-                        <Circle
-                          key={`sales-${index}`}
-                          cx={chartSidePadding + index * stepX}
-                          cy={chartHeight - (point.sales / maxValue) * chartHeight}
-                          r={4}
-                          fill={theme.chartLine}
-                        />
-                      ))}
-                      {showExpenses && chartData.map((point, index) => (
-                        <Circle
-                          key={`expense-${index}`}
-                          cx={chartSidePadding + index * stepX}
-                          cy={chartHeight - (point.expenses / maxValue) * chartHeight}
-                          r={3}
-                          fill={theme.error}
-                        />
-                      ))}
-                    </Svg>
-                  </View>
-                  
-                  <View style={[styles.xAxis, { paddingHorizontal: chartSidePadding }]}>
-                    {chartData.map((point, index) => (
-                      <Text key={index} style={[styles.xAxisLabel, { color: theme.textMuted }]}>
-                        {point.day}
-                      </Text>
-                    ))}
-                  </View>
+                  <WeeklyChartDiagram
+                    chartData={chartData}
+                    chartHeight={chartHeight}
+                    chartSidePadding={chartSidePadding}
+                    chartContentWidth={diagramContentWidth}
+                    maxValue={maxValue}
+                    stepX={stepX}
+                    pathData={pathData}
+                    areaPath={areaPath}
+                    expensePathData={expensePathData}
+                    expenseAreaPath={expenseAreaPath}
+                    theme={theme}
+                    showSales={showSales}
+                    showExpenses={showExpenses}
+                  />
+                </View>
+              </ScrollView>
+
+              <View style={styles.adjustRow}>
+                <Text style={[styles.adjustHint, { color: theme.textMuted }]}>Adjust Labels</Text>
+              </View>
+
+              <ScrollView
+                ref={labelsScrollRef}
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={[styles.labelsScrollContent, { paddingHorizontal: labelsScrollPadding }]}
+              >
+                <View
+                  style={[
+                    styles.labelsContent,
+                    { width: labelsContentWidth, alignSelf: labelsContentWidth < minChartWidth ? 'center' : 'flex-start' },
+                  ]}
+                >
+                  <WeeklyLabelsRow
+                    labels={labelRowData}
+                    labelColumnWidth={labelColumnWidth}
+                    textColor={theme.textMuted}
+                    contentWidth={labelsContentWidth}
+                  />
                 </View>
               </ScrollView>
             </View>
@@ -598,20 +751,28 @@ const styles = StyleSheet.create({
   chart: {
     marginLeft: 0,
   },
-  chartScrollContent: {
+  diagramScrollContent: {
     paddingVertical: 4,
   },
   chartContent: {
     alignItems: 'center',
   },
-  xAxis: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 8,
+  labelsScrollContent: {
+    paddingVertical: 4,
   },
-  xAxisLabel: {
+  labelsContent: {
+    alignItems: 'flex-start',
+  },
+  labelsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  labelCell: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  labelText: {
     fontSize: 10,
-    width: 30,
     textAlign: 'center',
   },
   chartLegend: {
@@ -641,6 +802,26 @@ const styles = StyleSheet.create({
   legendText: {
     fontSize: 12,
     fontWeight: '500' as const,
+  },
+  adjustRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  adjustHint: {
+    fontSize: 11,
+    fontWeight: '500' as const,
+  },
+  resetButton: {
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  resetText: {
+    fontSize: 10,
+    fontWeight: '600' as const,
   },
   updatesCard: {
     padding: 16,
