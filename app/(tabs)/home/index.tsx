@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -14,6 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Package, ShoppingCart, User, Settings, RefreshCw } from 'lucide-react-native';
 import { useQuery } from '@tanstack/react-query';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '@/contexts/AuthContext';
 import { Colors } from '@/constants/colors';
 
@@ -89,10 +90,11 @@ function formatCompactNumber(value: number): string {
 }
 
 const AUTHOR_VISIBLE_ROLES: UserRole[] = ['general_manager', 'operation_manager', 'developer'];
+const WEEKLY_DAY_LABEL_SPACING_KEY = '@myfoodcart_weekly_day_label_spacing';
 
 export default function HomeScreen() {
   const router = useRouter();
-  const { settings, user: currentUser, updateSettings } = useAuth();
+  const { settings, user: currentUser } = useAuth();
   const { lastSyncTime } = useSync();
   const theme = settings.darkMode ? Colors.dark : Colors.light;
   const chartLabelColor = settings.darkMode ? '#FFFFFF' : '#000000';
@@ -270,6 +272,8 @@ export default function HomeScreen() {
   const dayLabelSpacingMin = 18;
   const dayLabelSpacingMax = 90;
   const dayLabelSpacingStep = 2;
+  const spacingSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hasStoredSpacingRef = useRef(false);
   const normalizeDayLabelSpacing = useCallback(
     (value: number) => {
       const clamped = Math.min(dayLabelSpacingMax, Math.max(dayLabelSpacingMin, value));
@@ -282,7 +286,7 @@ export default function HomeScreen() {
     return normalizeDayLabelSpacing(dayPointSpacing);
   }, [dayPointSpacing, normalizeDayLabelSpacing]);
   const [dayLabelSpacing, setDayLabelSpacing] = useState<number>(
-    normalizeDayLabelSpacing(settings.weeklyDayLabelSpacing ?? defaultDayLabelSpacing)
+    defaultDayLabelSpacing
   );
   const scaleY = useCallback(
     (value: number) => chartTopPadding + chartHeight - (value / maxValue) * chartHeight,
@@ -290,21 +294,61 @@ export default function HomeScreen() {
   );
 
   useEffect(() => {
-    const nextSpacing = normalizeDayLabelSpacing(
-      settings.weeklyDayLabelSpacing ?? defaultDayLabelSpacing
-    );
-    setDayLabelSpacing(prev => (prev === nextSpacing ? prev : nextSpacing));
-  }, [defaultDayLabelSpacing, normalizeDayLabelSpacing, settings.weeklyDayLabelSpacing]);
+    let isMounted = true;
+    const loadSavedSpacing = async () => {
+      try {
+        const storedValue = await AsyncStorage.getItem(WEEKLY_DAY_LABEL_SPACING_KEY);
+        if (storedValue !== null) {
+          const parsed = Number(storedValue);
+          if (!Number.isNaN(parsed)) {
+            const normalized = normalizeDayLabelSpacing(parsed);
+            hasStoredSpacingRef.current = true;
+            if (isMounted) {
+              setDayLabelSpacing(prev => (prev === normalized ? prev : normalized));
+            }
+            return;
+          }
+        }
+      } catch (error) {
+        console.log('Failed to load weekly day label spacing:', error);
+      }
+
+      if (isMounted && !hasStoredSpacingRef.current) {
+        setDayLabelSpacing(defaultDayLabelSpacing);
+      }
+    };
+
+    loadSavedSpacing();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [defaultDayLabelSpacing, normalizeDayLabelSpacing]);
+
+  useEffect(() => {
+    if (spacingSaveTimeoutRef.current) {
+      clearTimeout(spacingSaveTimeoutRef.current);
+    }
+
+    spacingSaveTimeoutRef.current = setTimeout(() => {
+      AsyncStorage.setItem(WEEKLY_DAY_LABEL_SPACING_KEY, String(dayLabelSpacing)).catch(error => {
+        console.log('Failed to save weekly day label spacing:', error);
+      });
+    }, 300);
+
+    return () => {
+      if (spacingSaveTimeoutRef.current) {
+        clearTimeout(spacingSaveTimeoutRef.current);
+      }
+    };
+  }, [dayLabelSpacing]);
 
   const updateDayLabelSpacing = useCallback(
     (value: number) => {
       const normalized = normalizeDayLabelSpacing(value);
       setDayLabelSpacing(normalized);
-      if (settings.weeklyDayLabelSpacing !== normalized) {
-        updateSettings({ weeklyDayLabelSpacing: normalized });
-      }
     },
-    [normalizeDayLabelSpacing, settings.weeklyDayLabelSpacing, updateSettings]
+    [normalizeDayLabelSpacing]
   );
 
   const onRefresh = useCallback(async () => {
