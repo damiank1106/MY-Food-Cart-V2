@@ -773,7 +773,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderRadius: 8,
     borderWidth: 1,
-    minWidth: 70,
+    minWidth: 60,
     alignItems: 'center',
   },
   weekText: {
