@@ -22,7 +22,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { formatDate, ROLE_DISPLAY_NAMES, UserRole } from '@/types';
 import { getWeeklySalesTotals, getWeeklyExpenseTotals, getActivities, getUsers } from '@/services/database';
 import { getDayKeysForWeek, getWeekdayLabels, getWeekRange, getWeekStart, toLocalDayKey } from '@/services/dateUtils';
-import Svg, { Path, Circle, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
+import Svg, { Path, Circle, Defs, LinearGradient as SvgLinearGradient, Stop, Text as SvgText, Rect } from 'react-native-svg';
 import LaserBackground from '@/components/LaserBackground';
 import { useSync } from '@/contexts/SyncContext';
 
@@ -70,6 +70,22 @@ function getRelativeTime(dateString: string): string {
   if (diffMins < 60) return `${diffMins} minute${diffMins > 1 ? 's' : ''} ago`;
   if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
   return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
+}
+
+function formatCompactNumber(value: number): string {
+  if (value === 0) return '0';
+  const absValue = Math.abs(value);
+  if (absValue >= 1_000_000) {
+    const formatted = absValue / 1_000_000;
+    const withDecimal = formatted < 10 && absValue % 1_000_000 !== 0;
+    return `${value < 0 ? '-' : ''}${withDecimal ? formatted.toFixed(1) : Math.round(formatted)}M`;
+  }
+  if (absValue >= 1_000) {
+    const formatted = absValue / 1_000;
+    const withDecimal = formatted < 10 && absValue % 1_000 !== 0;
+    return `${value < 0 ? '-' : ''}${withDecimal ? formatted.toFixed(1) : Math.round(formatted)}k`;
+  }
+  return `${value}`;
 }
 
 const AUTHOR_VISIBLE_ROLES: UserRole[] = ['general_manager', 'operation_manager', 'developer'];
@@ -230,8 +246,16 @@ export default function HomeScreen() {
   
 
   const chartHeight = 150;
+  const chartTopPadding = 20;
+  const chartBottomPadding = 10;
   const chartWidth = width - 80;
+  const chartSvgWidth = chartWidth + 48;
+  const chartSvgHeight = chartHeight + chartTopPadding + chartBottomPadding;
   const stepX = chartWidth / 6;
+  const scaleY = useCallback(
+    (value: number) => chartTopPadding + chartHeight - (value / maxValue) * chartHeight,
+    [chartHeight, chartTopPadding, maxValue]
+  );
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -262,19 +286,84 @@ export default function HomeScreen() {
 
   const pathData = chartData.map((point, index) => {
     const x = index * stepX;
-    const y = chartHeight - (point.sales / maxValue) * chartHeight;
+    const y = scaleY(point.sales);
     return `${index === 0 ? 'M' : 'L'} ${x} ${y}`;
   }).join(' ');
 
-  const areaPath = `${pathData} L ${(chartData.length - 1) * stepX} ${chartHeight} L 0 ${chartHeight} Z`;
+  const areaPath = `${pathData} L ${(chartData.length - 1) * stepX} ${chartTopPadding + chartHeight} L 0 ${chartTopPadding + chartHeight} Z`;
 
   const expensePathData = chartData.map((point, index) => {
     const x = index * stepX;
-    const y = chartHeight - (point.expenses / maxValue) * chartHeight;
+    const y = scaleY(point.expenses);
     return `${index === 0 ? 'M' : 'L'} ${x} ${y}`;
   }).join(' ');
 
-  const expenseAreaPath = `${expensePathData} L ${(chartData.length - 1) * stepX} ${chartHeight} L 0 ${chartHeight} Z`;
+  const expenseAreaPath = `${expensePathData} L ${(chartData.length - 1) * stepX} ${chartTopPadding + chartHeight} L 0 ${chartTopPadding + chartHeight} Z`;
+
+  const labelData = useMemo(() => {
+    const labelOffset = 10;
+    const collisionThreshold = 14;
+    const collisionOffset = 18;
+    const collisionSideOffset = 6;
+    const labelHeight = 12;
+    const labelPaddingX = 3;
+    const charWidth = 5.4;
+
+    return chartData.map((point, index) => {
+      const x = index * stepX;
+      const ySales = scaleY(point.sales);
+      const yExpenses = scaleY(point.expenses);
+      const salesLabel = formatCompactNumber(point.sales);
+      const expenseLabel = formatCompactNumber(point.expenses);
+      const salesWidth = salesLabel.length * charWidth;
+      const expenseWidth = expenseLabel.length * charWidth;
+      const minSalesX = salesWidth / 2 + labelPaddingX;
+      const minExpenseX = expenseWidth / 2 + labelPaddingX;
+      const maxSalesX = chartSvgWidth - minSalesX;
+      const maxExpenseX = chartSvgWidth - minExpenseX;
+
+      let salesOffset = labelOffset;
+      let expenseOffset = labelOffset;
+      let salesX = x;
+      let expenseX = x;
+
+      if (Math.abs(ySales - yExpenses) < collisionThreshold) {
+        if (ySales <= yExpenses) {
+          salesOffset = collisionOffset;
+          expenseOffset = labelOffset - 2;
+          salesX = x - collisionSideOffset;
+          expenseX = x + collisionSideOffset;
+        } else {
+          expenseOffset = collisionOffset;
+          salesOffset = labelOffset - 2;
+          expenseX = x - collisionSideOffset;
+          salesX = x + collisionSideOffset;
+        }
+      }
+
+      const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
+      const salesLabelX = clamp(salesX, minSalesX, maxSalesX);
+      const expenseLabelX = clamp(expenseX, minExpenseX, maxExpenseX);
+      const salesLabelY = Math.max(4 + labelHeight / 2, ySales - salesOffset);
+      const expenseLabelY = Math.max(4 + labelHeight / 2, yExpenses - expenseOffset);
+
+      return {
+        x,
+        ySales,
+        yExpenses,
+        salesLabel,
+        expenseLabel,
+        salesLabelX,
+        salesLabelY,
+        expenseLabelX,
+        expenseLabelY,
+        salesLabelWidth: salesWidth,
+        expenseLabelWidth: expenseWidth,
+        labelHeight,
+        labelPaddingX,
+      };
+    });
+  }, [chartData, chartSvgWidth, scaleY, stepX]);
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
@@ -390,7 +479,7 @@ export default function HomeScreen() {
               </View>
               
               <View style={styles.chartContainer}>
-                <Svg width={chartWidth + 48} height={chartHeight + 30} style={styles.chart}>
+                <Svg width={chartSvgWidth} height={chartSvgHeight} style={styles.chart}>
                   <Defs>
                     <SvgLinearGradient id="areaGradient" x1="0" y1="0" x2="0" y2="1">
                       <Stop offset="0" stopColor={theme.chartLine} stopOpacity="0.3" />
@@ -420,7 +509,7 @@ export default function HomeScreen() {
                     <Circle
                       key={`sales-${index}`}
                       cx={index * stepX}
-                      cy={chartHeight - (point.sales / maxValue) * chartHeight}
+                      cy={scaleY(point.sales)}
                       r={4}
                       fill={theme.chartLine}
                     />
@@ -429,10 +518,56 @@ export default function HomeScreen() {
                     <Circle
                       key={`expense-${index}`}
                       cx={index * stepX}
-                      cy={chartHeight - (point.expenses / maxValue) * chartHeight}
+                      cy={scaleY(point.expenses)}
                       r={3}
                       fill={theme.error}
                     />
+                  ))}
+                  {showSales && labelData.map((label, index) => (
+                    <React.Fragment key={`sales-label-${index}`}>
+                      <Rect
+                        x={label.salesLabelX - label.salesLabelWidth / 2 - label.labelPaddingX}
+                        y={label.salesLabelY - label.labelHeight / 2}
+                        width={label.salesLabelWidth + label.labelPaddingX * 2}
+                        height={label.labelHeight}
+                        rx={3}
+                        fill={theme.card}
+                        opacity={0.85}
+                      />
+                      <SvgText
+                        x={label.salesLabelX}
+                        y={label.salesLabelY}
+                        fontSize={9}
+                        textAnchor="middle"
+                        alignmentBaseline="middle"
+                        fill={theme.textSecondary}
+                      >
+                        {label.salesLabel}
+                      </SvgText>
+                    </React.Fragment>
+                  ))}
+                  {showExpenses && labelData.map((label, index) => (
+                    <React.Fragment key={`expense-label-${index}`}>
+                      <Rect
+                        x={label.expenseLabelX - label.expenseLabelWidth / 2 - label.labelPaddingX}
+                        y={label.expenseLabelY - label.labelHeight / 2}
+                        width={label.expenseLabelWidth + label.labelPaddingX * 2}
+                        height={label.labelHeight}
+                        rx={3}
+                        fill={theme.card}
+                        opacity={0.85}
+                      />
+                      <SvgText
+                        x={label.expenseLabelX}
+                        y={label.expenseLabelY}
+                        fontSize={9}
+                        textAnchor="middle"
+                        alignmentBaseline="middle"
+                        fill={theme.textSecondary}
+                      >
+                        {label.expenseLabel}
+                      </SvgText>
+                    </React.Fragment>
                   ))}
                 </Svg>
               </View>
