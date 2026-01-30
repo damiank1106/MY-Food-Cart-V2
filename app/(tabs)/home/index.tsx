@@ -115,6 +115,11 @@ export default function HomeScreen() {
   const { lastSyncTime } = useSync();
   const theme = settings.darkMode ? Colors.dark : Colors.light;
   const chartLabelColor = settings.darkMode ? '#FFFFFF' : '#000000';
+  const omLabelColor = '#63F29A';
+  const gmLabelColor = '#C7A6FF';
+  const labelBackgroundFill = settings.darkMode
+    ? 'rgba(0, 0, 0, 0.45)'
+    : 'rgba(255, 255, 255, 0.75)';
   const omColor = '#2ECC71';
   const gmColor = '#9B59B6';
   const fcColor = '#F39C12';
@@ -960,7 +965,7 @@ export default function HomeScreen() {
                           width={label.salesLabelWidth + label.labelPaddingX * 2}
                           height={label.labelHeight}
                           rx={3}
-                          fill={theme.card}
+                          fill={labelBackgroundFill}
                           opacity={0.85}
                         />
                         <SvgText
@@ -983,7 +988,7 @@ export default function HomeScreen() {
                           width={label.expenseLabelWidth + label.labelPaddingX * 2}
                           height={label.labelHeight}
                           rx={3}
-                          fill={theme.card}
+                          fill={labelBackgroundFill}
                           opacity={0.85}
                         />
                         <SvgText
@@ -1006,7 +1011,7 @@ export default function HomeScreen() {
                           width={label.omLabelWidth + label.labelPaddingX * 2}
                           height={label.labelHeight}
                           rx={3}
-                          fill={theme.card}
+                          fill={labelBackgroundFill}
                           opacity={0.85}
                         />
                         <SvgText
@@ -1015,7 +1020,7 @@ export default function HomeScreen() {
                           fontSize={9}
                           textAnchor="middle"
                           alignmentBaseline="middle"
-                          fill={chartLabelColor}
+                          fill={omLabelColor}
                         >
                           {label.omLabel}
                         </SvgText>
@@ -1029,7 +1034,7 @@ export default function HomeScreen() {
                           width={label.gmLabelWidth + label.labelPaddingX * 2}
                           height={label.labelHeight}
                           rx={3}
-                          fill={theme.card}
+                          fill={labelBackgroundFill}
                           opacity={0.85}
                         />
                         <SvgText
@@ -1038,7 +1043,7 @@ export default function HomeScreen() {
                           fontSize={9}
                           textAnchor="middle"
                           alignmentBaseline="middle"
-                          fill={chartLabelColor}
+                          fill={gmLabelColor}
                         >
                           {label.gmLabel}
                         </SvgText>
@@ -1052,7 +1057,7 @@ export default function HomeScreen() {
                           width={label.fcLabelWidth + label.labelPaddingX * 2}
                           height={label.labelHeight}
                           rx={3}
-                          fill={theme.card}
+                          fill={labelBackgroundFill}
                           opacity={0.85}
                         />
                         <SvgText
