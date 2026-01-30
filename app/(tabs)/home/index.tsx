@@ -115,11 +115,13 @@ export default function HomeScreen() {
   const { lastSyncTime } = useSync();
   const theme = settings.darkMode ? Colors.dark : Colors.light;
   const chartLabelColor = settings.darkMode ? '#FFFFFF' : '#000000';
+  const SALES_LABEL_BLUE = '#7DB7FF';
+  const EXPENSE_LABEL_RED = '#FF7A7A';
   const omLabelColor = '#63F29A';
   const gmLabelColor = '#C7A6FF';
   const labelBackgroundFill = settings.darkMode
-    ? 'rgba(0, 0, 0, 0.45)'
-    : 'rgba(255, 255, 255, 0.75)';
+    ? 'rgba(0, 0, 0, 0.35)'
+    : 'rgba(255, 255, 255, 0.55)';
   const omColor = '#2ECC71';
   const gmColor = '#9B59B6';
   const fcColor = '#F39C12';
@@ -974,7 +976,7 @@ export default function HomeScreen() {
                           fontSize={9}
                           textAnchor="middle"
                           alignmentBaseline="middle"
-                          fill={chartLabelColor}
+                          fill={SALES_LABEL_BLUE}
                         >
                           {label.salesLabel}
                         </SvgText>
@@ -997,7 +999,7 @@ export default function HomeScreen() {
                           fontSize={9}
                           textAnchor="middle"
                           alignmentBaseline="middle"
-                          fill={chartLabelColor}
+                          fill={EXPENSE_LABEL_RED}
                         >
                           {label.expenseLabel}
                         </SvgText>
