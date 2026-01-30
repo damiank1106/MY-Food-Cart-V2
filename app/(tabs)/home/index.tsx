@@ -795,7 +795,7 @@ export default function HomeScreen() {
                   onPress={() => setShowSales(!showSales)}
                 >
                   <View style={[styles.legendDot, { backgroundColor: theme.chartLine, opacity: showSales ? 1 : 0.4 }]} />
-                  <Text style={[styles.legendText, { color: showSales ? theme.chartLine : theme.textMuted }]}>Sales</Text>
+                  <Text style={[styles.legendText, { color: showSales ? theme.chartLine : theme.textMuted }]}>S</Text>
                 </TouchableOpacity>
                 <TouchableOpacity 
                   style={[
@@ -806,7 +806,7 @@ export default function HomeScreen() {
                   onPress={() => setShowExpenses(!showExpenses)}
                 >
                   <View style={[styles.legendDot, { backgroundColor: theme.error, opacity: showExpenses ? 1 : 0.4 }]} />
-                  <Text style={[styles.legendText, { color: showExpenses ? theme.error : theme.textMuted }]}>Expenses</Text>
+                  <Text style={[styles.legendText, { color: showExpenses ? theme.error : theme.textMuted }]}>E</Text>
                 </TouchableOpacity>
                 <TouchableOpacity 
                   style={[
