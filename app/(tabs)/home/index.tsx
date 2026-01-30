@@ -114,6 +114,9 @@ export default function HomeScreen() {
   const { lastSyncTime } = useSync();
   const theme = settings.darkMode ? Colors.dark : Colors.light;
   const chartLabelColor = settings.darkMode ? '#FFFFFF' : '#000000';
+  const omColor = '#2ECC71';
+  const gmColor = '#9B59B6';
+  const fcColor = '#F39C12';
 
   useEffect(() => {
     if (currentUser?.role === 'inventory_clerk') {
@@ -130,10 +133,19 @@ export default function HomeScreen() {
   const [isOverviewRefreshing, setIsOverviewRefreshing] = useState(false);
   const [showSales, setShowSales] = useState(true);
   const [showExpenses, setShowExpenses] = useState(true);
+  const [showOm, setShowOm] = useState(false);
+  const [showGm, setShowGm] = useState(false);
+  const [showFc, setShowFc] = useState(false);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [progressValue, setProgressValue] = useState(0);
   const [progressMessage, setProgressMessage] = useState('');
   const [showProgressModal, setShowProgressModal] = useState(false);
+  const [netSalesSplit, setNetSalesSplit] = useState({
+    operation: 65,
+    general: 25,
+    foodCart: 10,
+    includeExp: true,
+  });
 
   const { width: screenWidth } = useWindowDimensions();
   
@@ -223,6 +235,32 @@ export default function HomeScreen() {
     }
   }, [weekDayKeys, weekDayLabels]);
 
+  const loadNetSalesSplit = useCallback(async () => {
+    try {
+      const stored = await AsyncStorage.getItem('netSalesSplit');
+      if (!stored) return;
+      const parsed = JSON.parse(stored) as Partial<typeof netSalesSplit>;
+      const normalizeValue = (value: unknown, fallback: number) => {
+        const parsedValue = typeof value === 'number' ? value : Number(value);
+        return Number.isFinite(parsedValue) ? parsedValue : fallback;
+      };
+      setNetSalesSplit(prev => ({
+        operation: normalizeValue(parsed.operation, prev.operation),
+        general: normalizeValue(parsed.general, prev.general),
+        foodCart: normalizeValue(parsed.foodCart, prev.foodCart),
+        includeExp: typeof parsed.includeExp === 'boolean' ? parsed.includeExp : prev.includeExp,
+      }));
+    } catch (error) {
+      console.log('Error loading net sales split:', error);
+    }
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadNetSalesSplit();
+    }, [loadNetSalesSplit])
+  );
+
   const salesByDay = useMemo(() => {
     return new Map(Object.entries(salesTotalsMap).map(([key, value]) => [key, Number(value) || 0]));
   }, [salesTotalsMap]);
@@ -241,15 +279,34 @@ export default function HomeScreen() {
     [expensesByDay, weekDayKeys]
   );
 
+  const normalizedSplit = useMemo(() => {
+    const normalizePercent = (value: number) => {
+      if (!Number.isFinite(value)) return 0;
+      if (value <= 0) return 0;
+      return value > 1 ? value / 100 : value;
+    };
+    return {
+      operation: normalizePercent(netSalesSplit.operation),
+      general: normalizePercent(netSalesSplit.general),
+      foodCart: normalizePercent(netSalesSplit.foodCart),
+      includeExp: netSalesSplit.includeExp,
+    };
+  }, [netSalesSplit]);
+
   const chartData = useMemo(() => {
     return weekDayKeys.map((dateStr, index) => {
       const day = weekDayLabels[index] ?? '';
       const daySales = salesSeries[index] ?? 0;
       const dayExpenses = expensesSeries[index] ?? 0;
+      const netSales = normalizedSplit.includeExp ? daySales - dayExpenses : daySales;
+      const netBase = Math.max(0, netSales);
+      const omAmount = netBase * normalizedSplit.operation;
+      const gmAmount = netBase * normalizedSplit.general;
+      const fcAmount = netBase * normalizedSplit.foodCart;
 
-      return { day, sales: daySales, expenses: dayExpenses, dateStr };
+      return { day, sales: daySales, expenses: dayExpenses, om: omAmount, gm: gmAmount, fc: fcAmount, dateStr };
     });
-  }, [expensesSeries, salesSeries, weekDayKeys, weekDayLabels]);
+  }, [expensesSeries, normalizedSplit, salesSeries, weekDayKeys, weekDayLabels]);
 
   const weekTotals = useMemo(() => {
     const salesTotal = salesSeries.reduce((sum, val) => sum + val, 0);
@@ -356,7 +413,10 @@ export default function HomeScreen() {
     }
   }, [isGeneratingPdf, selectedWeek, updateProgress, weeks]);
 
-  const rawMaxValue = Math.max(...chartData.map(d => Math.max(d.sales, d.expenses)), 100);
+  const rawMaxValue = Math.max(
+    ...chartData.map(d => Math.max(d.sales, d.expenses, d.om, d.gm, d.fc)),
+    100
+  );
   
   const getYAxisConfig = (maxVal: number) => {
     if (maxVal <= 200) return { max: 200, step: 50 };
@@ -512,6 +572,24 @@ export default function HomeScreen() {
 
   const expenseAreaPath = `${expensePathData} L ${(chartData.length - 1) * stepX} ${chartTopPadding + chartHeight} L 0 ${chartTopPadding + chartHeight} Z`;
 
+  const omPathData = chartData.map((point, index) => {
+    const x = index * stepX;
+    const y = scaleY(point.om);
+    return `${index === 0 ? 'M' : 'L'} ${x} ${y}`;
+  }).join(' ');
+
+  const gmPathData = chartData.map((point, index) => {
+    const x = index * stepX;
+    const y = scaleY(point.gm);
+    return `${index === 0 ? 'M' : 'L'} ${x} ${y}`;
+  }).join(' ');
+
+  const fcPathData = chartData.map((point, index) => {
+    const x = index * stepX;
+    const y = scaleY(point.fc);
+    return `${index === 0 ? 'M' : 'L'} ${x} ${y}`;
+  }).join(' ');
+
   const labelData = useMemo(() => {
     const labelOffset = 10;
     const collisionThreshold = 14;
@@ -520,19 +598,40 @@ export default function HomeScreen() {
     const labelHeight = 12;
     const labelPaddingX = 3;
     const charWidth = 5.4;
+    const extraOffsetStep = 12;
+    const extraOffsets = {
+      om: labelOffset + extraOffsetStep,
+      gm: labelOffset + extraOffsetStep * 2,
+      fc: labelOffset + extraOffsetStep * 3,
+    };
 
     return chartData.map((point, index) => {
       const x = index * stepX;
       const ySales = scaleY(point.sales);
       const yExpenses = scaleY(point.expenses);
+      const yOm = scaleY(point.om);
+      const yGm = scaleY(point.gm);
+      const yFc = scaleY(point.fc);
       const salesLabel = formatCompactNumber(point.sales);
       const expenseLabel = formatCompactNumber(point.expenses);
+      const omLabel = formatCompactNumber(point.om);
+      const gmLabel = formatCompactNumber(point.gm);
+      const fcLabel = formatCompactNumber(point.fc);
       const salesWidth = salesLabel.length * charWidth;
       const expenseWidth = expenseLabel.length * charWidth;
+      const omWidth = omLabel.length * charWidth;
+      const gmWidth = gmLabel.length * charWidth;
+      const fcWidth = fcLabel.length * charWidth;
       const minSalesX = salesWidth / 2 + labelPaddingX;
       const minExpenseX = expenseWidth / 2 + labelPaddingX;
+      const minOmX = omWidth / 2 + labelPaddingX;
+      const minGmX = gmWidth / 2 + labelPaddingX;
+      const minFcX = fcWidth / 2 + labelPaddingX;
       const maxSalesX = chartSvgWidth - minSalesX;
       const maxExpenseX = chartSvgWidth - minExpenseX;
+      const maxOmX = chartSvgWidth - minOmX;
+      const maxGmX = chartSvgWidth - minGmX;
+      const maxFcX = chartSvgWidth - minFcX;
 
       let salesOffset = labelOffset;
       let expenseOffset = labelOffset;
@@ -556,21 +655,42 @@ export default function HomeScreen() {
       const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
       const salesLabelX = clamp(salesX, minSalesX, maxSalesX);
       const expenseLabelX = clamp(expenseX, minExpenseX, maxExpenseX);
+      const omLabelX = clamp(x, minOmX, maxOmX);
+      const gmLabelX = clamp(x, minGmX, maxGmX);
+      const fcLabelX = clamp(x, minFcX, maxFcX);
       const salesLabelY = Math.max(4 + labelHeight / 2, ySales - salesOffset);
       const expenseLabelY = Math.max(4 + labelHeight / 2, yExpenses - expenseOffset);
+      const omLabelY = Math.max(4 + labelHeight / 2, yOm - extraOffsets.om);
+      const gmLabelY = Math.max(4 + labelHeight / 2, yGm - extraOffsets.gm);
+      const fcLabelY = Math.max(4 + labelHeight / 2, yFc - extraOffsets.fc);
 
       return {
         x,
         ySales,
         yExpenses,
+        yOm,
+        yGm,
+        yFc,
         salesLabel,
         expenseLabel,
+        omLabel,
+        gmLabel,
+        fcLabel,
         salesLabelX,
         salesLabelY,
         expenseLabelX,
         expenseLabelY,
+        omLabelX,
+        omLabelY,
+        gmLabelX,
+        gmLabelY,
+        fcLabelX,
+        fcLabelY,
         salesLabelWidth: salesWidth,
         expenseLabelWidth: expenseWidth,
+        omLabelWidth: omWidth,
+        gmLabelWidth: gmWidth,
+        fcLabelWidth: fcWidth,
         labelHeight,
         labelPaddingX,
       };
@@ -688,6 +808,39 @@ export default function HomeScreen() {
                   <View style={[styles.legendDot, { backgroundColor: theme.error, opacity: showExpenses ? 1 : 0.4 }]} />
                   <Text style={[styles.legendText, { color: showExpenses ? theme.error : theme.textMuted }]}>Expenses</Text>
                 </TouchableOpacity>
+                <TouchableOpacity 
+                  style={[
+                    styles.legendToggle,
+                    { borderColor: showOm ? omColor : theme.cardBorder },
+                    showOm && { backgroundColor: omColor + '20' }
+                  ]}
+                  onPress={() => setShowOm(!showOm)}
+                >
+                  <View style={[styles.legendDot, { backgroundColor: omColor, opacity: showOm ? 1 : 0.4 }]} />
+                  <Text style={[styles.legendText, { color: showOm ? omColor : theme.textMuted }]}>OM</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={[
+                    styles.legendToggle,
+                    { borderColor: showGm ? gmColor : theme.cardBorder },
+                    showGm && { backgroundColor: gmColor + '20' }
+                  ]}
+                  onPress={() => setShowGm(!showGm)}
+                >
+                  <View style={[styles.legendDot, { backgroundColor: gmColor, opacity: showGm ? 1 : 0.4 }]} />
+                  <Text style={[styles.legendText, { color: showGm ? gmColor : theme.textMuted }]}>GM</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={[
+                    styles.legendToggle,
+                    { borderColor: showFc ? fcColor : theme.cardBorder },
+                    showFc && { backgroundColor: fcColor + '20' }
+                  ]}
+                  onPress={() => setShowFc(!showFc)}
+                >
+                  <View style={[styles.legendDot, { backgroundColor: fcColor, opacity: showFc ? 1 : 0.4 }]} />
+                  <Text style={[styles.legendText, { color: showFc ? fcColor : theme.textMuted }]}>FC</Text>
+                </TouchableOpacity>
               </View>
               
               <View style={styles.chartContainer}>
@@ -718,6 +871,16 @@ export default function HomeScreen() {
                       </>
                     )}
 
+                    {showOm && (
+                      <Path d={omPathData} stroke={omColor} strokeWidth={2} fill="none" />
+                    )}
+                    {showGm && (
+                      <Path d={gmPathData} stroke={gmColor} strokeWidth={2} fill="none" />
+                    )}
+                    {showFc && (
+                      <Path d={fcPathData} stroke={fcColor} strokeWidth={2} fill="none" />
+                    )}
+
                     {showSales && chartData.map((point, index) => (
                       <Circle
                         key={`sales-${index}`}
@@ -734,6 +897,33 @@ export default function HomeScreen() {
                         cy={scaleY(point.expenses)}
                         r={3}
                         fill={theme.error}
+                      />
+                    ))}
+                    {showOm && chartData.map((point, index) => (
+                      <Circle
+                        key={`om-${index}`}
+                        cx={index * stepX}
+                        cy={scaleY(point.om)}
+                        r={3}
+                        fill={omColor}
+                      />
+                    ))}
+                    {showGm && chartData.map((point, index) => (
+                      <Circle
+                        key={`gm-${index}`}
+                        cx={index * stepX}
+                        cy={scaleY(point.gm)}
+                        r={3}
+                        fill={gmColor}
+                      />
+                    ))}
+                    {showFc && chartData.map((point, index) => (
+                      <Circle
+                        key={`fc-${index}`}
+                        cx={index * stepX}
+                        cy={scaleY(point.fc)}
+                        r={3}
+                        fill={fcColor}
                       />
                     ))}
                     {showSales && labelData.map((label, index) => (
@@ -779,6 +969,75 @@ export default function HomeScreen() {
                           fill={chartLabelColor}
                         >
                           {label.expenseLabel}
+                        </SvgText>
+                      </React.Fragment>
+                    ))}
+                    {showOm && labelData.map((label, index) => (
+                      <React.Fragment key={`om-label-${index}`}>
+                        <Rect
+                          x={label.omLabelX - label.omLabelWidth / 2 - label.labelPaddingX}
+                          y={label.omLabelY - label.labelHeight / 2}
+                          width={label.omLabelWidth + label.labelPaddingX * 2}
+                          height={label.labelHeight}
+                          rx={3}
+                          fill={theme.card}
+                          opacity={0.85}
+                        />
+                        <SvgText
+                          x={label.omLabelX}
+                          y={label.omLabelY}
+                          fontSize={9}
+                          textAnchor="middle"
+                          alignmentBaseline="middle"
+                          fill={chartLabelColor}
+                        >
+                          {label.omLabel}
+                        </SvgText>
+                      </React.Fragment>
+                    ))}
+                    {showGm && labelData.map((label, index) => (
+                      <React.Fragment key={`gm-label-${index}`}>
+                        <Rect
+                          x={label.gmLabelX - label.gmLabelWidth / 2 - label.labelPaddingX}
+                          y={label.gmLabelY - label.labelHeight / 2}
+                          width={label.gmLabelWidth + label.labelPaddingX * 2}
+                          height={label.labelHeight}
+                          rx={3}
+                          fill={theme.card}
+                          opacity={0.85}
+                        />
+                        <SvgText
+                          x={label.gmLabelX}
+                          y={label.gmLabelY}
+                          fontSize={9}
+                          textAnchor="middle"
+                          alignmentBaseline="middle"
+                          fill={chartLabelColor}
+                        >
+                          {label.gmLabel}
+                        </SvgText>
+                      </React.Fragment>
+                    ))}
+                    {showFc && labelData.map((label, index) => (
+                      <React.Fragment key={`fc-label-${index}`}>
+                        <Rect
+                          x={label.fcLabelX - label.fcLabelWidth / 2 - label.labelPaddingX}
+                          y={label.fcLabelY - label.labelHeight / 2}
+                          width={label.fcLabelWidth + label.labelPaddingX * 2}
+                          height={label.labelHeight}
+                          rx={3}
+                          fill={theme.card}
+                          opacity={0.85}
+                        />
+                        <SvgText
+                          x={label.fcLabelX}
+                          y={label.fcLabelY}
+                          fontSize={9}
+                          textAnchor="middle"
+                          alignmentBaseline="middle"
+                          fill={chartLabelColor}
+                        >
+                          {label.fcLabel}
                         </SvgText>
                       </React.Fragment>
                     ))}
@@ -1061,6 +1320,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 12,
     marginBottom: 12,
+    flexWrap: 'wrap',
   },
   legendItem: {
     flexDirection: 'row',
