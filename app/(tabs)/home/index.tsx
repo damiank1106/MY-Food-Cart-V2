@@ -613,8 +613,8 @@ export default function HomeScreen() {
     const extraOffsetStep = 12;
     const extraOffsets = {
       om: labelOffset + extraOffsetStep,
-      gm: labelOffset + extraOffsetStep * 2,
-      fc: labelOffset + extraOffsetStep * 3,
+      gm: labelOffset,
+      fc: labelOffset,
     };
 
     return chartData.map((point, index) => {
