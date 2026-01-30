@@ -35,6 +35,7 @@ import { buildPdfSummaryHtml } from '@/services/pdf-summary';
 import Svg, { Path, Circle, Defs, LinearGradient as SvgLinearGradient, Stop, Text as SvgText, Rect, G } from 'react-native-svg';
 import LaserBackground from '@/components/LaserBackground';
 import { useSync } from '@/contexts/SyncContext';
+import WeeklyOverviewLegend from '@/components/WeeklyOverviewLegend';
 
 const { width } = Dimensions.get('window');
 
@@ -1124,6 +1125,15 @@ export default function HomeScreen() {
               </View>
             </View>
           </View>
+
+          <WeeklyOverviewLegend
+            theme={theme}
+            salesColor={theme.chartLine}
+            expensesColor={theme.error}
+            omColor={omColor}
+            gmColor={gmColor}
+            fcColor={fcColor}
+          />
 
           <View style={[styles.exportCard, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
             <Text style={[styles.sectionTitle, { color: theme.text }]}>Export PDF Summary</Text>
