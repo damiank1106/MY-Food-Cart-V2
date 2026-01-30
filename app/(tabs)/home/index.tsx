@@ -27,7 +27,7 @@ import { Colors } from '@/constants/colors';
 
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
-import { formatDate, ROLE_DISPLAY_NAMES, UserRole } from '@/types';
+import { formatCurrency, formatDate, ROLE_DISPLAY_NAMES, UserRole } from '@/types';
 import { getWeeklySalesTotals, getWeeklyExpenseTotals, getActivities, getUsers } from '@/services/database';
 import { getDayKeysForWeek, getWeekdayLabels, getWeekRange, getWeekStart, toLocalDayKey } from '@/services/dateUtils';
 import { buildPdfSummaryHtml } from '@/services/pdf-summary';
@@ -614,9 +614,9 @@ export default function HomeScreen() {
       const yFc = scaleY(point.fc);
       const salesLabel = formatCompactNumber(point.sales);
       const expenseLabel = formatCompactNumber(point.expenses);
-      const omLabel = formatCompactNumber(point.om);
-      const gmLabel = formatCompactNumber(point.gm);
-      const fcLabel = formatCompactNumber(point.fc);
+      const omLabel = formatCurrency(point.om);
+      const gmLabel = formatCurrency(point.gm);
+      const fcLabel = formatCurrency(point.fc);
       const salesWidth = salesLabel.length * charWidth;
       const expenseWidth = expenseLabel.length * charWidth;
       const omWidth = omLabel.length * charWidth;
