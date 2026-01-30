@@ -30,6 +30,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { formatCurrency, formatDate, ROLE_DISPLAY_NAMES, UserRole } from '@/types';
 import { getWeeklySalesTotals, getWeeklyExpenseTotals, getActivities, getUsers } from '@/services/database';
 import { getDayKeysForWeek, getWeekdayLabels, getWeekRange, getWeekStart, toLocalDayKey } from '@/services/dateUtils';
+import { calculateNetSalesSplitAmounts } from '@/services/netSalesSplit';
 import { buildPdfSummaryHtml } from '@/services/pdf-summary';
 import Svg, { Path, Circle, Defs, LinearGradient as SvgLinearGradient, Stop, Text as SvgText, Rect, G } from 'react-native-svg';
 import LaserBackground from '@/components/LaserBackground';
@@ -314,6 +315,17 @@ export default function HomeScreen() {
     console.log(`Week totals (${startDateStr} to ${endDateStr}): Sales=₱${salesTotal}, Expenses=₱${expensesTotal}`);
     return { sales: salesTotal, expenses: expensesTotal, net: salesTotal - expensesTotal };
   }, [expensesSeries, salesSeries, startDateStr, endDateStr]);
+
+  const weeklySplitAmounts = useMemo(
+    () =>
+      calculateNetSalesSplitAmounts(weekTotals.sales, weekTotals.expenses, {
+        operation: netSalesSplit.operation,
+        general: netSalesSplit.general,
+        foodCart: netSalesSplit.foodCart,
+        includeExp: netSalesSplit.includeExp,
+      }),
+    [netSalesSplit, weekTotals.expenses, weekTotals.sales]
+  );
 
   const updateProgress = useCallback((value: number, message: string) => {
     setProgressValue(value);
@@ -781,6 +793,20 @@ export default function HomeScreen() {
                   <Text style={[styles.weekTotalLabel, { color: theme.textSecondary }]}>Expenses</Text>
                   <Text style={[styles.weekTotalValue, { color: theme.error }]}>
                     ₱{weekTotals.expenses.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.weekTotalsRow}>
+                <View style={[styles.weekTotalCard, { backgroundColor: omColor + '15' }]}>
+                  <Text style={[styles.weekTotalLabel, { color: theme.textSecondary }]}>Operation Manager</Text>
+                  <Text style={[styles.weekTotalValue, { color: omColor }]}>
+                    {formatCurrency(weeklySplitAmounts.operation)}
+                  </Text>
+                </View>
+                <View style={[styles.weekTotalCard, { backgroundColor: gmColor + '15' }]}>
+                  <Text style={[styles.weekTotalLabel, { color: theme.textSecondary }]}>General Manager</Text>
+                  <Text style={[styles.weekTotalValue, { color: gmColor }]}>
+                    {formatCurrency(weeklySplitAmounts.general)}
                   </Text>
                 </View>
               </View>

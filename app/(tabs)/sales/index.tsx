@@ -24,6 +24,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useSync } from '@/contexts/SyncContext';
 import { Colors } from '@/constants/colors';
 import { Expense, ExpenseItem, Sale, formatCurrency, formatDate, formatShortDate } from '@/types';
+import { calculateNetSalesSplitAmounts } from '@/services/netSalesSplit';
 import { 
   getSalesByDate, getExpensesByDate, createSale, createExpense,
   deleteSale, deleteExpense, createActivity, getPendingSummaryAndItems, PendingSummary
@@ -119,10 +120,16 @@ export default function SalesScreen() {
   const netSales = totalSales - totalExpenses;
   const splitBase = includeExpenses ? netSales : totalSales;
   const isNegativeNet = splitBase < 0;
-  const effectiveNetSales = isNegativeNet ? 0 : splitBase;
-  const operationManagerAmount = (effectiveNetSales * operationManagerPercent) / 100;
-  const generalManagerAmount = (effectiveNetSales * generalManagerPercent) / 100;
-  const foodCartAmount = (effectiveNetSales * foodCartPercent) / 100;
+  const splitAmounts = calculateNetSalesSplitAmounts(totalSales, totalExpenses, {
+    operation: operationManagerPercent,
+    general: generalManagerPercent,
+    foodCart: foodCartPercent,
+    includeExp: includeExpenses,
+  });
+  const effectiveNetSales = splitAmounts.base;
+  const operationManagerAmount = splitAmounts.operation;
+  const generalManagerAmount = splitAmounts.general;
+  const foodCartAmount = splitAmounts.foodCart;
   const currentSplitTotal = tempOperationPercent + tempGeneralPercent + tempFoodCartPercent;
 
   const saveSplitPercentages = async () => {
