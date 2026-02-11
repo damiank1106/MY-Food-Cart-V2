@@ -1261,7 +1261,7 @@ export default function HomeScreen() {
             </TouchableOpacity>
           </View>
 
-          <View style={[styles.updatesCard, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
+          <View style={[styles.updatesCard, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}> 
             <Text style={[styles.sectionTitle, { color: theme.text }]}>Latest Updates</Text>
             
             <View style={styles.updatesGrid}>
@@ -1297,6 +1297,7 @@ export default function HomeScreen() {
                 </View>
               )}
             </View>
+          </View>
           </View>
         </ScrollView>
         <Modal visible={showProgressModal} transparent animationType="fade">
