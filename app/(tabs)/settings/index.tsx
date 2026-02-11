@@ -12,8 +12,9 @@ import {
   Platform,
   Linking,
   ActivityIndicator,
+  useWindowDimensions,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Lock, Moon, HelpCircle, Info, LogOut, Eye, EyeOff, X, UserPlus, ChevronDown, ChevronRight, RefreshCw, Cloud, CloudOff, Database, AlertTriangle, Wrench, Sparkles, Palette, Zap } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
@@ -27,6 +28,7 @@ import { useSync } from '@/contexts/SyncContext';
 import { supabase, isSupabaseConfigured } from '@/services/supabase';
 import SyncProgressModal from '@/components/SyncProgressModal';
 import LaserBackground from '@/components/LaserBackground';
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 
 const APP_VERSION = '1.0.0';
 const PRIVACY_POLICY_GITHUB_URL = 'https://damiank1106.github.io/MY-Food-Cart-V2/privacy-policy.html#changes';
@@ -37,6 +39,11 @@ export default function SettingsScreen() {
   const { syncStatus, pendingCount, isOnline, triggerSync, syncBeforeLogout, lastSyncTime } = useSync();
   const queryClient = useQueryClient();
   const theme = settings.darkMode ? Colors.dark : Colors.light;
+  const { width, height } = useWindowDimensions();
+  const isLandscape = width > height;
+  const insets = useSafeAreaInsets();
+  const tabBarHeight = useBottomTabBarHeight();
+  const leftRailWidth = 110;
   
   const [showPinModal, setShowPinModal] = useState(false);
   const [showCreateUserModal, setShowCreateUserModal] = useState(false);
@@ -581,14 +588,17 @@ export default function SettingsScreen() {
         <LaserBackground isDarkMode={settings.darkMode} colorPalette={settings.backgroundColorPalette} intensity={settings.backgroundIntensity} />
       )}
       
-      <SafeAreaView style={styles.safeArea} edges={['top']}>
+      <SafeAreaView
+        style={[styles.safeArea, isLandscape && { paddingLeft: leftRailWidth + 16, paddingRight: 16 }]}
+        edges={['top']}
+      >
         <View style={[styles.header, { borderBottomColor: theme.divider }]}>
           <Text style={[styles.headerTitle, { color: theme.text }]}>Settings</Text>
         </View>
 
         <ScrollView
           style={styles.content}
-          contentContainerStyle={styles.contentContainer}
+          contentContainerStyle={[styles.contentContainer, isLandscape ? { paddingBottom: insets.bottom + 16 } : { paddingBottom: tabBarHeight + insets.bottom + 16 }]}
           showsVerticalScrollIndicator={false}
         >
           <View style={[styles.section, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
@@ -1148,7 +1158,6 @@ const styles = StyleSheet.create({
   },
   contentContainer: {
     padding: 16,
-    paddingBottom: 100,
   },
   section: {
     borderRadius: 16,
