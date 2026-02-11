@@ -5,6 +5,9 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="738d9ac3-963f-4ac1-ae1f-6318bd67b143" name="Changes" comment="update">
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/ExpenseModal.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/ExpenseModal.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/MonthlyOverview.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/MonthlyOverview.tsx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/components/WeeklyOverviewLegend.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/WeeklyOverviewLegend.tsx" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -304,7 +307,15 @@
       <option name="project" value="LOCAL" />
       <updated>1770769288754</updated>
     </task>
-    <option name="localTasksCounter" value="31" />
+    <task id="LOCAL-00031" summary="update">
+      <option name="closed" value="true" />
+      <created>1770769907495</created>
+      <option name="number" value="00031" />
+      <option name="presentableId" value="LOCAL-00031" />
+      <option name="project" value="LOCAL" />
+      <updated>1770769907495</updated>
+    </task>
+    <option name="localTasksCounter" value="32" />
     <servers />
   </component>
   <component name="Vcs.Log.Tabs.Properties">

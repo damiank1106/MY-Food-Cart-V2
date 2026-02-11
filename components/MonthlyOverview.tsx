@@ -232,7 +232,8 @@ export default function MonthlyOverview({
 
 const styles = StyleSheet.create({
   card: {
-    marginTop: 16,
+    marginTop: 4,
+    marginBottom: 16,
     borderWidth: 1,
     borderRadius: 20,
     padding: 16,

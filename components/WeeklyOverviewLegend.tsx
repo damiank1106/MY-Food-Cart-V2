@@ -61,8 +61,8 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: 16,
     borderWidth: 1,
-    marginBottom: 16,
-    gap: 6,
+    marginBottom: 4,
+    gap: 2,
   },
   title: {
     fontSize: 16,
