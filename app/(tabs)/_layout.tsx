@@ -10,9 +10,9 @@ import { Colors } from "@/constants/colors";
 export default function TabLayout() {
   const { user, settings } = useAuth();
   const { pendingCount } = useSync();
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
-  const isTablet = width >= 768;
+  const isLandscape = width > height;
   
   const theme = settings.darkMode ? Colors.dark : Colors.light;
   
@@ -27,30 +27,43 @@ export default function TabLayout() {
           backgroundColor: theme.tabBar,
           borderTopColor: theme.tabBarBorder,
           borderTopWidth: 1,
-          paddingBottom: insets.bottom + 8,
-          paddingTop: 8,
-          height: 60 + insets.bottom + 8,
-          ...(isTablet && {
-            position: 'absolute' as const,
-            left: 0,
-            top: 0,
-            bottom: 0,
-            width: 88,
-            height: '100%',
-            flexDirection: 'column' as const,
-            paddingTop: 60,
-            paddingBottom: 28,
-            borderTopWidth: 0,
-            borderRightWidth: 1,
-            borderRightColor: theme.tabBarBorder,
-          }),
+          ...(isLandscape
+            ? {
+                position: 'absolute' as const,
+                left: 0,
+                top: insets.top,
+                bottom: insets.bottom,
+                width: 110,
+                paddingTop: 16,
+                borderTopWidth: 0,
+                borderRightWidth: 1,
+                borderRightColor: theme.tabBarBorder,
+              }
+            : {
+                position: 'absolute' as const,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                height: 80 + insets.bottom,
+                paddingBottom: insets.bottom,
+                paddingTop: 8,
+              }),
         },
         tabBarLabelStyle: {
           fontSize: 11,
           fontWeight: '500' as const,
         },
         headerShown: false,
-        ...(isTablet && {
+        tabBarHideOnKeyboard: false,
+        tabBarLabelPosition: 'below-icon',
+        tabBarItemStyle: isLandscape
+          ? {
+              justifyContent: 'center',
+              alignItems: 'center',
+              marginVertical: 6,
+            }
+          : undefined,
+        ...(isLandscape && {
           tabBarPosition: 'left' as const,
         }),
       }}

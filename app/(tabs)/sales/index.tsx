@@ -12,8 +12,9 @@ import {
   Platform,
   KeyboardAvoidingView,
   ActivityIndicator,
+  useWindowDimensions,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Calendar, Plus, X, Trash2, PieChart, Save, AlertCircle, Clock, RefreshCw } from 'lucide-react-native';
 import CalendarModal from '@/components/CalendarModal';
@@ -32,12 +33,19 @@ import {
 import { formatLocalDate } from '@/services/dateUtils';
 import LaserBackground from '@/components/LaserBackground';
 import ExpenseModal from '@/components/ExpenseModal';
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 
 export default function SalesScreen() {
   const { user, settings } = useAuth();
   const { queueDeletion, pendingCount, triggerFullSync, checkPendingCount, isOnline } = useSync();
   const theme = settings.darkMode ? Colors.dark : Colors.light;
   const queryClient = useQueryClient();
+  const { width, height } = useWindowDimensions();
+  const isLandscape = width > height;
+  const insets = useSafeAreaInsets();
+  const tabBarHeight = useBottomTabBarHeight();
+  const leftRailWidth = 110;
+
   
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [showCalendar, setShowCalendar] = useState(false);
@@ -388,7 +396,10 @@ export default function SalesScreen() {
         <LaserBackground isDarkMode={settings.darkMode} colorPalette={settings.backgroundColorPalette} intensity={settings.backgroundIntensity} />
       )}
       
-      <SafeAreaView style={styles.safeArea} edges={['top']}>
+      <SafeAreaView
+        style={[styles.safeArea, isLandscape && { paddingLeft: leftRailWidth + 16, paddingRight: 16 }]}
+        edges={['top']}
+      >
         <View style={[styles.header, { borderBottomColor: theme.divider }]}>
           <Text style={[styles.headerTitle, { color: theme.text }]}>Sales</Text>
           <View style={styles.headerActions}>
@@ -438,7 +449,7 @@ export default function SalesScreen() {
 
         <ScrollView
           style={styles.content}
-          contentContainerStyle={styles.contentContainer}
+          contentContainerStyle={[styles.contentContainer, isLandscape ? { paddingBottom: insets.bottom + 16 } : { paddingBottom: tabBarHeight + insets.bottom + 16 }]}
           showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.primary} />
@@ -1029,7 +1040,6 @@ const styles = StyleSheet.create({
   },
   contentContainer: {
     padding: 16,
-    paddingBottom: 100,
   },
   summaryCard: {
     padding: 16,

@@ -9,8 +9,9 @@ import {
   Alert,
   Platform,
   ActionSheetIOS,
+  useWindowDimensions,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Save } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
@@ -21,6 +22,7 @@ import { Colors } from '@/constants/colors';
 import { ROLE_DISPLAY_NAMES } from '@/types';
 import ProfileAvatarGlow from '@/components/ProfileAvatarGlow';
 import LaserBackground from '@/components/LaserBackground';
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 
 const BIO_STORAGE_KEY = '@myfoodcart_user_bio';
 
@@ -28,6 +30,12 @@ export default function ProfileScreen() {
   const { user, settings, updateCurrentUser } = useAuth();
   const theme = settings.darkMode ? Colors.dark : Colors.light;
   
+  const { width, height } = useWindowDimensions();
+  const isLandscape = width > height;
+  const insets = useSafeAreaInsets();
+  const tabBarHeight = useBottomTabBarHeight();
+  const leftRailWidth = 110;
+
   const [displayName, setDisplayName] = useState(user?.name || '');
   const [bio, setBio] = useState('');
   const [profileImage, setProfileImage] = useState<string | null>(user?.profilePicture || null);
@@ -196,7 +204,10 @@ export default function ProfileScreen() {
         <LaserBackground isDarkMode={settings.darkMode} colorPalette={settings.backgroundColorPalette} intensity={settings.backgroundIntensity} />
       )}
       
-      <SafeAreaView style={styles.safeArea} edges={['top']}>
+      <SafeAreaView
+        style={[styles.safeArea, isLandscape && { paddingLeft: leftRailWidth + 16, paddingRight: 16 }]}
+        edges={['top']}
+      >
         <View style={[styles.header, { borderBottomColor: theme.divider }]}>
           <Text style={[styles.headerTitle, { color: theme.text }]}>Profile</Text>
           {hasChanges && (
@@ -215,7 +226,7 @@ export default function ProfileScreen() {
 
         <ScrollView
           style={styles.content}
-          contentContainerStyle={styles.contentContainer}
+          contentContainerStyle={[styles.contentContainer, isLandscape ? { paddingBottom: insets.bottom + 16 } : { paddingBottom: tabBarHeight + insets.bottom + 16 }]}
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.avatarSection}>
@@ -333,7 +344,6 @@ const styles = StyleSheet.create({
   },
   contentContainer: {
     padding: 16,
-    paddingBottom: 100,
   },
   avatarSection: {
     alignItems: 'center',

@@ -5,7 +5,6 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Dimensions,
   RefreshControl,
   useWindowDimensions,
   ActivityIndicator,
@@ -13,7 +12,7 @@ import {
   Alert,
   Platform,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Package, ShoppingCart, User, Settings, RefreshCw } from 'lucide-react-native';
 import { useQuery } from '@tanstack/react-query';
@@ -27,7 +26,8 @@ import { Colors } from '@/constants/colors';
 
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
-import { formatCurrency, formatDate, ROLE_DISPLAY_NAMES, UserRole } from '@/types';
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
+import { formatCurrency, ROLE_DISPLAY_NAMES, UserRole } from '@/types';
 import {
   getWeeklySalesTotals,
   getWeeklyExpenseTotals,
@@ -43,8 +43,6 @@ import LaserBackground from '@/components/LaserBackground';
 import { useSync } from '@/contexts/SyncContext';
 import WeeklyOverviewLegend from '@/components/WeeklyOverviewLegend';
 import MonthlyOverview from '@/components/MonthlyOverview';
-
-const { width } = Dimensions.get('window');
 
 function formatWeekRange(start: Date, end: Date): string {
   const startMonth = start.toLocaleDateString('en-US', { month: 'short' });
@@ -164,8 +162,13 @@ export default function HomeScreen() {
     includeExp: true,
   });
 
-  const { width: screenWidth } = useWindowDimensions();
-  
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  const isLandscape = screenWidth > screenHeight;
+  const insets = useSafeAreaInsets();
+  const tabBarHeight = useBottomTabBarHeight();
+  const leftRailWidth = 110;
+  const [chartCardWidth, setChartCardWidth] = useState(0);
+
   const welcomeFontSize = screenWidth < 360 ? 18 : screenWidth < 400 ? 20 : 24;
 
   const weekStartsOn = 0;
@@ -510,9 +513,11 @@ export default function HomeScreen() {
   const chartHeight = 150;
   const chartTopPadding = 20;
   const chartBottomPadding = 10;
-  const chartWidth = width - 80;
+  const cardPadding = 16;
+  const yAxisArea = 48;
+  const chartWidth = Math.max(320, chartCardWidth - cardPadding * 2 - yAxisArea);
   const chartXOffset = 10;
-  const chartSvgWidth = chartWidth + 48 + chartXOffset;
+  const chartSvgWidth = chartWidth + yAxisArea + chartXOffset;
   const chartSvgHeight = chartHeight + chartTopPadding + chartBottomPadding;
   const baseDaySpacing = Math.round(chartWidth / 6);
   const dayPointSpacing = Math.round(baseDaySpacing * 0.92);
@@ -626,6 +631,21 @@ export default function HomeScreen() {
     }
   }, [lastSyncTime, refreshOverview]);
 
+  const navContentPadding = useMemo(
+    () =>
+      isLandscape
+        ? {
+            paddingLeft: leftRailWidth + 16,
+            paddingRight: 16,
+            paddingBottom: insets.bottom + 16,
+          }
+        : {
+            paddingHorizontal: 16,
+            paddingBottom: tabBarHeight + insets.bottom + 16,
+          },
+    [insets.bottom, isLandscape, tabBarHeight]
+  );
+
   const pathData = chartData.map((point, index) => {
     const x = index * stepX;
     const y = scaleY(point.sales);
@@ -728,11 +748,13 @@ export default function HomeScreen() {
       const omLabelX = clamp(x, minOmX, maxOmX);
       const gmLabelX = clamp(x, minGmX, maxGmX);
       const fcLabelX = clamp(x, minFcX, maxFcX);
-      const salesLabelY = Math.max(4 + labelHeight / 2, ySales - salesOffset);
-      const expenseLabelY = Math.max(4 + labelHeight / 2, yExpenses - expenseOffset);
-      const omLabelY = Math.max(4 + labelHeight / 2, yOm - extraOffsets.om);
-      const gmLabelY = Math.max(4 + labelHeight / 2, yGm - extraOffsets.gm);
-      const fcLabelY = Math.max(4 + labelHeight / 2, yFc - extraOffsets.fc);
+      const minLabelY = 4 + labelHeight / 2;
+      const maxLabelY = chartTopPadding + chartHeight - labelHeight / 2;
+      const salesLabelY = clamp(ySales - salesOffset, minLabelY, maxLabelY);
+      const expenseLabelY = clamp(yExpenses - expenseOffset, minLabelY, maxLabelY);
+      const omLabelY = clamp(yOm - extraOffsets.om, minLabelY, maxLabelY);
+      const gmLabelY = clamp(yGm - extraOffsets.gm, minLabelY, maxLabelY);
+      const fcLabelY = clamp(yFc - extraOffsets.fc, minLabelY, maxLabelY);
 
       return {
         x,
@@ -765,7 +787,7 @@ export default function HomeScreen() {
         labelPaddingX,
       };
     });
-  }, [chartData, chartSvgWidth, scaleY, stepX]);
+  }, [chartData, chartHeight, chartSvgWidth, chartTopPadding, scaleY, stepX]);
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
@@ -780,7 +802,7 @@ export default function HomeScreen() {
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         <ScrollView
           style={styles.scrollView}
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[styles.scrollContent, navContentPadding]}
           showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl
@@ -796,12 +818,24 @@ export default function HomeScreen() {
             </Text>
           </View>
 
-          <View style={styles.row}>
+          <View style={[styles.contentShell, isLandscape && styles.contentShellLandscape]}>
+            <View style={[styles.row, isLandscape && styles.rowLandscape]}>
             <View style={[styles.dateCard, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
               <Text style={[styles.dateLabel, { color: theme.textSecondary }]}>Date</Text>
-              <Text style={[styles.dateText, { color: theme.text }]}>{formatDate(new Date())}</Text>
+              <View style={styles.dateTextBlock}>
+                <Text style={[styles.dateWeekdayText, { color: theme.text }]} numberOfLines={1} maxFontSizeMultiplier={1.1}>
+                  {new Date().toLocaleDateString('en-US', { weekday: 'long' })}
+                </Text>
+                <Text
+                  style={[styles.dateMonthText, { color: theme.text }]}
+                  numberOfLines={1}
+                  maxFontSizeMultiplier={1.1}
+                >
+                  {new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+                </Text>
+              </View>
               
-              <Text style={[styles.sectionTitle, { color: theme.text, marginTop: 16 }]}>Previous Weeks</Text>
+              <Text style={[styles.sectionTitle, styles.previousWeeksTitle, { color: theme.text }]}>Previous Weeks</Text>
               <View style={styles.weeksContainer}>
                 {weeks.map((week, index) => (
                   <TouchableOpacity
@@ -824,7 +858,10 @@ export default function HomeScreen() {
               </View>
             </View>
 
-            <View style={[styles.chartCard, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
+            <View
+              style={[styles.chartCard, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}
+              onLayout={(e) => setChartCardWidth(e.nativeEvent.layout.width)}
+            >
               <View style={styles.overviewHeader}>
                 <Text style={[styles.sectionTitle, { color: theme.text }]}>Weekly Overview</Text>
                 <TouchableOpacity
@@ -928,7 +965,8 @@ export default function HomeScreen() {
               </View>
               
               <View style={styles.chartContainer}>
-                <Svg width={chartSvgWidth} height={chartSvgHeight} style={styles.chart}>
+                <View style={styles.chartClipContainer}>
+                  <Svg width={chartSvgWidth} height={chartSvgHeight} style={styles.chart}>
                   <Defs>
                     <SvgLinearGradient id="areaGradient" x1="0" y1="0" x2="0" y2="1">
                       <Stop offset="0" stopColor={theme.chartLine} stopOpacity="0.3" />
@@ -1175,6 +1213,7 @@ export default function HomeScreen() {
               </View>
             </View>
           </View>
+          </View>
 
           <MonthlyOverview
             theme={theme}
@@ -1295,8 +1334,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    padding: 16,
-    paddingBottom: 100,
+    paddingTop: 16,
   },
   welcomeCard: {
     padding: 20,
@@ -1308,11 +1346,21 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: '700' as const,
   },
+  contentShell: {
+    width: '100%',
+  },
+  contentShellLandscape: {
+    maxWidth: 1200,
+    alignSelf: 'center',
+  },
   row: {
     flexDirection: 'row',
     gap: 12,
     marginBottom: 16,
     flexWrap: 'wrap',
+  },
+  rowLandscape: {
+    flexWrap: 'nowrap',
   },
   dateCard: {
     flex: 1,
@@ -1325,9 +1373,22 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginBottom: 4,
   },
-  dateText: {
-    fontSize: 16,
+  dateTextBlock: {
+    minHeight: 96,
+    justifyContent: 'center',
+  },
+  dateWeekdayText: {
+    fontSize: 24,
+    fontWeight: '700' as const,
+  },
+  dateMonthText: {
+    fontSize: 22,
     fontWeight: '600' as const,
+    marginTop: 4,
+  },
+  previousWeeksTitle: {
+    marginTop: 12,
+    marginBottom: 10,
   },
   sectionTitle: {
     fontSize: 16,
@@ -1374,6 +1435,10 @@ const styles = StyleSheet.create({
   },
   chartContainer: {
     alignItems: 'center',
+  },
+  chartClipContainer: {
+    width: '100%',
+    overflow: 'hidden',
   },
   chart: {
     marginLeft: 24,

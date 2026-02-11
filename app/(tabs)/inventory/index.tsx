@@ -10,8 +10,9 @@ import {
   RefreshControl,
   Alert,
   Platform,
+  useWindowDimensions,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Plus, Edit2, Trash2, X, ChevronDown } from 'lucide-react-native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -28,12 +29,19 @@ import {
   getCategoryItemCount, createActivity
 } from '@/services/database';
 import LaserBackground from '@/components/LaserBackground';
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 
 export default function InventoryScreen() {
   const { user, settings } = useAuth();
   const { queueDeletion } = useSync();
   const theme = settings.darkMode ? Colors.dark : Colors.light;
   const queryClient = useQueryClient();
+  const { width, height } = useWindowDimensions();
+  const isLandscape = width > height;
+  const insets = useSafeAreaInsets();
+  const tabBarHeight = useBottomTabBarHeight();
+  const leftRailWidth = 110;
+
   
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -258,7 +266,10 @@ export default function InventoryScreen() {
         <LaserBackground isDarkMode={settings.darkMode} colorPalette={settings.backgroundColorPalette} intensity={settings.backgroundIntensity} />
       )}
       
-      <SafeAreaView style={styles.safeArea} edges={['top']}>
+      <SafeAreaView
+        style={[styles.safeArea, isLandscape && { paddingLeft: leftRailWidth + 16, paddingRight: 16 }]}
+        edges={['top']}
+      >
         <View style={styles.tabsContainer}>
           <ScrollView 
             horizontal 
@@ -313,7 +324,7 @@ export default function InventoryScreen() {
 
         <ScrollView
           style={styles.list}
-          contentContainerStyle={styles.listContent}
+          contentContainerStyle={[styles.listContent, isLandscape ? { paddingBottom: insets.bottom + 16 } : { paddingBottom: tabBarHeight + insets.bottom + 16 }]}
           showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.primary} />
@@ -575,7 +586,6 @@ const styles = StyleSheet.create({
   },
   listContent: {
     paddingHorizontal: 16,
-    paddingBottom: 100,
   },
   itemCard: {
     flexDirection: 'row',
