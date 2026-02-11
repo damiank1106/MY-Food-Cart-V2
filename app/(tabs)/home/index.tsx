@@ -1363,15 +1363,15 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   dateTextBlock: {
-    minHeight: 96,
+    minHeight: 46,
     justifyContent: 'center',
   },
   dateWeekdayText: {
-    fontSize: 24,
+    fontSize: 16,
     fontWeight: '700' as const,
   },
   dateMonthText: {
-    fontSize: 22,
+    fontSize: 14,
     fontWeight: '600' as const,
     marginTop: 4,
   },
