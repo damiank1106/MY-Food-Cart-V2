@@ -1452,7 +1452,8 @@ const styles = StyleSheet.create({
   stretchControls: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-start',
+    gap: 20,
     marginTop: 8,
   },
   stretchLabel: {
