@@ -28,7 +28,13 @@ import { Colors } from '@/constants/colors';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { formatCurrency, formatDate, ROLE_DISPLAY_NAMES, UserRole } from '@/types';
-import { getWeeklySalesTotals, getWeeklyExpenseTotals, getActivities, getUsers } from '@/services/database';
+import {
+  getWeeklySalesTotals,
+  getWeeklyExpenseTotals,
+  getActivities,
+  getUsers,
+  getMonthlyTotalsForYear,
+} from '@/services/database';
 import { getDayKeysForWeek, getWeekdayLabels, getWeekRange, getWeekStart, toLocalDayKey } from '@/services/dateUtils';
 import { calculateNetSalesSplitAmounts } from '@/services/netSalesSplit';
 import { buildPdfSummaryHtml } from '@/services/pdf-summary';
@@ -36,6 +42,7 @@ import Svg, { Path, Circle, Defs, LinearGradient as SvgLinearGradient, Stop, Tex
 import LaserBackground from '@/components/LaserBackground';
 import { useSync } from '@/contexts/SyncContext';
 import WeeklyOverviewLegend from '@/components/WeeklyOverviewLegend';
+import MonthlyOverview from '@/components/MonthlyOverview';
 
 const { width } = Dimensions.get('window');
 
@@ -138,6 +145,7 @@ export default function HomeScreen() {
     return null;
   }
   const [selectedWeek, setSelectedWeek] = useState(0);
+  const [selectedMonthIndex, setSelectedMonthIndex] = useState(new Date().getMonth());
   const [refreshing, setRefreshing] = useState(false);
   const [isOverviewRefreshing, setIsOverviewRefreshing] = useState(false);
   const [showSales, setShowSales] = useState(true);
@@ -170,6 +178,7 @@ export default function HomeScreen() {
   }, [weekStartsOn]);
 
   const currentWeek = weeks[selectedWeek];
+  const selectedYear = currentWeek.start.getFullYear();
   const startDateStr = toLocalDayKey(currentWeek.start);
   const endDateStr = toLocalDayKey(currentWeek.end);
 
@@ -185,6 +194,11 @@ export default function HomeScreen() {
     queryFn: () => getWeeklyExpenseTotals(startDateStr, endDateStr),
   });
 
+  const { data: monthlyRaw = [], refetch: refetchMonthly } = useQuery({
+    queryKey: ['monthlyTotals', selectedYear],
+    queryFn: () => getMonthlyTotalsForYear(selectedYear),
+  });
+
   const { data: activities = [], refetch: refetchActivities } = useQuery({
     queryKey: ['activities'],
     queryFn: getActivities,
@@ -194,6 +208,10 @@ export default function HomeScreen() {
     queryKey: ['users'],
     queryFn: getUsers,
   });
+
+  useEffect(() => {
+    setSelectedMonthIndex((prev) => Math.min(11, Math.max(0, prev)));
+  }, [selectedYear]);
 
   const userMap = useMemo(() => {
     const map = new Map<string, { name: string; role: UserRole }>();
@@ -334,6 +352,38 @@ export default function HomeScreen() {
       }),
     [netSalesSplit, weekTotals.expenses, weekTotals.sales]
   );
+
+  const monthLabels = useMemo(
+    () => ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+    []
+  );
+
+  const monthlyPoints = useMemo(() => {
+    return monthLabels.map((monthLabel, index) => {
+      const monthTotals = monthlyRaw.find((entry) => entry.monthIndex === index);
+      const sales = Number(monthTotals?.sales) || 0;
+      const expenses = Number(monthTotals?.expenses) || 0;
+      const splitAmounts = calculateNetSalesSplitAmounts(sales, expenses, netSalesSplit);
+
+      return {
+        monthLabel,
+        sales,
+        expenses,
+        om: splitAmounts.operation,
+        gm: splitAmounts.general,
+        fc: splitAmounts.foodCart,
+      };
+    });
+  }, [monthLabels, monthlyRaw, netSalesSplit]);
+
+  const selectedPoint = monthlyPoints[selectedMonthIndex] ?? {
+    monthLabel: monthLabels[selectedMonthIndex] ?? 'Jan',
+    sales: 0,
+    expenses: 0,
+    om: 0,
+    gm: 0,
+    fc: 0,
+  };
 
   const updateProgress = useCallback((value: number, message: string) => {
     setProgressValue(value);
@@ -551,18 +601,18 @@ export default function HomeScreen() {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await Promise.all([refetchSales(), refetchExpenses(), refetchActivities(), refetchUsers()]);
+    await Promise.all([refetchSales(), refetchExpenses(), refetchMonthly(), refetchActivities(), refetchUsers()]);
     setRefreshing(false);
-  }, [refetchSales, refetchExpenses, refetchActivities, refetchUsers]);
+  }, [refetchSales, refetchExpenses, refetchMonthly, refetchActivities, refetchUsers]);
 
   const refreshOverview = useCallback(async () => {
     setIsOverviewRefreshing(true);
     try {
-      await Promise.all([refetchSales(), refetchExpenses()]);
+      await Promise.all([refetchSales(), refetchExpenses(), refetchMonthly()]);
     } finally {
       setIsOverviewRefreshing(false);
     }
-  }, [refetchSales, refetchExpenses]);
+  }, [refetchSales, refetchExpenses, refetchMonthly]);
 
   useFocusEffect(
     useCallback(() => {
@@ -1125,6 +1175,28 @@ export default function HomeScreen() {
               </View>
             </View>
           </View>
+
+          <MonthlyOverview
+            theme={theme}
+            year={selectedYear}
+            points={monthlyPoints}
+            selectedMonthIndex={selectedMonthIndex}
+            onSelectMonth={setSelectedMonthIndex}
+            totalsForSelectedMonth={{
+              sales: selectedPoint.sales,
+              expenses: selectedPoint.expenses,
+              om: selectedPoint.om,
+              gm: selectedPoint.gm,
+              fc: selectedPoint.fc,
+            }}
+            colors={{
+              sales: theme.chartLine,
+              expenses: theme.error,
+              om: '#2ECC71',
+              gm: '#9B59B6',
+              fc: '#F39C12',
+            }}
+          />
 
           <WeeklyOverviewLegend
             theme={theme}
