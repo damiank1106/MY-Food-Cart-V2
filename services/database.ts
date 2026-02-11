@@ -2219,6 +2219,101 @@ export async function getWeeklySalesTotals(startDate: string, endDate: string): 
   return result;
 }
 
+export async function getMonthlyTotalsForYear(year: number): Promise<{
+  monthIndex: number;
+  sales: number;
+  expenses: number;
+}[]> {
+  const base = Array.from({ length: 12 }, (_, monthIndex) => ({
+    monthIndex,
+    sales: 0,
+    expenses: 0,
+  }));
+  const totalsByMonth = new Map<number, { sales: number; expenses: number }>();
+
+  const ensureEntry = (monthIndex: number) => {
+    const current = totalsByMonth.get(monthIndex);
+    if (current) return current;
+    const created = { sales: 0, expenses: 0 };
+    totalsByMonth.set(monthIndex, created);
+    return created;
+  };
+
+  const applyTotal = (ym: string, value: unknown, field: 'sales' | 'expenses') => {
+    if (typeof ym !== 'string' || !/^\d{4}-\d{2}$/.test(ym)) return;
+    const [yearPart, monthPart] = ym.split('-');
+    if (Number(yearPart) !== year) return;
+    const monthIndex = Number(monthPart) - 1;
+    if (!Number.isInteger(monthIndex) || monthIndex < 0 || monthIndex > 11) return;
+    const parsedTotal = Number(value);
+    const safeTotal = Number.isFinite(parsedTotal) ? parsedTotal : 0;
+    const entry = ensureEntry(monthIndex);
+    entry[field] += safeTotal;
+  };
+
+  if (Platform.OS === 'web') {
+    const sales = await getFromStorage<Sale[]>(STORAGE_KEYS.sales, []);
+    const expenses = await getFromStorage<Expense[]>(STORAGE_KEYS.expenses, []);
+
+    for (const sale of sales) {
+      if (!sale.date) continue;
+      applyTotal(sale.date.slice(0, 7), sale.total, 'sales');
+    }
+
+    for (const expense of expenses) {
+      if (!expense.date) continue;
+      applyTotal(expense.date.slice(0, 7), expense.total, 'expenses');
+    }
+
+    return base.map(item => {
+      const monthTotals = totalsByMonth.get(item.monthIndex);
+      return {
+        ...item,
+        sales: monthTotals?.sales ?? 0,
+        expenses: monthTotals?.expenses ?? 0,
+      };
+    });
+  }
+
+  const database = await ensureDb();
+  if (!database) return base;
+
+  try {
+    const salesRows = await database.getAllAsync<{ ym: string; total: number | null }>(
+      `SELECT substr(date,1,7) as ym, SUM(total) as total
+       FROM sales
+       WHERE substr(date,1,4) = ?
+       GROUP BY ym;`,
+      [String(year)]
+    );
+    for (const row of salesRows) {
+      applyTotal(row.ym, row.total, 'sales');
+    }
+
+    const expenseRows = await database.getAllAsync<{ ym: string; total: number | null }>(
+      `SELECT substr(date,1,7) as ym, SUM(total) as total
+       FROM expenses
+       WHERE substr(date,1,4) = ?
+       GROUP BY ym;`,
+      [String(year)]
+    );
+    for (const row of expenseRows) {
+      applyTotal(row.ym, row.total, 'expenses');
+    }
+  } catch (error) {
+    console.log('Error getting monthly totals for year:', error);
+  }
+
+  return base.map(item => {
+    const monthTotals = totalsByMonth.get(item.monthIndex);
+    return {
+      ...item,
+      sales: monthTotals?.sales ?? 0,
+      expenses: monthTotals?.expenses ?? 0,
+    };
+  });
+}
+
 export async function getWeeklyExpenseTotals(startDate: string, endDate: string): Promise<Record<string, number>> {
   const result: Record<string, number> = {};
   const start = parseLocalDateString(startDate);
