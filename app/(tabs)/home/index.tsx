@@ -11,6 +11,7 @@ import {
   Modal,
   Alert,
   Platform,
+  Dimensions,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -513,15 +514,20 @@ export default function HomeScreen() {
   const chartHeight = 150;
   const chartTopPadding = 20;
   const chartBottomPadding = 10;
+  const axisLabelHeight = 28;
   const cardPadding = 16;
   const yAxisArea = 48;
-  const chartWidth = Math.max(320, chartCardWidth - cardPadding * 2 - yAxisArea);
+  const fallbackCardWidth = Math.max(300, Dimensions.get('window').width - 32);
+  const effectiveCardWidth = chartCardWidth > 0 ? chartCardWidth : fallbackCardWidth;
+  const computedChartWidth = effectiveCardWidth - cardPadding * 2 - yAxisArea;
+  const chartWidth = Math.max(260, computedChartWidth);
   const chartXOffset = 10;
   const chartSvgWidth = chartWidth + yAxisArea + chartXOffset;
-  const chartSvgHeight = chartHeight + chartTopPadding + chartBottomPadding;
-  const baseDaySpacing = Math.round(chartWidth / 6);
+  const chartSvgHeight = chartHeight + chartTopPadding + chartBottomPadding + axisLabelHeight;
+  const xAxisY = chartTopPadding + chartHeight + axisLabelHeight - 6;
+  const pointsCount = Math.max(2, chartData.length);
+  const baseDaySpacing = Math.round(chartWidth / (pointsCount - 1));
   const dayPointSpacing = Math.round(baseDaySpacing * 0.92);
-  const stepX = dayPointSpacing;
   const dayLabelSpacingMin = 18;
   const dayLabelSpacingMax = 90;
   const dayLabelSpacingStep = 2;
@@ -541,6 +547,7 @@ export default function HomeScreen() {
   const [dayLabelSpacing, setDayLabelSpacing] = useState<number>(
     defaultDayLabelSpacing
   );
+  const stepX = dayLabelSpacing;
   const scaleY = useCallback(
     (value: number) => chartTopPadding + chartHeight - (value / maxValue) * chartHeight,
     [chartHeight, chartTopPadding, maxValue]
@@ -964,8 +971,8 @@ export default function HomeScreen() {
                 </TouchableOpacity>
               </View>
               
-              <View style={styles.chartContainer}>
-                <View style={styles.chartClipContainer}>
+              <View style={styles.chartAreaWrapper}>
+                <View style={styles.plotClipWrapper}>
                   <Svg width={chartSvgWidth} height={chartSvgHeight} style={styles.chart}>
                   <Defs>
                     <SvgLinearGradient id="areaGradient" x1="0" y1="0" x2="0" y2="1">
@@ -1163,6 +1170,19 @@ export default function HomeScreen() {
                         </SvgText>
                       </React.Fragment>
                     ))}
+
+                    {chartData.map((point, index) => (
+                      <SvgText
+                        key={`day-label-${point.dateStr}-${index}`}
+                        x={index * stepX}
+                        y={xAxisY}
+                        fontSize={10}
+                        textAnchor="middle"
+                        fill={theme.textMuted}
+                      >
+                        {point.day}
+                      </SvgText>
+                    ))}
                   </G>
                 </Svg>
               </View>
@@ -1196,21 +1216,6 @@ export default function HomeScreen() {
                 </View>
               </View>
 
-              <View style={styles.xAxisContainer}>
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.xAxisContent}
-                >
-                  {chartData.map((point, index) => (
-                    <View key={index} style={[styles.xAxisLabelWrapper, { width: dayLabelSpacing }]}>
-                      <Text style={[styles.xAxisLabel, { color: theme.textMuted }]}>
-                        {point.day}
-                      </Text>
-                    </View>
-                  ))}
-                </ScrollView>
-              </View>
             </View>
           </View>
           </View>
@@ -1434,10 +1439,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  chartContainer: {
+  chartAreaWrapper: {
     alignItems: 'center',
   },
-  chartClipContainer: {
+  plotClipWrapper: {
     width: '100%',
     overflow: 'hidden',
   },
@@ -1482,7 +1487,6 @@ const styles = StyleSheet.create({
   },
   xAxisContainer: {
     marginTop: 8,
-    overflow: 'hidden',
   },
   xAxisContent: {
     flexDirection: 'row',
