@@ -34,7 +34,7 @@ export default function WeeklyOverviewLegend({
     <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
       <Text style={[styles.title, { color: theme.text }]}>Legend</Text>
       <Text style={[styles.bodyText, { color: theme.textSecondary }]}>
-        Weekly Overview shows weekly totals by day (Mon–Sun).
+        Overview shows weekly and monthly totals by day/month.
       </Text>
       <Text style={[styles.bodyText, { color: theme.textSecondary }]}>
         Dots represent daily totals; tiny numbers above dots show the value for that day.
