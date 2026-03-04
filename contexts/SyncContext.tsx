@@ -1,7 +1,15 @@
-import createContextHook from '@nkzw/create-context-hook';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useState, useEffect, useCallback, useRef } from 'react';
 import NetInfo from '@react-native-community/netinfo';
+import {
+  createContext,
+  ReactNode,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { OutboxEntityType, OutboxItem } from '@/types';
 import {
   getUsers,
@@ -60,7 +68,27 @@ const LAST_SYNC_TIME_KEY = '@myfoodcart_last_sync_time';
 
 type DeletionTable = 'users' | 'categories' | 'inventory' | 'sales' | 'expenses' | 'activities';
 
-export const [SyncProvider, useSync] = createContextHook(() => {
+type SyncContextValue = {
+  syncStatus: SyncStatus;
+  isSyncing: boolean;
+  pendingCount: number;
+  isOnline: boolean;
+  lastSyncTime: Date | null;
+  syncNow: (options?: { reason?: SyncReason }) => Promise<{ ok: boolean }>;
+  triggerSync: () => Promise<boolean>;
+  triggerFullSync: (options?: { reason: SyncReason }) => Promise<{ ok: boolean }>;
+  checkPendingCount: () => Promise<void>;
+  queueDeletion: (
+    entityType: DeletionTable,
+    id: string,
+    metadata?: { name?: string; amount?: number | null; date?: string | null }
+  ) => Promise<void>;
+  syncBeforeLogout: () => Promise<boolean>;
+};
+
+const SyncContext = createContext<SyncContextValue | undefined>(undefined);
+
+export function SyncProvider({ children }: { children: ReactNode }) {
   const supabaseConfigured = isSupabaseConfigured();
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('synced');
   const [pendingCount, setPendingCount] = useState(0);
@@ -73,7 +101,7 @@ export const [SyncProvider, useSync] = createContextHook(() => {
   const checkPendingCountInternal = useCallback(async (online: boolean) => {
     const count = await getPendingSyncCount();
     setPendingCount(count);
-    
+
     if (count > 0) {
       setSyncStatus('pending');
     } else if (online) {
@@ -111,7 +139,7 @@ export const [SyncProvider, useSync] = createContextHook(() => {
     try {
       console.log('Fetching server users for ID migration...');
       const serverUsers = await fetchUsersFromSupabase();
-      
+
       if (serverUsers && serverUsers.length > 0) {
         console.log(`Server users fetched: ${serverUsers.length}`);
         await migrateLocalUserIdsToServerIds({
@@ -207,17 +235,21 @@ export const [SyncProvider, useSync] = createContextHook(() => {
       const pendingExpenses = expenses.filter(e => e.syncStatus === 'pending');
       const pendingActivities = activities.filter(a => a.syncStatus === 'pending');
 
-      console.log(`Pushing pending changes: ${pendingUsers.length} users, ${pendingCategories.length} categories, ${pendingInventory.length} inventory, ${pendingSales.length} sales, ${pendingExpenses.length} expenses, ${pendingActivities.length} activities`);
+      console.log(
+        `Pushing pending changes: ${pendingUsers.length} users, ${pendingCategories.length} categories, ${pendingInventory.length} inventory, ${pendingSales.length} sales, ${pendingExpenses.length} expenses, ${pendingActivities.length} activities`
+      );
 
       if (pendingUsers.length > 0) {
         console.log('Resolving user PIN conflicts before push...');
         const usersToSkip = new Set<string>();
-        
+
         for (const localUser of pendingUsers) {
           try {
             const serverUser = await findUserByPinInSupabase(localUser.pin);
             if (serverUser && serverUser.id !== localUser.id) {
-              console.log(`PIN conflict detected: local ${localUser.id} vs server ${serverUser.id} for PIN ${localUser.pin}`);
+              console.log(
+                `PIN conflict detected: local ${localUser.id} vs server ${serverUser.id} for PIN ${localUser.pin}`
+              );
               await resolveUserPinConflict(localUser.id, serverUser.id, localUser);
               usersToSkip.add(localUser.id);
             }
@@ -225,9 +257,9 @@ export const [SyncProvider, useSync] = createContextHook(() => {
             console.log(`Error checking PIN conflict for user ${localUser.id}:`, error);
           }
         }
-        
+
         pendingUsers = pendingUsers.filter(u => !usersToSkip.has(u.id));
-        
+
         if (pendingUsers.length > 0) {
           console.log(`Pushing ${pendingUsers.length} users (${usersToSkip.size} resolved via PIN conflict)...`);
           const result = await syncUsersToSupabase(pendingUsers);
@@ -308,21 +340,18 @@ export const [SyncProvider, useSync] = createContextHook(() => {
       console.log(`Push completed: ${pushSuccess ? 'success' : 'some failures'}`);
 
       console.log('Pulling data from Supabase...');
-      const [
-        serverCategories,
-        serverInventory,
-        serverSales,
-        serverExpenses,
-        serverActivities,
-      ] = await Promise.all([
-        fetchCategoriesFromSupabase(),
-        fetchInventoryFromSupabase(),
-        fetchSalesFromSupabase(),
-        fetchExpensesFromSupabase(),
-        fetchActivitiesFromSupabase(),
-      ]);
+      const [serverCategories, serverInventory, serverSales, serverExpenses, serverActivities] =
+        await Promise.all([
+          fetchCategoriesFromSupabase(),
+          fetchInventoryFromSupabase(),
+          fetchSalesFromSupabase(),
+          fetchExpensesFromSupabase(),
+          fetchActivitiesFromSupabase(),
+        ]);
 
-      console.log(`Pulled from server: ${serverUsers?.length || 0} users, ${serverCategories?.length || 0} categories, ${serverInventory?.length || 0} inventory, ${serverSales?.length || 0} sales, ${serverExpenses?.length || 0} expenses, ${serverActivities?.length || 0} activities`);
+      console.log(
+        `Pulled from server: ${serverUsers?.length || 0} users, ${serverCategories?.length || 0} categories, ${serverInventory?.length || 0} inventory, ${serverSales?.length || 0} sales, ${serverExpenses?.length || 0} expenses, ${serverActivities?.length || 0} activities`
+      );
 
       if (serverUsers) await upsertUsersFromServer(serverUsers);
       if (serverCategories) await upsertCategoriesFromServer(serverCategories);
@@ -363,7 +392,7 @@ export const [SyncProvider, useSync] = createContextHook(() => {
       setIsSyncing(false);
       if (needsResync.current) {
         needsResync.current = false;
-        triggerFullSync({ reason: 'auto' });
+        void triggerFullSync({ reason: 'auto' });
       }
     }
   }, [checkPendingCountInternal]);
@@ -392,12 +421,12 @@ export const [SyncProvider, useSync] = createContextHook(() => {
       }
     };
 
-    loadLastSyncTime();
+    void loadLastSyncTime();
 
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [supabaseConfigured]);
 
   const syncNow = useCallback(async (options?: { reason?: SyncReason }): Promise<{ ok: boolean }> => {
     const result = await triggerFullSync({ reason: options?.reason || 'auto' });
@@ -410,17 +439,17 @@ export const [SyncProvider, useSync] = createContextHook(() => {
   }, [syncNow]);
 
   useEffect(() => {
-    checkPendingCountInternal(true);
-    
+    void checkPendingCountInternal(true);
+
     const unsubscribe = NetInfo.addEventListener(state => {
       const online = state.isConnected ?? false;
       console.log('Network state changed:', online ? 'online' : 'offline');
       setIsOnline(online);
-      
+
       if (!online) {
         setSyncStatus('offline');
       } else if (!isSyncingRef.current) {
-        triggerFullSync({ reason: 'auto' });
+        void triggerFullSync({ reason: 'auto' });
       }
     });
 
@@ -448,7 +477,7 @@ export const [SyncProvider, useSync] = createContextHook(() => {
     if (isSyncingRef.current) {
       needsResync.current = true;
     }
-    checkPendingCount();
+    await checkPendingCount();
   }, [checkPendingCount]);
 
   const syncBeforeLogout = useCallback(async (): Promise<boolean> => {
@@ -461,7 +490,7 @@ export const [SyncProvider, useSync] = createContextHook(() => {
     return result.ok;
   }, [supabaseConfigured, triggerFullSync]);
 
-  return {
+  const value = useMemo<SyncContextValue>(() => ({
     syncStatus,
     isSyncing,
     pendingCount,
@@ -473,5 +502,27 @@ export const [SyncProvider, useSync] = createContextHook(() => {
     checkPendingCount,
     queueDeletion,
     syncBeforeLogout,
-  };
-});
+  }), [
+    syncStatus,
+    isSyncing,
+    pendingCount,
+    isOnline,
+    lastSyncTime,
+    syncNow,
+    triggerSync,
+    triggerFullSync,
+    checkPendingCount,
+    queueDeletion,
+    syncBeforeLogout,
+  ]);
+
+  return <SyncContext.Provider value={value}>{children}</SyncContext.Provider>;
+}
+
+export function useSync() {
+  const context = useContext(SyncContext);
+  if (!context) {
+    throw new Error('useSync must be used within a <SyncProvider>');
+  }
+  return context;
+}
