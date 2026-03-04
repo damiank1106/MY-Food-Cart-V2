@@ -365,15 +365,6 @@ export default function SalesScreen() {
       })),
   ];
 
-  const handleHeaderRefresh = async () => {
-    if (uiSyncActive) {
-      return;
-    }
-    await syncNow({ reason: 'manual' });
-    await checkPendingCount();
-    await Promise.all([refetchSales(), refetchExpenses()]);
-  };
-
   const handlePendingSync = async () => {
     if (!isOnline) {
       Alert.alert('Offline', "You're offline. Pending items will sync next time.");
@@ -423,13 +414,6 @@ export default function SalesScreen() {
                   <Text style={styles.pendingBadgeText}>{pendingCount}</Text>
                 </View>
               )}
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.calendarButton, { backgroundColor: theme.card, borderColor: theme.cardBorder, opacity: uiSyncActive ? 0.7 : 1 }]}
-              onPress={handleHeaderRefresh}
-              disabled={uiSyncActive}
-            >
-              <RefreshCw color={theme.primary} size={20} />
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.calendarButton, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}

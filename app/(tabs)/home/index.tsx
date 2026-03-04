@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Package, ShoppingCart, User, Settings, RefreshCw } from 'lucide-react-native';
+import { Package, ShoppingCart, User, Settings } from 'lucide-react-native';
 import { useQuery } from '@tanstack/react-query';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Print from 'expo-print';
@@ -118,7 +118,7 @@ const WEEKLY_DAY_LABEL_SPACING_KEY = '@myfoodcart_weekly_day_label_spacing';
 export default function HomeScreen() {
   const router = useRouter();
   const { settings, user: currentUser } = useAuth();
-  const { lastSyncTime, syncNow, uiSyncActive } = useSync();
+  const { lastSyncTime, syncNow } = useSync();
   const theme = settings.darkMode ? Colors.dark : Colors.light;
   const chartLabelColor = settings.darkMode ? '#FFFFFF' : '#000000';
   const SALES_LABEL_BLUE = '#7DB7FF';
@@ -865,13 +865,6 @@ export default function HomeScreen() {
             >
               <View style={styles.overviewHeader}>
                 <Text style={[styles.sectionTitle, { color: theme.text }]}>Weekly Overview</Text>
-                <TouchableOpacity
-                  style={[styles.refreshButton, { backgroundColor: theme.cardHighlight, borderColor: theme.cardBorder }]}
-                  onPress={refreshOverview}
-                  disabled={uiSyncActive}
-                >
-                  <RefreshCw color={theme.primary} size={16} />
-                </TouchableOpacity>
               </View>
               
               <View style={styles.weekTotalsRow}>
@@ -1420,14 +1413,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 12,
-  },
-  refreshButton: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   chartAreaWrapper: {
     alignItems: 'center',
