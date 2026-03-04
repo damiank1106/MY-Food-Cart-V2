@@ -1158,7 +1158,7 @@ export async function getPendingSyncCount(): Promise<number> {
     const expenses = await getFromStorage<Expense[]>(STORAGE_KEYS.expenses, []);
     const activities = await getFromStorage<Activity[]>(STORAGE_KEYS.activities, []);
     const outbox = await getFromStorage<OutboxItem[]>(STORAGE_KEYS.outbox, []);
-    const deletionOutbox = outbox.filter(item => item.operation === 'delete');
+    const unsyncedOutbox = outbox.filter(item => item.syncStatus !== 'done');
     
     return [
       ...users.filter(u => u.syncStatus === 'pending'),
@@ -1167,7 +1167,7 @@ export async function getPendingSyncCount(): Promise<number> {
       ...sales.filter(s => s.syncStatus === 'pending'),
       ...expenses.filter(e => e.syncStatus === 'pending'),
       ...activities.filter(a => a.syncStatus === 'pending'),
-      ...deletionOutbox,
+      ...unsyncedOutbox,
     ].length;
   }
 
@@ -1180,7 +1180,7 @@ export async function getPendingSyncCount(): Promise<number> {
     db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM sales WHERE syncStatus = ?', ['pending']),
     db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM expenses WHERE syncStatus = ?', ['pending']),
     db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM activities WHERE syncStatus = ?', ['pending']),
-    db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM outbox WHERE operation = ?', ['delete']),
+    db.getFirstAsync<{ count: number }>("SELECT COUNT(*) as count FROM outbox WHERE syncStatus IS NULL OR syncStatus != 'done'"),
   ]);
 
   return counts.reduce((sum, result) => sum + (result?.count || 0), 0);
@@ -2079,7 +2079,7 @@ export async function getPendingSummaryAndItems(limitPerTable = 50): Promise<Pen
       db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM sales WHERE syncStatus = ?', ['pending']),
       db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM expenses WHERE syncStatus = ?', ['pending']),
       db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM activities WHERE syncStatus = ?', ['pending']),
-      db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM outbox WHERE operation = ?', ['delete']),
+      db.getFirstAsync<{ count: number }>("SELECT COUNT(*) as count FROM outbox WHERE syncStatus IS NULL OR syncStatus != 'done'"),
     ]);
 
     result.totals.users = usersCount?.count || 0;

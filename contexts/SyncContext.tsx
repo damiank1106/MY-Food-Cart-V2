@@ -10,6 +10,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
 import { OutboxEntityType, OutboxItem } from '@/types';
 import {
   getUsers,
@@ -85,11 +86,13 @@ type SyncContextValue = {
     metadata?: { name?: string; amount?: number | null; date?: string | null }
   ) => Promise<void>;
   syncBeforeLogout: () => Promise<boolean>;
+  resetSyncState: () => Promise<void>;
 };
 
 const SyncContext = createContext<SyncContextValue | undefined>(undefined);
 
 export function SyncProvider({ children }: { children: ReactNode }) {
+  const { user } = useAuth();
   const supabaseConfigured = isSupabaseConfigured();
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('synced');
   const [pendingCount, setPendingCount] = useState(0);
@@ -99,6 +102,8 @@ export function SyncProvider({ children }: { children: ReactNode }) {
   const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
   const isSyncingRef = useRef(false);
   const needsResync = useRef(false);
+  const hasActiveSessionRef = useRef(false);
+  const isOnlineRef = useRef(true);
   const pendingCountRef = useRef(0);
   const syncStatusRef = useRef<SyncStatus>('synced');
 
@@ -122,15 +127,27 @@ export function SyncProvider({ children }: { children: ReactNode }) {
     setUiSyncActive(prev => (prev === nextValue ? prev : nextValue));
   }, []);
 
+  const setIsSyncingStable = useCallback((nextValue: boolean) => {
+    setIsSyncing(prev => (prev === nextValue ? prev : nextValue));
+  }, []);
+
   const shouldUseUiSyncActive = useCallback((reason: SyncReason) => {
     return reason === 'manual' || reason === 'auto_add_sale' || reason === 'auto_add_expense' || reason === 'weekly_overview_refresh';
   }, []);
 
   const checkPendingCountInternal = useCallback(async (online: boolean) => {
+    if (!hasActiveSessionRef.current) {
+      setPendingCountStable(0);
+      setSyncStatusStable(online ? 'synced' : 'offline');
+      return;
+    }
+
     const count = await getPendingSyncCount();
     setPendingCountStable(count);
 
-    if (count > 0) {
+    if (isSyncingRef.current) {
+      setSyncStatusStable('syncing');
+    } else if (count > 0) {
       setSyncStatusStable('pending');
     } else if (online) {
       setSyncStatusStable('synced');
@@ -141,16 +158,21 @@ export function SyncProvider({ children }: { children: ReactNode }) {
     const reason = options?.reason || 'auto';
     const trackUiSync = shouldUseUiSyncActive(reason);
 
-    if (trackUiSync) {
-      setUiSyncActiveStable(true);
-    }
-
     console.log(`Starting full bi-directional sync (reason: ${reason})...`);
+
+    if (!hasActiveSessionRef.current) {
+      console.log('No active session, skipping sync');
+      return { ok: false };
+    }
 
     if (isSyncingRef.current) {
       console.log('Sync already in progress, skipping...');
       needsResync.current = true;
       return { ok: false };
+    }
+
+    if (trackUiSync) {
+      setUiSyncActiveStable(true);
     }
 
     if (!isSupabaseConfigured()) {
@@ -173,7 +195,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
     }
 
     isSyncingRef.current = true;
-    setIsSyncing(prev => (prev ? prev : true));
+    setIsSyncingStable(true);
     setSyncStatusStable('syncing');
 
     try {
@@ -429,14 +451,18 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       return { ok: false };
     } finally {
       isSyncingRef.current = false;
-      setIsSyncing(prev => (prev ? false : prev));
+      setIsSyncingStable(false);
       setUiSyncActiveStable(false);
       if (needsResync.current) {
         needsResync.current = false;
-        void triggerFullSync({ reason: 'auto' });
+        if (hasActiveSessionRef.current) {
+          void triggerFullSync({ reason: 'auto' });
+        }
+      } else {
+        void checkPendingCountInternal(isOnlineRef.current);
       }
     }
-  }, [checkPendingCountInternal, setPendingCountStable, setSyncStatusStable, setUiSyncActiveStable, shouldUseUiSyncActive]);
+  }, [checkPendingCountInternal, setIsSyncingStable, setPendingCountStable, setSyncStatusStable, setUiSyncActiveStable, shouldUseUiSyncActive]);
 
   const checkPendingCount = useCallback(async () => {
     await checkPendingCountInternal(isOnline);
@@ -480,16 +506,33 @@ export function SyncProvider({ children }: { children: ReactNode }) {
   }, [syncNow]);
 
   useEffect(() => {
+    hasActiveSessionRef.current = Boolean(user);
+
+    if (!user) {
+      isSyncingRef.current = false;
+      needsResync.current = false;
+      setUiSyncActiveStable(false);
+      setIsSyncingStable(false);
+      setPendingCountStable(0);
+      setSyncStatusStable(isOnlineRef.current ? 'synced' : 'offline');
+      return;
+    }
+
+    void checkPendingCountInternal(isOnlineRef.current);
+  }, [checkPendingCountInternal, setIsSyncingStable, setPendingCountStable, setSyncStatusStable, setUiSyncActiveStable, user]);
+
+  useEffect(() => {
     void checkPendingCountInternal(true);
 
     const unsubscribe = NetInfo.addEventListener(state => {
       const online = state.isConnected ?? false;
       console.log('Network state changed:', online ? 'online' : 'offline');
+      isOnlineRef.current = online;
       setIsOnline(prev => (prev === online ? prev : online));
 
       if (!online) {
         setSyncStatusStable('offline');
-      } else if (!isSyncingRef.current) {
+      } else if (!isSyncingRef.current && hasActiveSessionRef.current) {
         void triggerFullSync({ reason: 'auto' });
       }
     });
@@ -522,6 +565,10 @@ export function SyncProvider({ children }: { children: ReactNode }) {
   }, [checkPendingCount]);
 
   const syncBeforeLogout = useCallback(async (): Promise<boolean> => {
+    const existingPending = await getPendingSyncCount();
+    if (existingPending === 0) {
+      return true;
+    }
     if (!supabaseConfigured) {
       console.log('Supabase not configured, skipping logout sync.');
       return false;
@@ -530,6 +577,15 @@ export function SyncProvider({ children }: { children: ReactNode }) {
     const result = await triggerFullSync({ reason: 'logout' });
     return result.ok;
   }, [supabaseConfigured, triggerFullSync]);
+
+  const resetSyncState = useCallback(async () => {
+    needsResync.current = false;
+    isSyncingRef.current = false;
+    setUiSyncActiveStable(false);
+    setIsSyncingStable(false);
+    setPendingCountStable(0);
+    setSyncStatusStable(isOnlineRef.current ? 'synced' : 'offline');
+  }, [setIsSyncingStable, setPendingCountStable, setSyncStatusStable, setUiSyncActiveStable]);
 
   const value = useMemo<SyncContextValue>(() => ({
     syncStatus,
@@ -544,6 +600,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
     checkPendingCount,
     queueDeletion,
     syncBeforeLogout,
+    resetSyncState,
   }), [
     syncStatus,
     isSyncing,
@@ -557,6 +614,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
     checkPendingCount,
     queueDeletion,
     syncBeforeLogout,
+    resetSyncState,
   ]);
 
   return <SyncContext.Provider value={value}>{children}</SyncContext.Provider>;
