@@ -36,7 +36,7 @@ const PRIVACY_POLICY_GITHUB_URL = 'https://damiank1106.github.io/MY-Food-Cart-V2
 export default function SettingsScreen() {
   const router = useRouter();
   const { user, settings, updateSettings, changePin, logout } = useAuth();
-  const { syncStatus, pendingCount, isOnline, isSyncing, syncNow, syncBeforeLogout, lastSyncTime } = useSync();
+  const { syncStatus, pendingCount, isOnline, isSyncing, syncNow, syncBeforeLogout, lastSyncTime, resetSyncState } = useSync();
   const queryClient = useQueryClient();
   const theme = settings.darkMode ? Colors.dark : Colors.light;
   const { width, height } = useWindowDimensions();
@@ -478,40 +478,44 @@ export default function SettingsScreen() {
   };
 
   const handleLogout = async () => {
+    const hadPendingItems = pendingCount > 0;
     setShowSyncModal(true);
-    let syncOk = false;
+    let syncOk = !hadPendingItems;
     try {
-      if (isOnline) {
+      if (isOnline && hadPendingItems) {
         syncOk = await syncBeforeLogout();
       }
     } finally {
       setShowSyncModal(false);
     }
-    if (!isOnline) {
+    if (!isOnline && hadPendingItems) {
       Alert.alert('Offline', "You're offline. Pending items will sync next time.");
-    } else if (!syncOk) {
+    } else if (!syncOk && hadPendingItems) {
       Alert.alert('Sync incomplete', 'Some items are still pending. They will sync next time.');
     }
+    await resetSyncState();
     await logout();
     await updateSettings({ hasSeenIntro: false });
     router.replace('/');
   };
 
   const handleGoToWelcome = async () => {
+    const hadPendingItems = pendingCount > 0;
     setShowSyncModal(true);
-    let syncOk = false;
+    let syncOk = !hadPendingItems;
     try {
-      if (isOnline) {
+      if (isOnline && hadPendingItems) {
         syncOk = await syncBeforeLogout();
       }
     } finally {
       setShowSyncModal(false);
     }
-    if (!isOnline) {
+    if (!isOnline && hadPendingItems) {
       Alert.alert('Offline', "You're offline. Pending items will sync next time.");
-    } else if (!syncOk) {
+    } else if (!syncOk && hadPendingItems) {
       Alert.alert('Sync incomplete', 'Some items are still pending. They will sync next time.');
     }
+    await resetSyncState();
     await logout();
     await updateSettings({ hasSeenIntro: false });
     router.replace('/');
@@ -523,18 +527,16 @@ export default function SettingsScreen() {
   };
 
   const getSyncStatusDisplay = (): { text: string; color: string; icon: React.ReactNode } => {
-    switch (syncStatus) {
-      case 'synced':
-        return { text: 'Synced', color: theme.success, icon: <Cloud color={theme.success} size={20} /> };
-      case 'pending':
-        return { text: `Pending (${pendingCount})`, color: theme.warning, icon: <Cloud color={theme.warning} size={20} /> };
-      case 'syncing':
-        return { text: 'Syncing...', color: theme.primary, icon: <RefreshCw color={theme.primary} size={20} /> };
-      case 'offline':
-        return { text: 'Offline', color: theme.textMuted, icon: <CloudOff color={theme.textMuted} size={20} /> };
-      default:
-        return { text: 'Unknown', color: theme.textMuted, icon: <Cloud color={theme.textMuted} size={20} /> };
+    if (syncStatus === 'offline') {
+      return { text: 'Offline', color: theme.textMuted, icon: <CloudOff color={theme.textMuted} size={20} /> };
     }
+    if (isSyncing) {
+      return { text: 'Syncing...', color: theme.primary, icon: <RefreshCw color={theme.primary} size={20} /> };
+    }
+    if (pendingCount > 0) {
+      return { text: `Pending (${pendingCount})`, color: theme.warning, icon: <Cloud color={theme.warning} size={20} /> };
+    }
+    return { text: 'Up to date', color: theme.success, icon: <Cloud color={theme.success} size={20} /> };
   };
 
   const syncStatusDisplay = getSyncStatusDisplay();
