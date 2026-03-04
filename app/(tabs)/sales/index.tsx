@@ -276,14 +276,14 @@ export default function SalesScreen() {
       total: parseFloat(saleTotal),
       items: saleItems,
     });
-    void syncNow({ reason: 'auto_add_sale' });
+    void syncNow({ reason: 'auto_add_sale', trigger: 'auto_add' });
     resetSaleForm();
     setShowSaleModal(false);
   };
 
   const handleSubmitExpense = useCallback(async (payload: { name: string; total: number; items: ExpenseItem[] }) => {
     await createExpenseMutation.mutateAsync(payload);
-    void syncNow({ reason: 'auto_add_expense' });
+    void syncNow({ reason: 'auto_add_expense', trigger: 'auto_add' });
   }, [createExpenseMutation, syncNow]);
 
   const resetSaleForm = () => {
