@@ -46,7 +46,14 @@ import {
 
 export type SyncStatus = 'synced' | 'pending' | 'syncing' | 'offline';
 
-export type SyncReason = 'login' | 'logout' | 'manual' | 'auto';
+export type SyncReason =
+  | 'login'
+  | 'logout'
+  | 'manual'
+  | 'auto'
+  | 'auto_add_sale'
+  | 'auto_add_expense'
+  | 'weekly_overview_refresh';
 
 const DEVELOPER_PIN = '2345';
 const LAST_SYNC_TIME_KEY = '@myfoodcart_last_sync_time';
@@ -58,8 +65,9 @@ export const [SyncProvider, useSync] = createContextHook(() => {
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('synced');
   const [pendingCount, setPendingCount] = useState(0);
   const [isOnline, setIsOnline] = useState(true);
+  const [isSyncing, setIsSyncing] = useState(false);
   const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
-  const isSyncing = useRef(false);
+  const isSyncingRef = useRef(false);
   const needsResync = useRef(false);
 
   const checkPendingCountInternal = useCallback(async (online: boolean) => {
@@ -77,8 +85,9 @@ export const [SyncProvider, useSync] = createContextHook(() => {
     const reason = options?.reason || 'auto';
     console.log(`Starting full bi-directional sync (reason: ${reason})...`);
 
-    if (isSyncing.current) {
+    if (isSyncingRef.current) {
       console.log('Sync already in progress, skipping...');
+      needsResync.current = true;
       return { ok: false };
     }
 
@@ -95,7 +104,8 @@ export const [SyncProvider, useSync] = createContextHook(() => {
       return { ok: false };
     }
 
-    isSyncing.current = true;
+    isSyncingRef.current = true;
+    setIsSyncing(true);
     setSyncStatus('syncing');
 
     try {
@@ -349,7 +359,8 @@ export const [SyncProvider, useSync] = createContextHook(() => {
       await checkPendingCountInternal(true);
       return { ok: false };
     } finally {
-      isSyncing.current = false;
+      isSyncingRef.current = false;
+      setIsSyncing(false);
       if (needsResync.current) {
         needsResync.current = false;
         triggerFullSync({ reason: 'auto' });
@@ -388,10 +399,15 @@ export const [SyncProvider, useSync] = createContextHook(() => {
     };
   }, []);
 
-  const triggerSync = useCallback(async (): Promise<boolean> => {
-    const result = await triggerFullSync({ reason: 'manual' });
-    return result.ok;
+  const syncNow = useCallback(async (options?: { reason?: SyncReason }): Promise<{ ok: boolean }> => {
+    const result = await triggerFullSync({ reason: options?.reason || 'auto' });
+    return result;
   }, [triggerFullSync]);
+
+  const triggerSync = useCallback(async (): Promise<boolean> => {
+    const result = await syncNow({ reason: 'manual' });
+    return result.ok;
+  }, [syncNow]);
 
   useEffect(() => {
     checkPendingCountInternal(true);
@@ -403,7 +419,7 @@ export const [SyncProvider, useSync] = createContextHook(() => {
       
       if (!online) {
         setSyncStatus('offline');
-      } else if (!isSyncing.current) {
+      } else if (!isSyncingRef.current) {
         triggerFullSync({ reason: 'auto' });
       }
     });
@@ -428,8 +444,8 @@ export const [SyncProvider, useSync] = createContextHook(() => {
           return entityType as OutboxEntityType;
       }
     })();
-    await enqueueDeletion(mappedEntityType, id, metadata, { isSyncing: isSyncing.current });
-    if (isSyncing.current) {
+    await enqueueDeletion(mappedEntityType, id, metadata, { isSyncing: isSyncingRef.current });
+    if (isSyncingRef.current) {
       needsResync.current = true;
     }
     checkPendingCount();
@@ -447,9 +463,11 @@ export const [SyncProvider, useSync] = createContextHook(() => {
 
   return {
     syncStatus,
+    isSyncing,
     pendingCount,
     isOnline,
     lastSyncTime,
+    syncNow,
     triggerSync,
     triggerFullSync,
     checkPendingCount,

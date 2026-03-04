@@ -37,7 +37,7 @@ import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 
 export default function SalesScreen() {
   const { user, settings } = useAuth();
-  const { queueDeletion, pendingCount, triggerFullSync, checkPendingCount, isOnline } = useSync();
+  const { queueDeletion, pendingCount, checkPendingCount, isOnline, isSyncing, syncNow } = useSync();
   const theme = settings.darkMode ? Colors.dark : Colors.light;
   const queryClient = useQueryClient();
   const { width, height } = useWindowDimensions();
@@ -277,13 +277,15 @@ export default function SalesScreen() {
       total: parseFloat(saleTotal),
       items: saleItems,
     });
+    void syncNow({ reason: 'auto_add_sale' });
     resetSaleForm();
     setShowSaleModal(false);
   };
 
   const handleSubmitExpense = useCallback(async (payload: { name: string; total: number; items: ExpenseItem[] }) => {
     await createExpenseMutation.mutateAsync(payload);
-  }, [createExpenseMutation]);
+    void syncNow({ reason: 'auto_add_expense' });
+  }, [createExpenseMutation, syncNow]);
 
   const resetSaleForm = () => {
     setSaleName('');
@@ -371,7 +373,7 @@ export default function SalesScreen() {
     }
     setIsSyncingPending(true);
     try {
-      const result = await triggerFullSync({ reason: 'manual' });
+      const result = await syncNow({ reason: 'manual' });
       await checkPendingCount();
       await loadPendingSummary();
       if (result.ok) {
@@ -408,7 +410,7 @@ export default function SalesScreen() {
               onPress={() => setShowPendingModal(true)}
             >
               <Clock color={theme.warning} size={20} />
-              {pendingCount > 0 && (
+              {(isSyncing || pendingCount > 0) && (
                 <View style={[styles.pendingBadge, { backgroundColor: theme.error }]}>
                   <Text style={styles.pendingBadgeText}>{pendingCount}</Text>
                 </View>

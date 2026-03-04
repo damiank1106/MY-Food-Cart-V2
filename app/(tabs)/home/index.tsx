@@ -119,7 +119,7 @@ const WEEKLY_DAY_LABEL_SPACING_KEY = '@myfoodcart_weekly_day_label_spacing';
 export default function HomeScreen() {
   const router = useRouter();
   const { settings, user: currentUser } = useAuth();
-  const { lastSyncTime } = useSync();
+  const { lastSyncTime, syncNow } = useSync();
   const theme = settings.darkMode ? Colors.dark : Colors.light;
   const chartLabelColor = settings.darkMode ? '#FFFFFF' : '#000000';
   const SALES_LABEL_BLUE = '#7DB7FF';
@@ -620,11 +620,12 @@ export default function HomeScreen() {
   const refreshOverview = useCallback(async () => {
     setIsOverviewRefreshing(true);
     try {
+      await syncNow({ reason: 'weekly_overview_refresh' });
       await Promise.all([refetchSales(), refetchExpenses(), refetchMonthly()]);
     } finally {
       setIsOverviewRefreshing(false);
     }
-  }, [refetchSales, refetchExpenses, refetchMonthly]);
+  }, [refetchSales, refetchExpenses, refetchMonthly, syncNow]);
 
   useFocusEffect(
     useCallback(() => {

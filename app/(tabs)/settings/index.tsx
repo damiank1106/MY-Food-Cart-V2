@@ -36,7 +36,7 @@ const PRIVACY_POLICY_GITHUB_URL = 'https://damiank1106.github.io/MY-Food-Cart-V2
 export default function SettingsScreen() {
   const router = useRouter();
   const { user, settings, updateSettings, changePin, logout } = useAuth();
-  const { syncStatus, pendingCount, isOnline, triggerSync, syncBeforeLogout, lastSyncTime } = useSync();
+  const { syncStatus, pendingCount, isOnline, isSyncing, syncNow, syncBeforeLogout, lastSyncTime } = useSync();
   const queryClient = useQueryClient();
   const theme = settings.darkMode ? Colors.dark : Colors.light;
   const { width, height } = useWindowDimensions();
@@ -101,7 +101,7 @@ export default function SettingsScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     try {
       console.log('Starting fix and sync...');
-      await triggerSync();
+      await syncNow({ reason: 'manual' });
       await loadPendingSummary();
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (error) {
@@ -519,7 +519,7 @@ export default function SettingsScreen() {
 
   const handleManualSync = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    await triggerSync();
+    await syncNow({ reason: 'manual' });
   };
 
   const getSyncStatusDisplay = (): { text: string; color: string; icon: React.ReactNode } => {
@@ -793,7 +793,7 @@ export default function SettingsScreen() {
                   <Cloud color={theme.warning} size={20} />
                 </View>
                 <Text style={[styles.settingLabel, { color: theme.text }]}>Pending Sync Items</Text>
-                {pendingCount > 0 && (
+                {(isSyncing || pendingCount > 0) && (
                   <View style={[styles.pendingAlertBadge, { backgroundColor: theme.warning }]}>
                     <Text style={styles.pendingAlertBadgeText}>!</Text>
                   </View>
