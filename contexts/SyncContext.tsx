@@ -71,6 +71,7 @@ type DeletionTable = 'users' | 'categories' | 'inventory' | 'sales' | 'expenses'
 type SyncContextValue = {
   syncStatus: SyncStatus;
   isSyncing: boolean;
+  uiSyncActive: boolean;
   pendingCount: number;
   isOnline: boolean;
   lastSyncTime: Date | null;
@@ -94,23 +95,56 @@ export function SyncProvider({ children }: { children: ReactNode }) {
   const [pendingCount, setPendingCount] = useState(0);
   const [isOnline, setIsOnline] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [uiSyncActive, setUiSyncActive] = useState(false);
   const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
   const isSyncingRef = useRef(false);
   const needsResync = useRef(false);
+  const pendingCountRef = useRef(0);
+  const syncStatusRef = useRef<SyncStatus>('synced');
+
+  const setSyncStatusStable = useCallback((nextStatus: SyncStatus) => {
+    if (syncStatusRef.current === nextStatus) {
+      return;
+    }
+    syncStatusRef.current = nextStatus;
+    setSyncStatus(nextStatus);
+  }, []);
+
+  const setPendingCountStable = useCallback((nextCount: number) => {
+    if (pendingCountRef.current === nextCount) {
+      return;
+    }
+    pendingCountRef.current = nextCount;
+    setPendingCount(nextCount);
+  }, []);
+
+  const setUiSyncActiveStable = useCallback((nextValue: boolean) => {
+    setUiSyncActive(prev => (prev === nextValue ? prev : nextValue));
+  }, []);
+
+  const shouldUseUiSyncActive = useCallback((reason: SyncReason) => {
+    return reason === 'manual' || reason === 'auto_add_sale' || reason === 'auto_add_expense' || reason === 'weekly_overview_refresh';
+  }, []);
 
   const checkPendingCountInternal = useCallback(async (online: boolean) => {
     const count = await getPendingSyncCount();
-    setPendingCount(count);
+    setPendingCountStable(count);
 
     if (count > 0) {
-      setSyncStatus('pending');
+      setSyncStatusStable('pending');
     } else if (online) {
-      setSyncStatus('synced');
+      setSyncStatusStable('synced');
     }
-  }, []);
+  }, [setPendingCountStable, setSyncStatusStable]);
 
   const triggerFullSync = useCallback(async (options?: { reason: SyncReason }): Promise<{ ok: boolean }> => {
     const reason = options?.reason || 'auto';
+    const trackUiSync = shouldUseUiSyncActive(reason);
+
+    if (trackUiSync) {
+      setUiSyncActiveStable(true);
+    }
+
     console.log(`Starting full bi-directional sync (reason: ${reason})...`);
 
     if (isSyncingRef.current) {
@@ -121,20 +155,26 @@ export function SyncProvider({ children }: { children: ReactNode }) {
 
     if (!isSupabaseConfigured()) {
       console.log('Supabase not configured, setting status to pending');
-      setSyncStatus('pending');
+      setSyncStatusStable('pending');
+      if (trackUiSync) {
+        setUiSyncActiveStable(false);
+      }
       return { ok: false };
     }
 
     const netState = await NetInfo.fetch();
     if (!netState.isConnected) {
       console.log('No network connection, setting status to offline');
-      setSyncStatus('offline');
+      setSyncStatusStable('offline');
+      if (trackUiSync) {
+        setUiSyncActiveStable(false);
+      }
       return { ok: false };
     }
 
     isSyncingRef.current = true;
-    setIsSyncing(true);
-    setSyncStatus('syncing');
+    setIsSyncing(prev => (prev ? prev : true));
+    setSyncStatusStable('syncing');
 
     try {
       console.log('Fetching server users for ID migration...');
@@ -365,7 +405,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       }
 
       const newPendingCount = await getPendingSyncCount();
-      setPendingCount(newPendingCount);
+      setPendingCountStable(newPendingCount);
       const syncSucceeded = pushSuccess && newPendingCount === 0;
 
       if (syncSucceeded) {
@@ -375,10 +415,10 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       }
 
       if (newPendingCount === 0) {
-        setSyncStatus('synced');
+        setSyncStatusStable('synced');
         console.log('Full sync completed successfully - all synced');
       } else {
-        setSyncStatus('pending');
+        setSyncStatusStable('pending');
         console.log(`Full sync completed - ${newPendingCount} items still pending`);
       }
 
@@ -389,13 +429,14 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       return { ok: false };
     } finally {
       isSyncingRef.current = false;
-      setIsSyncing(false);
+      setIsSyncing(prev => (prev ? false : prev));
+      setUiSyncActiveStable(false);
       if (needsResync.current) {
         needsResync.current = false;
         void triggerFullSync({ reason: 'auto' });
       }
     }
-  }, [checkPendingCountInternal]);
+  }, [checkPendingCountInternal, setPendingCountStable, setSyncStatusStable, setUiSyncActiveStable, shouldUseUiSyncActive]);
 
   const checkPendingCount = useCallback(async () => {
     await checkPendingCountInternal(isOnline);
@@ -444,17 +485,17 @@ export function SyncProvider({ children }: { children: ReactNode }) {
     const unsubscribe = NetInfo.addEventListener(state => {
       const online = state.isConnected ?? false;
       console.log('Network state changed:', online ? 'online' : 'offline');
-      setIsOnline(online);
+      setIsOnline(prev => (prev === online ? prev : online));
 
       if (!online) {
-        setSyncStatus('offline');
+        setSyncStatusStable('offline');
       } else if (!isSyncingRef.current) {
         void triggerFullSync({ reason: 'auto' });
       }
     });
 
     return () => unsubscribe();
-  }, [checkPendingCountInternal, triggerFullSync]);
+  }, [checkPendingCountInternal, setSyncStatusStable, triggerFullSync]);
 
   const queueDeletion = useCallback(async (
     entityType: DeletionTable,
@@ -493,6 +534,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
   const value = useMemo<SyncContextValue>(() => ({
     syncStatus,
     isSyncing,
+    uiSyncActive,
     pendingCount,
     isOnline,
     lastSyncTime,
@@ -505,6 +547,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
   }), [
     syncStatus,
     isSyncing,
+    uiSyncActive,
     pendingCount,
     isOnline,
     lastSyncTime,

@@ -11,7 +11,6 @@ import {
   Alert,
   Platform,
   KeyboardAvoidingView,
-  ActivityIndicator,
   useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -37,7 +36,7 @@ import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 
 export default function SalesScreen() {
   const { user, settings } = useAuth();
-  const { queueDeletion, pendingCount, checkPendingCount, isOnline, isSyncing, syncNow } = useSync();
+  const { queueDeletion, pendingCount, checkPendingCount, isOnline, syncNow, uiSyncActive } = useSync();
   const theme = settings.darkMode ? Colors.dark : Colors.light;
   const queryClient = useQueryClient();
   const { width, height } = useWindowDimensions();
@@ -366,6 +365,15 @@ export default function SalesScreen() {
       })),
   ];
 
+  const handleHeaderRefresh = async () => {
+    if (uiSyncActive) {
+      return;
+    }
+    await syncNow({ reason: 'manual' });
+    await checkPendingCount();
+    await Promise.all([refetchSales(), refetchExpenses()]);
+  };
+
   const handlePendingSync = async () => {
     if (!isOnline) {
       Alert.alert('Offline', "You're offline. Pending items will sync next time.");
@@ -410,11 +418,18 @@ export default function SalesScreen() {
               onPress={() => setShowPendingModal(true)}
             >
               <Clock color={theme.warning} size={20} />
-              {(isSyncing || pendingCount > 0) && (
+              {(uiSyncActive || pendingCount > 0) && (
                 <View style={[styles.pendingBadge, { backgroundColor: theme.error }]}>
                   <Text style={styles.pendingBadgeText}>{pendingCount}</Text>
                 </View>
               )}
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.calendarButton, { backgroundColor: theme.card, borderColor: theme.cardBorder, opacity: uiSyncActive ? 0.7 : 1 }]}
+              onPress={handleHeaderRefresh}
+              disabled={uiSyncActive}
+            >
+              <RefreshCw color={theme.primary} size={20} />
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.calendarButton, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}
@@ -934,18 +949,12 @@ export default function SalesScreen() {
                 <Text style={[styles.cancelButtonText, { color: theme.textSecondary }]}>Close</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.submitButton, { backgroundColor: theme.primary, opacity: isSyncingPending ? 0.7 : 1 }]}
+                style={[styles.submitButton, { backgroundColor: theme.primary, opacity: (isSyncingPending || uiSyncActive) ? 0.7 : 1 }]}
                 onPress={handlePendingSync}
-                disabled={isSyncingPending}
+                disabled={isSyncingPending || uiSyncActive}
               >
-                {isSyncingPending ? (
-                  <ActivityIndicator color="#fff" />
-                ) : (
-                  <RefreshCw color="#fff" size={18} />
-                )}
-                <Text style={styles.submitButtonText}>
-                  {isSyncingPending ? 'Syncing...' : 'Synchronize'}
-                </Text>
+                <RefreshCw color="#fff" size={18} />
+                <Text style={styles.submitButtonText}>Synchronize</Text>
               </TouchableOpacity>
             </View>
           </View>

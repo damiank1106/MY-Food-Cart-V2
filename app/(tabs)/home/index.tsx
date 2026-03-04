@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   RefreshControl,
   useWindowDimensions,
-  ActivityIndicator,
   Modal,
   Alert,
   Platform,
@@ -119,7 +118,7 @@ const WEEKLY_DAY_LABEL_SPACING_KEY = '@myfoodcart_weekly_day_label_spacing';
 export default function HomeScreen() {
   const router = useRouter();
   const { settings, user: currentUser } = useAuth();
-  const { lastSyncTime, syncNow } = useSync();
+  const { lastSyncTime, syncNow, uiSyncActive } = useSync();
   const theme = settings.darkMode ? Colors.dark : Colors.light;
   const chartLabelColor = settings.darkMode ? '#FFFFFF' : '#000000';
   const SALES_LABEL_BLUE = '#7DB7FF';
@@ -146,7 +145,6 @@ export default function HomeScreen() {
   const [selectedWeek, setSelectedWeek] = useState(0);
   const [selectedMonthIndex, setSelectedMonthIndex] = useState(new Date().getMonth());
   const [refreshing, setRefreshing] = useState(false);
-  const [isOverviewRefreshing, setIsOverviewRefreshing] = useState(false);
   const [showSales, setShowSales] = useState(true);
   const [showExpenses, setShowExpenses] = useState(true);
   const [showOm, setShowOm] = useState(false);
@@ -618,13 +616,8 @@ export default function HomeScreen() {
   }, [refetchSales, refetchExpenses, refetchMonthly, refetchActivities, refetchUsers]);
 
   const refreshOverview = useCallback(async () => {
-    setIsOverviewRefreshing(true);
-    try {
-      await syncNow({ reason: 'weekly_overview_refresh' });
-      await Promise.all([refetchSales(), refetchExpenses(), refetchMonthly()]);
-    } finally {
-      setIsOverviewRefreshing(false);
-    }
+    await syncNow({ reason: 'weekly_overview_refresh' });
+    await Promise.all([refetchSales(), refetchExpenses(), refetchMonthly()]);
   }, [refetchSales, refetchExpenses, refetchMonthly, syncNow]);
 
   useFocusEffect(
@@ -875,13 +868,9 @@ export default function HomeScreen() {
                 <TouchableOpacity
                   style={[styles.refreshButton, { backgroundColor: theme.cardHighlight, borderColor: theme.cardBorder }]}
                   onPress={refreshOverview}
-                  disabled={isOverviewRefreshing}
+                  disabled={uiSyncActive}
                 >
-                  {isOverviewRefreshing ? (
-                    <ActivityIndicator size="small" color={theme.primary} />
-                  ) : (
-                    <RefreshCw color={theme.primary} size={16} />
-                  )}
+                  <RefreshCw color={theme.primary} size={16} />
                 </TouchableOpacity>
               </View>
               
