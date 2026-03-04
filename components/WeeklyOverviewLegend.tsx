@@ -25,7 +25,7 @@ export default function WeeklyOverviewLegend({
       { key: 'S', label: 'Sales', color: salesColor },
       { key: 'E', label: 'Expenses', color: expensesColor },
       { key: 'OM', label: 'Operation Manager', color: omColor },
-      { key: 'GM', label: ROLE_DISPLAY_NAMES.general_manager, color: gmColor },
+      { key: 'AC', label: ROLE_DISPLAY_NAMES.general_manager, color: gmColor },
       { key: 'FC', label: 'Food Cart', color: fcColor },
     ],
     [salesColor, expensesColor, omColor, gmColor, fcColor]
