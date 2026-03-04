@@ -956,7 +956,7 @@ export default function HomeScreen() {
                   onPress={() => setShowGm(!showGm)}
                 >
                   <View style={[styles.legendDot, { backgroundColor: gmColor, opacity: showGm ? 1 : 0.4 }]} />
-                  <Text style={[styles.legendText, { color: showGm ? gmColor : theme.textMuted }]}>GM</Text>
+                  <Text style={[styles.legendText, { color: showGm ? gmColor : theme.textMuted }]}>AC</Text>
                 </TouchableOpacity>
                 <TouchableOpacity 
                   style={[
