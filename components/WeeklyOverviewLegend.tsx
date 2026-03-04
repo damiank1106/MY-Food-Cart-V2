@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { ThemeColors } from '@/constants/colors';
+import { ROLE_DISPLAY_NAMES } from '@/types';
 
 interface WeeklyOverviewLegendProps {
   theme: ThemeColors;
@@ -24,7 +25,7 @@ export default function WeeklyOverviewLegend({
       { key: 'S', label: 'Sales', color: salesColor },
       { key: 'E', label: 'Expenses', color: expensesColor },
       { key: 'OM', label: 'Operation Manager', color: omColor },
-      { key: 'GM', label: 'General Manager', color: gmColor },
+      { key: 'GM', label: ROLE_DISPLAY_NAMES.general_manager, color: gmColor },
       { key: 'FC', label: 'Food Cart', color: fcColor },
     ],
     [salesColor, expensesColor, omColor, gmColor, fcColor]

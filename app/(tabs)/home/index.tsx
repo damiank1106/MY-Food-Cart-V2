@@ -906,8 +906,8 @@ export default function HomeScreen() {
                   </Text>
                 </View>
                 <View style={[styles.weekTotalCard, { backgroundColor: gmColor + '15' }]}>
-                  <Text style={[styles.weekTotalLabel, { color: theme.textSecondary }]}>General Manager</Text>
-                  <Text style={[styles.weekTotalValue, { color: gmColor }]}>
+                  <Text style={[styles.weekTotalLabel, { color: theme.textSecondary }]}>{ROLE_DISPLAY_NAMES.general_manager}</Text>
+                  <Text style={[styles.weekTotalValue, { color: gmColor }]}> 
                     {formatCurrency(weeklySplitAmounts.general)}
                   </Text>
                 </View>

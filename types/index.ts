@@ -112,14 +112,14 @@ export const DEFAULT_CATEGORIES: string[] = ['Cart', 'Freezer', 'Condiments', 'P
 export const UNITS: UnitType[] = ['pcs', 'kg', 'g', 'L', 'mL', 'bundle', 'pack'];
 
 export const ROLE_DISPLAY_NAMES: Record<UserRole, string> = {
-  general_manager: 'General Manager',
+  general_manager: 'Assistant Cook',
   operation_manager: 'Operation Manager',
   inventory_clerk: 'Inventory Clerk',
   developer: 'Developer',
 };
 
 export const DEFAULT_USERS: Omit<User, 'id' | 'createdAt' | 'updatedAt' | 'syncStatus'>[] = [
-  { name: 'General Manager', pin: '1234', role: 'general_manager' },
+  { name: 'Assistant Cook', pin: '1234', role: 'general_manager' },
   { name: 'Operation Manager', pin: '1111', role: 'operation_manager' },
   { name: 'Inventory Clerk', pin: '2222', role: 'inventory_clerk' },
   { name: 'Developer', pin: '2345', role: 'developer' },
