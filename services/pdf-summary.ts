@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Expense, ExpenseItem, Sale } from '@/types';
+import { Expense, ExpenseItem, Sale, ROLE_DISPLAY_NAMES } from '@/types';
 import { getExpensesByDateRange, getSalesByDateRange } from '@/services/database';
 import { getDayKeysForWeek, getWeekRange, parseLocalDateString, toLocalDayKey } from '@/services/dateUtils';
 
@@ -245,7 +245,7 @@ function buildDailySection(days: DailySummary[], split: NetSalesSplit): string {
           <span>${formatCurrency(day.splitAmounts.operation)}</span>
         </div>
         <div class="split-row">
-          <span>General Manager</span>
+          <span>${ROLE_DISPLAY_NAMES.general_manager}</span>
           <span>${formatCurrency(day.splitAmounts.general)}</span>
         </div>
         <div class="split-row">
@@ -335,7 +335,7 @@ function buildWeeklySection(weeks: WeeklySummary[], split: NetSalesSplit): strin
           <span>${formatCurrency(week.splitAmounts.operation)}</span>
         </div>
         <div class="split-row">
-          <span>General Manager</span>
+          <span>${ROLE_DISPLAY_NAMES.general_manager}</span>
           <span>${formatCurrency(week.splitAmounts.general)}</span>
         </div>
         <div class="split-row">

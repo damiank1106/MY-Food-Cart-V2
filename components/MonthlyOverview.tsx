@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import Svg, { Rect, Text as SvgText } from 'react-native-svg';
+import { ROLE_DISPLAY_NAMES } from '@/types';
 
 type MonthlyPoint = {
   monthLabel: string;
@@ -95,7 +96,7 @@ export default function MonthlyOverview({
     { key: 'sales', label: 'Sales', value: totalsForSelectedMonth.sales, color: colors.sales },
     { key: 'expenses', label: 'Expenses', value: totalsForSelectedMonth.expenses, color: colors.expenses },
     { key: 'om', label: 'Operation Manager', value: totalsForSelectedMonth.om, color: colors.om },
-    { key: 'gm', label: 'General Manager', value: totalsForSelectedMonth.gm, color: colors.gm },
+    { key: 'gm', label: ROLE_DISPLAY_NAMES.general_manager, value: totalsForSelectedMonth.gm, color: colors.gm },
     { key: 'fc', label: 'Food Cart', value: totalsForSelectedMonth.fc, color: colors.fc },
   ];
 

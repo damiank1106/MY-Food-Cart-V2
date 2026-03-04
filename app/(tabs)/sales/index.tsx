@@ -24,7 +24,7 @@ import * as Haptics from 'expo-haptics';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSync } from '@/contexts/SyncContext';
 import { Colors } from '@/constants/colors';
-import { Expense, ExpenseItem, Sale, formatCurrency, formatDate, formatShortDate } from '@/types';
+import { Expense, ExpenseItem, Sale, formatCurrency, formatDate, formatShortDate, ROLE_DISPLAY_NAMES } from '@/types';
 import { calculateNetSalesSplitAmounts } from '@/services/netSalesSplit';
 import { 
   getSalesByDate, getExpensesByDate, createSale, createExpense,
@@ -528,7 +528,7 @@ export default function SalesScreen() {
               <View style={styles.splitItem}>
                 <View style={styles.splitItemLeft}>
                   <View style={[styles.splitDot, { backgroundColor: '#2196F3' }]} />
-                  <Text style={[styles.splitItemLabel, { color: theme.textSecondary }]}>General Manager</Text>
+                  <Text style={[styles.splitItemLabel, { color: theme.textSecondary }]}>{ROLE_DISPLAY_NAMES.general_manager}</Text>
                 </View>
                 <View style={styles.splitItemRight}>
                   <Text style={[styles.splitPercent, { color: theme.textMuted }]}>{generalManagerPercent}%</Text>
@@ -782,11 +782,11 @@ export default function SalesScreen() {
                 </View>
               </View>
 
-              {/* General Manager */}
+              {/* Assistant Cook */}
               <View style={styles.percentageRow}>
                 <View style={styles.percentageLabelRow}>
                   <View style={[styles.splitDot, { backgroundColor: '#2196F3' }]} />
-                  <Text style={[styles.percentageLabel, { color: theme.text }]}>GM - General Manager</Text>
+                  <Text style={[styles.percentageLabel, { color: theme.text }]}>GM - Assistant Cook</Text>
                 </View>
                 <View style={styles.percentageControls}>
                   <TouchableOpacity
