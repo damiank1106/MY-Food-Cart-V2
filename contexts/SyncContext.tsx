@@ -197,7 +197,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
 
     try {
       console.log('Fetching server users for ID migration...');
-      const serverUsers = await fetchUsersFromSupabase();
+      let serverUsers = await fetchUsersFromSupabase();
 
       if (serverUsers && serverUsers.length > 0) {
         console.log(`Server users fetched: ${serverUsers.length}`);
@@ -213,6 +213,30 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       await repairDuplicateCategories();
 
       let pushSuccess = true;
+      const migrateUsingServerUsers = async () => {
+        const latestServerUsers = await fetchUsersFromSupabase();
+        if (latestServerUsers && latestServerUsers.length > 0) {
+          console.log(`Re-running ID migration with ${latestServerUsers.length} server users...`);
+          await migrateLocalUserIdsToServerIds({
+            serverUsers: latestServerUsers.map(u => ({ id: u.id, pin: u.pin, role: u.role, name: u.name })),
+            fallbackPin: DEVELOPER_PIN,
+          });
+        }
+        return latestServerUsers;
+      };
+
+      const loadLocalDataSnapshot = async () => {
+        const [users, categories, inventory, sales, expenses, activities] = await Promise.all([
+          getUsers(),
+          getCategories(),
+          getInventory(),
+          getSales(),
+          getExpenses(),
+          getActivities(),
+        ]);
+
+        return { users, categories, inventory, sales, expenses, activities };
+      };
 
       console.log('Processing pending deletions...');
       const pendingDeletions = (await getOutboxItems())
@@ -259,14 +283,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       }
 
       console.log('Fetching local data...');
-      const [users, categories, inventory, sales, expenses, activities] = await Promise.all([
-        getUsers(),
-        getCategories(),
-        getInventory(),
-        getSales(),
-        getExpenses(),
-        getActivities(),
-      ]);
+      let { users, categories, inventory, sales, expenses, activities } = await loadLocalDataSnapshot();
       const outboxSnapshot = await getOutboxItems();
 
       const saleById = new Map(sales.map(sale => [sale.id, sale]));
@@ -288,15 +305,8 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       }
 
       let pendingUsers = users.filter(u => u.syncStatus === 'pending');
-      const pendingCategories = categories.filter(c => c.syncStatus === 'pending');
-      const pendingInventory = inventory.filter(i => i.syncStatus === 'pending');
-      const pendingSales = sales.filter(s => s.syncStatus === 'pending');
-      const pendingExpenses = expenses.filter(e => e.syncStatus === 'pending');
-      const pendingActivities = activities.filter(a => a.syncStatus === 'pending');
 
-      console.log(
-        `Pushing pending changes: ${pendingUsers.length} users, ${pendingCategories.length} categories, ${pendingInventory.length} inventory, ${pendingSales.length} sales, ${pendingExpenses.length} expenses, ${pendingActivities.length} activities`
-      );
+      console.log(`Pushing pending users: ${pendingUsers.length}`);
 
       if (pendingUsers.length > 0) {
         console.log('Resolving user PIN conflicts before push...');
@@ -327,6 +337,19 @@ export function SyncProvider({ children }: { children: ReactNode }) {
           console.log(`All ${usersToSkip.size} pending users resolved via PIN conflict, none to push`);
         }
       }
+
+      serverUsers = await migrateUsingServerUsers();
+      ({ users, categories, inventory, sales, expenses, activities } = await loadLocalDataSnapshot());
+
+      const pendingCategories = categories.filter(c => c.syncStatus === 'pending');
+      const pendingInventory = inventory.filter(i => i.syncStatus === 'pending');
+      const pendingSales = sales.filter(s => s.syncStatus === 'pending');
+      let pendingExpenses = expenses.filter(e => e.syncStatus === 'pending');
+      const pendingActivities = activities.filter(a => a.syncStatus === 'pending');
+
+      console.log(
+        `Pushing remaining pending changes: ${pendingCategories.length} categories, ${pendingInventory.length} inventory, ${pendingSales.length} sales, ${pendingExpenses.length} expenses, ${pendingActivities.length} activities`
+      );
 
       if (pendingCategories.length > 0) {
         console.log('Pushing categories...');
@@ -377,7 +400,21 @@ export function SyncProvider({ children }: { children: ReactNode }) {
         for (const item of expenseUpsertItems) {
           await updateOutboxItemStatus(item.id, 'in_progress');
         }
-        const result = await syncExpensesToSupabase(pendingExpenses);
+        let result = await syncExpensesToSupabase(pendingExpenses);
+
+        if (!result) {
+          console.log('Expense sync failed, running one-time self-heal retry after user remap...');
+          await migrateUsingServerUsers();
+          ({ expenses } = await loadLocalDataSnapshot());
+          pendingExpenses = expenses.filter(e =>
+            e.syncStatus === 'pending' && expenseUpsertItems.some(item => item.entityId === e.id)
+          );
+
+          if (pendingExpenses.length > 0) {
+            result = await syncExpensesToSupabase(pendingExpenses);
+          }
+        }
+
         if (result) {
           for (const item of expenseUpsertItems) {
             await removeOutboxItem(item.id);

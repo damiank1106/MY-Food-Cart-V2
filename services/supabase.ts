@@ -16,6 +16,18 @@ export const supabase = SUPABASE_URL && SUPABASE_ANON_KEY
     })
   : null;
 
+function logSupabaseError(context: string, error: unknown) {
+  const details = error && typeof error === 'object'
+    ? {
+        message: (error as { message?: unknown }).message,
+        code: (error as { code?: unknown }).code,
+        details: (error as { details?: unknown }).details,
+        hint: (error as { hint?: unknown }).hint,
+      }
+    : { message: String(error) };
+  console.log(`${context}:`, details);
+}
+
 function normalizeExpenseItems(items: unknown): ExpenseItem[] {
   if (!Array.isArray(items)) return [];
   return items.reduce<ExpenseItem[]>((acc, item) => {
@@ -197,25 +209,67 @@ export async function syncUsersToSupabase(users: User[]): Promise<boolean> {
   if (!isSupabaseConfigured() || !supabase) return false;
   
   try {
-    const { error } = await supabase.from('users').upsert(
-      users.map(u => ({
-        id: u.id,
-        name: u.name,
-        pin: u.pin,
-        role: u.role,
-        created_at: u.createdAt,
-        updated_at: u.updatedAt,
-      })),
-      { onConflict: 'id' }
-    );
-    
-    if (error) {
-      console.log('Error syncing users:', error);
-      return false;
+    for (const user of users) {
+      const userPayload = {
+        name: user.name,
+        pin: user.pin,
+        role: user.role,
+        bio: user.bio ?? null,
+        updated_at: user.updatedAt,
+      };
+
+      const { data: existingUser, error: selectError } = await supabase
+        .from('users')
+        .select('id,pin')
+        .eq('pin', user.pin)
+        .maybeSingle();
+
+      if (selectError) {
+        logSupabaseError(`Error finding user by pin before sync (pin=${user.pin})`, selectError);
+        return false;
+      }
+
+      if (existingUser?.id) {
+        const { error: updateError } = await supabase
+          .from('users')
+          .update(userPayload)
+          .eq('id', existingUser.id);
+        if (updateError) {
+          logSupabaseError(`Error updating user by pin (pin=${user.pin}, id=${existingUser.id})`, updateError);
+          return false;
+        }
+      } else {
+        const { error: insertError } = await supabase.from('users').insert({
+          ...userPayload,
+          created_at: user.createdAt,
+        });
+        if (insertError) {
+          logSupabaseError(
+            `Error inserting user by pin (pin=${user.pin}). Ensure users.pin is unique to avoid duplicates`,
+            insertError
+          );
+          return false;
+        }
+
+        const { data: insertedUser, error: postInsertSelectError } = await supabase
+          .from('users')
+          .select('id,pin')
+          .eq('pin', user.pin)
+          .maybeSingle();
+
+        if (postInsertSelectError || !insertedUser?.id) {
+          logSupabaseError(
+            `Error selecting inserted user by pin (pin=${user.pin}). Ensure users.pin is unique to make ID mapping deterministic`,
+            postInsertSelectError || new Error('Inserted user not found')
+          );
+          return false;
+        }
+      }
     }
+
     return true;
   } catch (error) {
-    console.log('Error syncing users:', error);
+    logSupabaseError('Error syncing users', error);
     return false;
   }
 }
@@ -323,12 +377,23 @@ export async function syncExpensesToSupabase(expenses: Expense[]): Promise<boole
     );
     
     if (error) {
-      console.log('Error syncing expenses:', error);
+      logSupabaseError('Error syncing expenses', error);
+      console.log(
+        'Expense payload sample:',
+        expenses.slice(0, 3).map(expense => ({
+          id: expense.id,
+          created_by: expense.createdBy,
+          date: expense.date,
+          total: expense.total,
+          itemsType: typeof expense.items,
+          itemsIsArray: Array.isArray(expense.items),
+        }))
+      );
       return false;
     }
     return true;
   } catch (error) {
-    console.log('Error syncing expenses:', error);
+    logSupabaseError('Error syncing expenses', error);
     return false;
   }
 }
