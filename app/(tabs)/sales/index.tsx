@@ -11,6 +11,7 @@ import {
   Alert,
   Platform,
   KeyboardAvoidingView,
+  ActivityIndicator,
   useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -36,7 +37,7 @@ import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 
 export default function SalesScreen() {
   const { user, settings } = useAuth();
-  const { queueDeletion, pendingCount, checkPendingCount, isOnline, syncNow, uiSyncActive } = useSync();
+  const { queueDeletion, pendingCount, triggerFullSync, checkPendingCount, isOnline } = useSync();
   const theme = settings.darkMode ? Colors.dark : Colors.light;
   const queryClient = useQueryClient();
   const { width, height } = useWindowDimensions();
@@ -276,15 +277,13 @@ export default function SalesScreen() {
       total: parseFloat(saleTotal),
       items: saleItems,
     });
-    void syncNow({ reason: 'auto_add_sale', trigger: 'auto_add' });
     resetSaleForm();
     setShowSaleModal(false);
   };
 
   const handleSubmitExpense = useCallback(async (payload: { name: string; total: number; items: ExpenseItem[] }) => {
     await createExpenseMutation.mutateAsync(payload);
-    void syncNow({ reason: 'auto_add_expense', trigger: 'auto_add' });
-  }, [createExpenseMutation, syncNow]);
+  }, [createExpenseMutation]);
 
   const resetSaleForm = () => {
     setSaleName('');
@@ -372,7 +371,7 @@ export default function SalesScreen() {
     }
     setIsSyncingPending(true);
     try {
-      const result = await syncNow({ reason: 'manual' });
+      const result = await triggerFullSync({ reason: 'manual' });
       await checkPendingCount();
       await loadPendingSummary();
       if (result.ok) {
@@ -409,7 +408,7 @@ export default function SalesScreen() {
               onPress={() => setShowPendingModal(true)}
             >
               <Clock color={theme.warning} size={20} />
-              {(uiSyncActive || pendingCount > 0) && (
+              {pendingCount > 0 && (
                 <View style={[styles.pendingBadge, { backgroundColor: theme.error }]}>
                   <Text style={styles.pendingBadgeText}>{pendingCount}</Text>
                 </View>
@@ -933,12 +932,18 @@ export default function SalesScreen() {
                 <Text style={[styles.cancelButtonText, { color: theme.textSecondary }]}>Close</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.submitButton, { backgroundColor: theme.primary, opacity: (isSyncingPending || uiSyncActive) ? 0.7 : 1 }]}
+                style={[styles.submitButton, { backgroundColor: theme.primary, opacity: isSyncingPending ? 0.7 : 1 }]}
                 onPress={handlePendingSync}
-                disabled={isSyncingPending || uiSyncActive}
+                disabled={isSyncingPending}
               >
-                <RefreshCw color="#fff" size={18} />
-                <Text style={styles.submitButtonText}>Synchronize</Text>
+                {isSyncingPending ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <RefreshCw color="#fff" size={18} />
+                )}
+                <Text style={styles.submitButtonText}>
+                  {isSyncingPending ? 'Syncing...' : 'Synchronize'}
+                </Text>
               </TouchableOpacity>
             </View>
           </View>

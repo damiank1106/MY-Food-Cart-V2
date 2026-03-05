@@ -1,16 +1,7 @@
+import createContextHook from '@nkzw/create-context-hook';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import NetInfo from '@react-native-community/netinfo';
-import {
-  createContext,
-  ReactNode,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
-import { useAuth } from '@/contexts/AuthContext';
 import { OutboxEntityType, OutboxItem } from '@/types';
 import {
   getUsers,
@@ -55,150 +46,62 @@ import {
 
 export type SyncStatus = 'synced' | 'pending' | 'syncing' | 'offline';
 
-export type SyncReason =
-  | 'login'
-  | 'logout'
-  | 'manual'
-  | 'auto'
-  | 'auto_add_sale'
-  | 'auto_add_expense'
-  | 'weekly_overview_refresh';
-
-export type SyncTrigger = 'idle' | 'auto_add' | 'manual';
+export type SyncReason = 'login' | 'logout' | 'manual' | 'auto';
 
 const DEVELOPER_PIN = '2345';
 const LAST_SYNC_TIME_KEY = '@myfoodcart_last_sync_time';
 
 type DeletionTable = 'users' | 'categories' | 'inventory' | 'sales' | 'expenses' | 'activities';
 
-type SyncContextValue = {
-  syncStatus: SyncStatus;
-  isSyncing: boolean;
-  isSyncingEngine: boolean;
-  syncTrigger: SyncTrigger;
-  isSyncingUI: boolean;
-  uiSyncActive: boolean;
-  pendingCount: number;
-  isOnline: boolean;
-  lastSyncTime: Date | null;
-  syncNow: (options?: { reason?: SyncReason; trigger?: SyncTrigger }) => Promise<{ ok: boolean }>;
-  triggerSync: () => Promise<boolean>;
-  triggerFullSync: (options?: { reason: SyncReason }) => Promise<{ ok: boolean }>;
-  checkPendingCount: () => Promise<void>;
-  queueDeletion: (
-    entityType: DeletionTable,
-    id: string,
-    metadata?: { name?: string; amount?: number | null; date?: string | null }
-  ) => Promise<void>;
-  syncBeforeLogout: () => Promise<boolean>;
-  resetSyncState: () => Promise<void>;
-};
-
-const SyncContext = createContext<SyncContextValue | undefined>(undefined);
-
-export function SyncProvider({ children }: { children: ReactNode }) {
-  const { user } = useAuth();
+export const [SyncProvider, useSync] = createContextHook(() => {
   const supabaseConfigured = isSupabaseConfigured();
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('synced');
   const [pendingCount, setPendingCount] = useState(0);
   const [isOnline, setIsOnline] = useState(true);
-  const [isSyncingEngine, setIsSyncingEngine] = useState(false);
-  const [syncTrigger, setSyncTrigger] = useState<SyncTrigger>('idle');
   const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
-  const isSyncingRef = useRef(false);
+  const isSyncing = useRef(false);
   const needsResync = useRef(false);
-  const hasActiveSessionRef = useRef(false);
-  const isOnlineRef = useRef(true);
-  const pendingCountRef = useRef(0);
-  const syncStatusRef = useRef<SyncStatus>('synced');
-
-  const setSyncStatusStable = useCallback((nextStatus: SyncStatus) => {
-    if (syncStatusRef.current === nextStatus) {
-      return;
-    }
-    syncStatusRef.current = nextStatus;
-    setSyncStatus(nextStatus);
-  }, []);
-
-  const setPendingCountStable = useCallback((nextCount: number) => {
-    if (pendingCountRef.current === nextCount) {
-      return;
-    }
-    pendingCountRef.current = nextCount;
-    setPendingCount(nextCount);
-  }, []);
-
-  const setIsSyncingEngineStable = useCallback((nextValue: boolean) => {
-    setIsSyncingEngine(prev => (prev === nextValue ? prev : nextValue));
-  }, []);
-
-  const getSyncTrigger = useCallback((options?: { reason?: SyncReason; trigger?: SyncTrigger }): SyncTrigger => {
-    if (options?.trigger) {
-      return options.trigger;
-    }
-
-    if (options?.reason === 'manual') {
-      return 'manual';
-    }
-
-    if (options?.reason === 'auto_add_sale' || options?.reason === 'auto_add_expense') {
-      return 'auto_add';
-    }
-
-    return 'idle';
-  }, []);
-
-  const isSyncingUI = useMemo(
-    () => isSyncingEngine && (syncTrigger === 'auto_add' || syncTrigger === 'manual'),
-    [isSyncingEngine, syncTrigger]
-  );
 
   const checkPendingCountInternal = useCallback(async (online: boolean) => {
-    if (!hasActiveSessionRef.current) {
-      setPendingCountStable(0);
-      setSyncStatusStable(online ? 'synced' : 'offline');
-      return;
-    }
-
     const count = await getPendingSyncCount();
-    setPendingCountStable(count);
-
-    if (isSyncingRef.current) {
-      setSyncStatusStable('syncing');
-    } else if (count > 0) {
-      setSyncStatusStable('pending');
+    setPendingCount(count);
+    
+    if (count > 0) {
+      setSyncStatus('pending');
     } else if (online) {
-      setSyncStatusStable('synced');
+      setSyncStatus('synced');
     }
-  }, [setPendingCountStable, setSyncStatusStable]);
+  }, []);
 
-  const runSyncJob = useCallback(async (options?: { reason: SyncReason }): Promise<{ ok: boolean }> => {
+  const triggerFullSync = useCallback(async (options?: { reason: SyncReason }): Promise<{ ok: boolean }> => {
     const reason = options?.reason || 'auto';
-
     console.log(`Starting full bi-directional sync (reason: ${reason})...`);
 
-    if (!hasActiveSessionRef.current) {
-      console.log('No active session, skipping sync');
+    if (isSyncing.current) {
+      console.log('Sync already in progress, skipping...');
       return { ok: false };
     }
 
     if (!isSupabaseConfigured()) {
       console.log('Supabase not configured, setting status to pending');
-      setSyncStatusStable('pending');
+      setSyncStatus('pending');
       return { ok: false };
     }
 
     const netState = await NetInfo.fetch();
     if (!netState.isConnected) {
       console.log('No network connection, setting status to offline');
-      setSyncStatusStable('offline');
+      setSyncStatus('offline');
       return { ok: false };
     }
 
+    isSyncing.current = true;
+    setSyncStatus('syncing');
+
     try {
       console.log('Fetching server users for ID migration...');
-      let serverUsers = await fetchUsersFromSupabase();
-
+      const serverUsers = await fetchUsersFromSupabase();
+      
       if (serverUsers && serverUsers.length > 0) {
         console.log(`Server users fetched: ${serverUsers.length}`);
         await migrateLocalUserIdsToServerIds({
@@ -213,30 +116,6 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       await repairDuplicateCategories();
 
       let pushSuccess = true;
-      const migrateUsingServerUsers = async () => {
-        const latestServerUsers = await fetchUsersFromSupabase();
-        if (latestServerUsers && latestServerUsers.length > 0) {
-          console.log(`Re-running ID migration with ${latestServerUsers.length} server users...`);
-          await migrateLocalUserIdsToServerIds({
-            serverUsers: latestServerUsers.map(u => ({ id: u.id, pin: u.pin, role: u.role, name: u.name })),
-            fallbackPin: DEVELOPER_PIN,
-          });
-        }
-        return latestServerUsers;
-      };
-
-      const loadLocalDataSnapshot = async () => {
-        const [users, categories, inventory, sales, expenses, activities] = await Promise.all([
-          getUsers(),
-          getCategories(),
-          getInventory(),
-          getSales(),
-          getExpenses(),
-          getActivities(),
-        ]);
-
-        return { users, categories, inventory, sales, expenses, activities };
-      };
 
       console.log('Processing pending deletions...');
       const pendingDeletions = (await getOutboxItems())
@@ -283,7 +162,14 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       }
 
       console.log('Fetching local data...');
-      let { users, categories, inventory, sales, expenses, activities } = await loadLocalDataSnapshot();
+      const [users, categories, inventory, sales, expenses, activities] = await Promise.all([
+        getUsers(),
+        getCategories(),
+        getInventory(),
+        getSales(),
+        getExpenses(),
+        getActivities(),
+      ]);
       const outboxSnapshot = await getOutboxItems();
 
       const saleById = new Map(sales.map(sale => [sale.id, sale]));
@@ -305,20 +191,23 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       }
 
       let pendingUsers = users.filter(u => u.syncStatus === 'pending');
+      const pendingCategories = categories.filter(c => c.syncStatus === 'pending');
+      const pendingInventory = inventory.filter(i => i.syncStatus === 'pending');
+      const pendingSales = sales.filter(s => s.syncStatus === 'pending');
+      const pendingExpenses = expenses.filter(e => e.syncStatus === 'pending');
+      const pendingActivities = activities.filter(a => a.syncStatus === 'pending');
 
-      console.log(`Pushing pending users: ${pendingUsers.length}`);
+      console.log(`Pushing pending changes: ${pendingUsers.length} users, ${pendingCategories.length} categories, ${pendingInventory.length} inventory, ${pendingSales.length} sales, ${pendingExpenses.length} expenses, ${pendingActivities.length} activities`);
 
       if (pendingUsers.length > 0) {
         console.log('Resolving user PIN conflicts before push...');
         const usersToSkip = new Set<string>();
-
+        
         for (const localUser of pendingUsers) {
           try {
             const serverUser = await findUserByPinInSupabase(localUser.pin);
             if (serverUser && serverUser.id !== localUser.id) {
-              console.log(
-                `PIN conflict detected: local ${localUser.id} vs server ${serverUser.id} for PIN ${localUser.pin}`
-              );
+              console.log(`PIN conflict detected: local ${localUser.id} vs server ${serverUser.id} for PIN ${localUser.pin}`);
               await resolveUserPinConflict(localUser.id, serverUser.id, localUser);
               usersToSkip.add(localUser.id);
             }
@@ -326,9 +215,9 @@ export function SyncProvider({ children }: { children: ReactNode }) {
             console.log(`Error checking PIN conflict for user ${localUser.id}:`, error);
           }
         }
-
+        
         pendingUsers = pendingUsers.filter(u => !usersToSkip.has(u.id));
-
+        
         if (pendingUsers.length > 0) {
           console.log(`Pushing ${pendingUsers.length} users (${usersToSkip.size} resolved via PIN conflict)...`);
           const result = await syncUsersToSupabase(pendingUsers);
@@ -337,19 +226,6 @@ export function SyncProvider({ children }: { children: ReactNode }) {
           console.log(`All ${usersToSkip.size} pending users resolved via PIN conflict, none to push`);
         }
       }
-
-      serverUsers = await migrateUsingServerUsers();
-      ({ users, categories, inventory, sales, expenses, activities } = await loadLocalDataSnapshot());
-
-      const pendingCategories = categories.filter(c => c.syncStatus === 'pending');
-      const pendingInventory = inventory.filter(i => i.syncStatus === 'pending');
-      const pendingSales = sales.filter(s => s.syncStatus === 'pending');
-      let pendingExpenses = expenses.filter(e => e.syncStatus === 'pending');
-      const pendingActivities = activities.filter(a => a.syncStatus === 'pending');
-
-      console.log(
-        `Pushing remaining pending changes: ${pendingCategories.length} categories, ${pendingInventory.length} inventory, ${pendingSales.length} sales, ${pendingExpenses.length} expenses, ${pendingActivities.length} activities`
-      );
 
       if (pendingCategories.length > 0) {
         console.log('Pushing categories...');
@@ -400,21 +276,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
         for (const item of expenseUpsertItems) {
           await updateOutboxItemStatus(item.id, 'in_progress');
         }
-        let result = await syncExpensesToSupabase(pendingExpenses);
-
-        if (!result) {
-          console.log('Expense sync failed, running one-time self-heal retry after user remap...');
-          await migrateUsingServerUsers();
-          ({ expenses } = await loadLocalDataSnapshot());
-          pendingExpenses = expenses.filter(e =>
-            e.syncStatus === 'pending' && expenseUpsertItems.some(item => item.entityId === e.id)
-          );
-
-          if (pendingExpenses.length > 0) {
-            result = await syncExpensesToSupabase(pendingExpenses);
-          }
-        }
-
+        const result = await syncExpensesToSupabase(pendingExpenses);
         if (result) {
           for (const item of expenseUpsertItems) {
             await removeOutboxItem(item.id);
@@ -436,18 +298,21 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       console.log(`Push completed: ${pushSuccess ? 'success' : 'some failures'}`);
 
       console.log('Pulling data from Supabase...');
-      const [serverCategories, serverInventory, serverSales, serverExpenses, serverActivities] =
-        await Promise.all([
-          fetchCategoriesFromSupabase(),
-          fetchInventoryFromSupabase(),
-          fetchSalesFromSupabase(),
-          fetchExpensesFromSupabase(),
-          fetchActivitiesFromSupabase(),
-        ]);
+      const [
+        serverCategories,
+        serverInventory,
+        serverSales,
+        serverExpenses,
+        serverActivities,
+      ] = await Promise.all([
+        fetchCategoriesFromSupabase(),
+        fetchInventoryFromSupabase(),
+        fetchSalesFromSupabase(),
+        fetchExpensesFromSupabase(),
+        fetchActivitiesFromSupabase(),
+      ]);
 
-      console.log(
-        `Pulled from server: ${serverUsers?.length || 0} users, ${serverCategories?.length || 0} categories, ${serverInventory?.length || 0} inventory, ${serverSales?.length || 0} sales, ${serverExpenses?.length || 0} expenses, ${serverActivities?.length || 0} activities`
-      );
+      console.log(`Pulled from server: ${serverUsers?.length || 0} users, ${serverCategories?.length || 0} categories, ${serverInventory?.length || 0} inventory, ${serverSales?.length || 0} sales, ${serverExpenses?.length || 0} expenses, ${serverActivities?.length || 0} activities`);
 
       if (serverUsers) await upsertUsersFromServer(serverUsers);
       if (serverCategories) await upsertCategoriesFromServer(serverCategories);
@@ -461,7 +326,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       }
 
       const newPendingCount = await getPendingSyncCount();
-      setPendingCountStable(newPendingCount);
+      setPendingCount(newPendingCount);
       const syncSucceeded = pushSuccess && newPendingCount === 0;
 
       if (syncSucceeded) {
@@ -471,10 +336,10 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       }
 
       if (newPendingCount === 0) {
-        setSyncStatusStable('synced');
+        setSyncStatus('synced');
         console.log('Full sync completed successfully - all synced');
       } else {
-        setSyncStatusStable('pending');
+        setSyncStatus('pending');
         console.log(`Full sync completed - ${newPendingCount} items still pending`);
       }
 
@@ -484,9 +349,13 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       await checkPendingCountInternal(true);
       return { ok: false };
     } finally {
-      void checkPendingCountInternal(isOnlineRef.current);
+      isSyncing.current = false;
+      if (needsResync.current) {
+        needsResync.current = false;
+        triggerFullSync({ reason: 'auto' });
+      }
     }
-  }, [checkPendingCountInternal, setPendingCountStable, setSyncStatusStable]);
+  }, [checkPendingCountInternal]);
 
   const checkPendingCount = useCallback(async () => {
     await checkPendingCountInternal(isOnline);
@@ -512,87 +381,35 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       }
     };
 
-    void loadLastSyncTime();
+    loadLastSyncTime();
 
     return () => {
       isMounted = false;
     };
-  }, [supabaseConfigured]);
-
-  const syncNow = useCallback(async (options?: { reason?: SyncReason; trigger?: SyncTrigger }): Promise<{ ok: boolean }> => {
-    const reason = options?.reason || 'auto';
-    const nextTrigger = getSyncTrigger(options);
-
-    if (isSyncingRef.current) {
-      console.log('Sync already in progress, skipping...');
-      needsResync.current = true;
-      return { ok: false };
-    }
-
-    isSyncingRef.current = true;
-    setIsSyncingEngineStable(true);
-    setSyncTrigger(nextTrigger);
-    setSyncStatusStable('syncing');
-
-    try {
-      return await runSyncJob({ reason });
-    } finally {
-      isSyncingRef.current = false;
-      setIsSyncingEngineStable(false);
-      setSyncTrigger('idle');
-
-      if (needsResync.current) {
-        needsResync.current = false;
-        if (hasActiveSessionRef.current) {
-          void syncNow({ reason: 'auto' });
-        }
-      }
-    }
-  }, [getSyncTrigger, runSyncJob, setIsSyncingEngineStable, setSyncStatusStable]);
-
-  const triggerFullSync = useCallback(async (options?: { reason: SyncReason }): Promise<{ ok: boolean }> => {
-    return syncNow({ reason: options?.reason || 'auto' });
-  }, [syncNow]);
+  }, []);
 
   const triggerSync = useCallback(async (): Promise<boolean> => {
-    const result = await syncNow({ reason: 'manual' });
+    const result = await triggerFullSync({ reason: 'manual' });
     return result.ok;
-  }, [syncNow]);
+  }, [triggerFullSync]);
 
   useEffect(() => {
-    hasActiveSessionRef.current = Boolean(user);
-
-    if (!user) {
-      isSyncingRef.current = false;
-      needsResync.current = false;
-      setSyncTrigger('idle');
-      setIsSyncingEngineStable(false);
-      setPendingCountStable(0);
-      setSyncStatusStable(isOnlineRef.current ? 'synced' : 'offline');
-      return;
-    }
-
-    void checkPendingCountInternal(isOnlineRef.current);
-  }, [checkPendingCountInternal, setIsSyncingEngineStable, setPendingCountStable, setSyncStatusStable, user]);
-
-  useEffect(() => {
-    void checkPendingCountInternal(true);
-
+    checkPendingCountInternal(true);
+    
     const unsubscribe = NetInfo.addEventListener(state => {
       const online = state.isConnected ?? false;
       console.log('Network state changed:', online ? 'online' : 'offline');
-      isOnlineRef.current = online;
-      setIsOnline(prev => (prev === online ? prev : online));
-
+      setIsOnline(online);
+      
       if (!online) {
-        setSyncStatusStable('offline');
-      } else if (!isSyncingRef.current && hasActiveSessionRef.current) {
-        void syncNow({ reason: 'auto' });
+        setSyncStatus('offline');
+      } else if (!isSyncing.current) {
+        triggerFullSync({ reason: 'auto' });
       }
     });
 
     return () => unsubscribe();
-  }, [checkPendingCountInternal, setSyncStatusStable, syncNow]);
+  }, [checkPendingCountInternal, triggerFullSync]);
 
   const queueDeletion = useCallback(async (
     entityType: DeletionTable,
@@ -611,18 +428,14 @@ export function SyncProvider({ children }: { children: ReactNode }) {
           return entityType as OutboxEntityType;
       }
     })();
-    await enqueueDeletion(mappedEntityType, id, metadata, { isSyncing: isSyncingRef.current });
-    if (isSyncingRef.current) {
+    await enqueueDeletion(mappedEntityType, id, metadata, { isSyncing: isSyncing.current });
+    if (isSyncing.current) {
       needsResync.current = true;
     }
-    await checkPendingCount();
+    checkPendingCount();
   }, [checkPendingCount]);
 
   const syncBeforeLogout = useCallback(async (): Promise<boolean> => {
-    const existingPending = await getPendingSyncCount();
-    if (existingPending === 0) {
-      return true;
-    }
     if (!supabaseConfigured) {
       console.log('Supabase not configured, skipping logout sync.');
       return false;
@@ -632,56 +445,15 @@ export function SyncProvider({ children }: { children: ReactNode }) {
     return result.ok;
   }, [supabaseConfigured, triggerFullSync]);
 
-  const resetSyncState = useCallback(async () => {
-    needsResync.current = false;
-    isSyncingRef.current = false;
-    setSyncTrigger('idle');
-    setIsSyncingEngineStable(false);
-    setPendingCountStable(0);
-    setSyncStatusStable(isOnlineRef.current ? 'synced' : 'offline');
-  }, [setIsSyncingEngineStable, setPendingCountStable, setSyncStatusStable]);
-
-  const value = useMemo<SyncContextValue>(() => ({
+  return {
     syncStatus,
-    isSyncing: isSyncingEngine,
-    isSyncingEngine,
-    syncTrigger,
-    isSyncingUI,
-    uiSyncActive: isSyncingUI,
     pendingCount,
     isOnline,
     lastSyncTime,
-    syncNow,
     triggerSync,
     triggerFullSync,
     checkPendingCount,
     queueDeletion,
     syncBeforeLogout,
-    resetSyncState,
-  }), [
-    syncStatus,
-    isSyncingEngine,
-    syncTrigger,
-    isSyncingUI,
-    pendingCount,
-    isOnline,
-    lastSyncTime,
-    syncNow,
-    triggerSync,
-    triggerFullSync,
-    checkPendingCount,
-    queueDeletion,
-    syncBeforeLogout,
-    resetSyncState,
-  ]);
-
-  return <SyncContext.Provider value={value}>{children}</SyncContext.Provider>;
-}
-
-export function useSync() {
-  const context = useContext(SyncContext);
-  if (!context) {
-    throw new Error('useSync must be used within a <SyncProvider>');
-  }
-  return context;
-}
+  };
+});

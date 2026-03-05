@@ -36,7 +36,7 @@ const PRIVACY_POLICY_GITHUB_URL = 'https://damiank1106.github.io/MY-Food-Cart-V2
 export default function SettingsScreen() {
   const router = useRouter();
   const { user, settings, updateSettings, changePin, logout } = useAuth();
-  const { syncStatus, pendingCount, isOnline, isSyncingUI, syncNow, syncBeforeLogout, lastSyncTime, resetSyncState } = useSync();
+  const { syncStatus, pendingCount, isOnline, triggerSync, syncBeforeLogout, lastSyncTime } = useSync();
   const queryClient = useQueryClient();
   const theme = settings.darkMode ? Colors.dark : Colors.light;
   const { width, height } = useWindowDimensions();
@@ -101,7 +101,7 @@ export default function SettingsScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     try {
       console.log('Starting fix and sync...');
-      await syncNow({ reason: 'manual', trigger: 'manual' });
+      await triggerSync();
       await loadPendingSummary();
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (error) {
@@ -349,7 +349,7 @@ export default function SettingsScreen() {
         <TouchableOpacity
           style={[styles.fixSyncButton, { backgroundColor: theme.warning }]}
           onPress={handleFixAndSync}
-          disabled={isFixingSyncing || isSyncingUI}
+          disabled={isFixingSyncing || syncStatus === 'syncing'}
         >
           {isFixingSyncing ? (
             <ActivityIndicator size="small" color="#fff" />
@@ -478,44 +478,40 @@ export default function SettingsScreen() {
   };
 
   const handleLogout = async () => {
-    const hadPendingItems = pendingCount > 0;
     setShowSyncModal(true);
-    let syncOk = !hadPendingItems;
+    let syncOk = false;
     try {
-      if (isOnline && hadPendingItems) {
+      if (isOnline) {
         syncOk = await syncBeforeLogout();
       }
     } finally {
       setShowSyncModal(false);
     }
-    if (!isOnline && hadPendingItems) {
+    if (!isOnline) {
       Alert.alert('Offline', "You're offline. Pending items will sync next time.");
-    } else if (!syncOk && hadPendingItems) {
+    } else if (!syncOk) {
       Alert.alert('Sync incomplete', 'Some items are still pending. They will sync next time.');
     }
-    await resetSyncState();
     await logout();
     await updateSettings({ hasSeenIntro: false });
     router.replace('/');
   };
 
   const handleGoToWelcome = async () => {
-    const hadPendingItems = pendingCount > 0;
     setShowSyncModal(true);
-    let syncOk = !hadPendingItems;
+    let syncOk = false;
     try {
-      if (isOnline && hadPendingItems) {
+      if (isOnline) {
         syncOk = await syncBeforeLogout();
       }
     } finally {
       setShowSyncModal(false);
     }
-    if (!isOnline && hadPendingItems) {
+    if (!isOnline) {
       Alert.alert('Offline', "You're offline. Pending items will sync next time.");
-    } else if (!syncOk && hadPendingItems) {
+    } else if (!syncOk) {
       Alert.alert('Sync incomplete', 'Some items are still pending. They will sync next time.');
     }
-    await resetSyncState();
     await logout();
     await updateSettings({ hasSeenIntro: false });
     router.replace('/');
@@ -523,20 +519,22 @@ export default function SettingsScreen() {
 
   const handleManualSync = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    await syncNow({ reason: 'manual', trigger: 'manual' });
+    await triggerSync();
   };
 
   const getSyncStatusDisplay = (): { text: string; color: string; icon: React.ReactNode } => {
-    if (syncStatus === 'offline') {
-      return { text: 'Offline', color: theme.textMuted, icon: <CloudOff color={theme.textMuted} size={20} /> };
+    switch (syncStatus) {
+      case 'synced':
+        return { text: 'Synced', color: theme.success, icon: <Cloud color={theme.success} size={20} /> };
+      case 'pending':
+        return { text: `Pending (${pendingCount})`, color: theme.warning, icon: <Cloud color={theme.warning} size={20} /> };
+      case 'syncing':
+        return { text: 'Syncing...', color: theme.primary, icon: <RefreshCw color={theme.primary} size={20} /> };
+      case 'offline':
+        return { text: 'Offline', color: theme.textMuted, icon: <CloudOff color={theme.textMuted} size={20} /> };
+      default:
+        return { text: 'Unknown', color: theme.textMuted, icon: <Cloud color={theme.textMuted} size={20} /> };
     }
-    if (isSyncingUI) {
-      return { text: 'Syncing...', color: theme.primary, icon: <RefreshCw color={theme.primary} size={20} /> };
-    }
-    if (pendingCount > 0) {
-      return { text: `Pending (${pendingCount})`, color: theme.warning, icon: <Cloud color={theme.warning} size={20} /> };
-    }
-    return { text: 'Up to date', color: theme.success, icon: <Cloud color={theme.success} size={20} /> };
   };
 
   const syncStatusDisplay = getSyncStatusDisplay();
@@ -778,7 +776,7 @@ export default function SettingsScreen() {
             <TouchableOpacity
               style={styles.settingRow}
               onPress={handleManualSync}
-              disabled={isSyncingUI || !isOnline}
+              disabled={syncStatus === 'syncing' || !isOnline}
             >
               <View style={[styles.settingIcon, { backgroundColor: theme.primary + '20' }]}>
                 <RefreshCw color={theme.primary} size={20} />
@@ -795,7 +793,7 @@ export default function SettingsScreen() {
                   <Cloud color={theme.warning} size={20} />
                 </View>
                 <Text style={[styles.settingLabel, { color: theme.text }]}>Pending Sync Items</Text>
-                {(isSyncingUI || pendingCount > 0) && (
+                {pendingCount > 0 && (
                   <View style={[styles.pendingAlertBadge, { backgroundColor: theme.warning }]}>
                     <Text style={styles.pendingAlertBadgeText}>!</Text>
                   </View>

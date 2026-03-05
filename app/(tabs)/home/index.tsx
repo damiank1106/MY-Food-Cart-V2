@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   RefreshControl,
   useWindowDimensions,
+  ActivityIndicator,
   Modal,
   Alert,
   Platform,
@@ -14,7 +15,7 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Package, ShoppingCart, User, Settings } from 'lucide-react-native';
+import { Package, ShoppingCart, User, Settings, RefreshCw } from 'lucide-react-native';
 import { useQuery } from '@tanstack/react-query';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Print from 'expo-print';
@@ -118,7 +119,7 @@ const WEEKLY_DAY_LABEL_SPACING_KEY = '@myfoodcart_weekly_day_label_spacing';
 export default function HomeScreen() {
   const router = useRouter();
   const { settings, user: currentUser } = useAuth();
-  const { lastSyncTime, syncNow } = useSync();
+  const { lastSyncTime } = useSync();
   const theme = settings.darkMode ? Colors.dark : Colors.light;
   const chartLabelColor = settings.darkMode ? '#FFFFFF' : '#000000';
   const SALES_LABEL_BLUE = '#7DB7FF';
@@ -145,6 +146,7 @@ export default function HomeScreen() {
   const [selectedWeek, setSelectedWeek] = useState(0);
   const [selectedMonthIndex, setSelectedMonthIndex] = useState(new Date().getMonth());
   const [refreshing, setRefreshing] = useState(false);
+  const [isOverviewRefreshing, setIsOverviewRefreshing] = useState(false);
   const [showSales, setShowSales] = useState(true);
   const [showExpenses, setShowExpenses] = useState(true);
   const [showOm, setShowOm] = useState(false);
@@ -616,9 +618,13 @@ export default function HomeScreen() {
   }, [refetchSales, refetchExpenses, refetchMonthly, refetchActivities, refetchUsers]);
 
   const refreshOverview = useCallback(async () => {
-    await syncNow({ reason: 'weekly_overview_refresh' });
-    await Promise.all([refetchSales(), refetchExpenses(), refetchMonthly()]);
-  }, [refetchSales, refetchExpenses, refetchMonthly, syncNow]);
+    setIsOverviewRefreshing(true);
+    try {
+      await Promise.all([refetchSales(), refetchExpenses(), refetchMonthly()]);
+    } finally {
+      setIsOverviewRefreshing(false);
+    }
+  }, [refetchSales, refetchExpenses, refetchMonthly]);
 
   useFocusEffect(
     useCallback(() => {
@@ -865,6 +871,17 @@ export default function HomeScreen() {
             >
               <View style={styles.overviewHeader}>
                 <Text style={[styles.sectionTitle, { color: theme.text }]}>Weekly Overview</Text>
+                <TouchableOpacity
+                  style={[styles.refreshButton, { backgroundColor: theme.cardHighlight, borderColor: theme.cardBorder }]}
+                  onPress={refreshOverview}
+                  disabled={isOverviewRefreshing}
+                >
+                  {isOverviewRefreshing ? (
+                    <ActivityIndicator size="small" color={theme.primary} />
+                  ) : (
+                    <RefreshCw color={theme.primary} size={16} />
+                  )}
+                </TouchableOpacity>
               </View>
               
               <View style={styles.weekTotalsRow}>
@@ -1363,15 +1380,15 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   dateTextBlock: {
-    minHeight: 46,
+    minHeight: 96,
     justifyContent: 'center',
   },
   dateWeekdayText: {
-    fontSize: 16,
+    fontSize: 24,
     fontWeight: '700' as const,
   },
   dateMonthText: {
-    fontSize: 14,
+    fontSize: 22,
     fontWeight: '600' as const,
     marginTop: 4,
   },
@@ -1413,6 +1430,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 12,
+  },
+  refreshButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   chartAreaWrapper: {
     alignItems: 'center',
