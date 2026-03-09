@@ -1,7 +1,7 @@
 import { Tabs } from "expo-router";
 import { Home, Package, TrendingUp, User, Settings } from "lucide-react-native";
 import React from "react";
-import { useWindowDimensions, View } from "react-native";
+import { Platform, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/contexts/AuthContext";
 import { useSync } from "@/contexts/SyncContext";
@@ -13,7 +13,20 @@ export default function TabLayout() {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const isLandscape = width > height;
-  
+  const useLeftRailLayout = isLandscape && width >= 900;
+  const enableLeftTabPosition = useLeftRailLayout && Platform.OS !== 'android';
+
+  React.useEffect(() => {
+    console.log('[PIN FLOW] Tabs layout resolved', {
+      width,
+      height,
+      isLandscape,
+      useLeftRailLayout,
+      enableLeftTabPosition,
+      platform: Platform.OS,
+    });
+  }, [enableLeftTabPosition, height, isLandscape, useLeftRailLayout, width]);
+
   const theme = settings.darkMode ? Colors.dark : Colors.light;
   
   const isInventoryClerk = user?.role === 'inventory_clerk';
@@ -27,7 +40,7 @@ export default function TabLayout() {
           backgroundColor: theme.tabBar,
           borderTopColor: theme.tabBarBorder,
           borderTopWidth: 1,
-          ...(isLandscape
+          ...(useLeftRailLayout
             ? {
                 position: 'absolute' as const,
                 left: 0,
@@ -56,14 +69,14 @@ export default function TabLayout() {
         headerShown: false,
         tabBarHideOnKeyboard: false,
         tabBarLabelPosition: 'below-icon',
-        tabBarItemStyle: isLandscape
+        tabBarItemStyle: useLeftRailLayout
           ? {
               justifyContent: 'center',
               alignItems: 'center',
               marginVertical: 6,
             }
           : undefined,
-        ...(isLandscape && {
+        ...(enableLeftTabPosition && {
           tabBarPosition: 'left' as const,
         }),
       }}
