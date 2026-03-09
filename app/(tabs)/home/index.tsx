@@ -11,7 +11,6 @@ import {
   Modal,
   Alert,
   Platform,
-  Dimensions,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -119,7 +118,7 @@ const WEEKLY_DAY_LABEL_SPACING_KEY = '@myfoodcart_weekly_day_label_spacing';
 export default function HomeScreen() {
   const router = useRouter();
   const { settings, user: currentUser } = useAuth();
-  const { lastSyncTime } = useSync();
+  const { lastSyncTime, triggerFullSync, isOnline, pendingCount } = useSync();
   const theme = settings.darkMode ? Colors.dark : Colors.light;
   const chartLabelColor = settings.darkMode ? '#FFFFFF' : '#000000';
   const SALES_LABEL_BLUE = '#7DB7FF';
@@ -164,11 +163,16 @@ export default function HomeScreen() {
   });
 
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  const minScreenDimension = Math.min(screenWidth, screenHeight);
+  const isAndroidTablet = Platform.OS === 'android' && minScreenDimension >= 600;
   const isLandscape = screenWidth > screenHeight;
+  const useLeftRailLayout = isLandscape && screenWidth >= 900;
+  const useTabletTwoColumnLayout = isAndroidTablet && screenWidth >= 960;
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
   const leftRailWidth = 110;
   const [chartCardWidth, setChartCardWidth] = useState(0);
+  const hasTriggeredTabletSyncRef = useRef(false);
 
   const welcomeFontSize = screenWidth < 360 ? 18 : screenWidth < 400 ? 20 : 24;
 
@@ -181,6 +185,33 @@ export default function HomeScreen() {
       isLandscape,
     });
   }, [currentUser?.role, isLandscape, screenHeight, screenWidth]);
+
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!isAndroidTablet || !isOnline) {
+        return;
+      }
+
+      const shouldAttemptSync = pendingCount > 0 || !lastSyncTime;
+      if (!shouldAttemptSync || hasTriggeredTabletSyncRef.current) {
+        return;
+      }
+
+      hasTriggeredTabletSyncRef.current = true;
+      triggerFullSync({ reason: 'auto' }).catch(error => {
+        console.log('[TABLET SYNC] Failed to trigger tablet focus sync:', error);
+      });
+    }, [isAndroidTablet, isOnline, lastSyncTime, pendingCount, triggerFullSync])
+  );
+
+  useEffect(() => {
+    if (!isAndroidTablet || pendingCount > 0 || !lastSyncTime) {
+      return;
+    }
+
+    hasTriggeredTabletSyncRef.current = false;
+  }, [isAndroidTablet, lastSyncTime, pendingCount]);
 
   const weekStartsOn = 0;
 
@@ -527,7 +558,8 @@ export default function HomeScreen() {
   const axisLabelHeight = 28;
   const cardPadding = 16;
   const yAxisArea = 48;
-  const fallbackCardWidth = Math.max(300, Dimensions.get('window').width - 32);
+  const horizontalPadding = useLeftRailLayout ? leftRailWidth + 32 : 32;
+  const fallbackCardWidth = Math.max(300, screenWidth - horizontalPadding);
   const effectiveCardWidth = chartCardWidth > 0 ? chartCardWidth : fallbackCardWidth;
   const computedChartWidth = effectiveCardWidth - cardPadding * 2 - yAxisArea;
   const chartWidth = Math.max(260, computedChartWidth);
@@ -564,6 +596,9 @@ export default function HomeScreen() {
   );
 
   useEffect(() => {
+    if (isAndroidTablet) {
+      return;
+    }
     let isMounted = true;
     const loadSavedSpacing = async () => {
       try {
@@ -593,9 +628,20 @@ export default function HomeScreen() {
     return () => {
       isMounted = false;
     };
-  }, [defaultDayLabelSpacing, normalizeDayLabelSpacing]);
+  }, [defaultDayLabelSpacing, isAndroidTablet, normalizeDayLabelSpacing]);
 
   useEffect(() => {
+    if (!isAndroidTablet) {
+      return;
+    }
+
+    setDayLabelSpacing(defaultDayLabelSpacing);
+  }, [defaultDayLabelSpacing, isAndroidTablet]);
+
+  useEffect(() => {
+    if (isAndroidTablet) {
+      return;
+    }
     if (spacingSaveTimeoutRef.current) {
       clearTimeout(spacingSaveTimeoutRef.current);
     }
@@ -611,7 +657,7 @@ export default function HomeScreen() {
         clearTimeout(spacingSaveTimeoutRef.current);
       }
     };
-  }, [dayLabelSpacing]);
+  }, [dayLabelSpacing, isAndroidTablet]);
 
   const updateDayLabelSpacing = useCallback(
     (value: number) => {
@@ -650,7 +696,7 @@ export default function HomeScreen() {
 
   const navContentPadding = useMemo(
     () =>
-      isLandscape
+      useLeftRailLayout
         ? {
             paddingLeft: leftRailWidth + 16,
             paddingRight: 16,
@@ -660,7 +706,7 @@ export default function HomeScreen() {
             paddingHorizontal: 16,
             paddingBottom: tabBarHeight + insets.bottom + 16,
           },
-    [insets.bottom, isLandscape, tabBarHeight]
+    [insets.bottom, tabBarHeight, useLeftRailLayout]
   );
 
   const pathData = chartData.map((point, index) => {
@@ -856,8 +902,8 @@ export default function HomeScreen() {
             </Text>
           </View>
 
-          <View style={[styles.contentShell, isLandscape && styles.contentShellLandscape]}>
-            <View style={[styles.row, isLandscape && styles.rowLandscape]}>
+          <View style={[styles.contentShell, isAndroidTablet && styles.contentShellTablet]}>
+            <View style={[styles.row, useTabletTwoColumnLayout && styles.rowLandscape]}>
             <View style={[styles.dateCard, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
               <Text style={[styles.dateLabel, { color: theme.textSecondary }]}>Date</Text>
               <View style={styles.dateTextBlock}>
@@ -1226,7 +1272,7 @@ export default function HomeScreen() {
                 </View>
               </View>
 
-              <View style={styles.stretchControls}>
+              {!isAndroidTablet && <View style={styles.stretchControls}>
                 <Text style={[styles.stretchLabel, { color: theme.textSecondary }]}>Stretch Days</Text>
                 <View style={styles.stretchButtons}>
                   <TouchableOpacity
@@ -1253,7 +1299,7 @@ export default function HomeScreen() {
                     <Text style={[styles.stretchButtonText, { color: theme.text }]}>+</Text>
                   </TouchableOpacity>
                 </View>
-              </View>
+              </View>}
           </View>
           </View>
 
@@ -1270,6 +1316,7 @@ export default function HomeScreen() {
               gm: selectedPoint.gm,
               fc: selectedPoint.fc,
             }}
+            isAndroidTablet={isAndroidTablet}
             colors={{
               sales: theme.chartLine,
               expenses: theme.error,
@@ -1391,8 +1438,8 @@ const styles = StyleSheet.create({
   contentShell: {
     width: '100%',
   },
-  contentShellLandscape: {
-    maxWidth: 1200,
+  contentShellTablet: {
+    maxWidth: 1280,
     alignSelf: 'center',
   },
   row: {
