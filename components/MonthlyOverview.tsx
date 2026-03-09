@@ -35,6 +35,7 @@ export default function MonthlyOverview({
   onSelectMonth,
   totalsForSelectedMonth,
   colors,
+  isAndroidTablet = false,
 }: {
   theme: any;
   year: number;
@@ -47,6 +48,7 @@ export default function MonthlyOverview({
   colors: {
     sales: string; expenses: string; om: string; gm: string; fc: string;
   };
+  isAndroidTablet?: boolean;
 }) {
   const chart = useMemo(() => {
     const chartHeight = 190;
@@ -107,9 +109,9 @@ export default function MonthlyOverview({
         <Text style={[styles.yearText, { color: theme.textSecondary }]}>{year}</Text>
       </View>
 
-      <View style={styles.totalsRow}>
+      <View style={[styles.totalsRow, isAndroidTablet && styles.totalsRowTablet]}>
         {totalCards.map((item) => (
-          <View key={item.key} style={[styles.totalCard, { backgroundColor: `${item.color}15` }]}>
+          <View key={item.key} style={[styles.totalCard, isAndroidTablet && styles.totalCardTablet, { backgroundColor: `${item.color}15` }]}>
             <Text style={[styles.totalLabel, { color: theme.textMuted }]} numberOfLines={1}>
               {item.label}
             </Text>
@@ -259,12 +261,19 @@ const styles = StyleSheet.create({
     gap: 8,
     marginBottom: 12,
   },
+  totalsRowTablet: {
+    justifyContent: 'space-between',
+  },
   totalCard: {
     flexBasis: '48%',
     flexGrow: 1,
     borderRadius: 12,
     paddingVertical: 8,
     paddingHorizontal: 10,
+  },
+  totalCardTablet: {
+    flexBasis: '31%',
+    flexGrow: 0,
   },
   totalLabel: {
     fontSize: 11,
