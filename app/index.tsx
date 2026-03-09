@@ -38,7 +38,8 @@ export default function IntroScreen() {
     if (!isLoading && isInitialized) {
       if (settings.hasSeenIntro) {
         if (user) {
-          const targetRoute = user.role === 'inventory_clerk' ? '/(tabs)/inventory' : '/home';
+          const targetRoute = user.role === 'inventory_clerk' ? '/(tabs)/inventory' : '/(tabs)/home';
+          console.log('[PIN FLOW] Intro auth redirect to:', targetRoute);
           router.replace(targetRoute);
         } else {
           router.replace('/welcome');

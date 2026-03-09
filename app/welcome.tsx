@@ -32,6 +32,7 @@ export default function WelcomeScreen() {
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [showSyncModal, setShowSyncModal] = useState(false);
   const [syncStep, setSyncStep] = useState<'uploading' | 'downloading'>('uploading');
+  const hasNavigatedRef = useRef(false);
   
   const shakeAnimation = useRef(new Animated.Value(0)).current;
   const fadeAnimation = useRef(new Animated.Value(0)).current;
@@ -56,7 +57,10 @@ export default function WelcomeScreen() {
 
   useEffect(() => {
     if (isInitialized && user) {
-      const targetRoute = user.role === 'inventory_clerk' ? '/(tabs)/inventory' : '/home';
+      const targetRoute = user.role === 'inventory_clerk' ? '/(tabs)/inventory' : '/(tabs)/home';
+      console.log('[PIN FLOW] Existing authenticated user found; navigating to:', targetRoute);
+      if (hasNavigatedRef.current) return;
+      hasNavigatedRef.current = true;
       router.replace(targetRoute);
     }
   }, [isInitialized, user, router]);
@@ -84,6 +88,9 @@ export default function WelcomeScreen() {
     const result = await login(pin);
     
     if (result.success) {
+      console.log('[PIN FLOW] PIN validation success. Starting post-login flow.', {
+        role: result.user?.role,
+      });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setIsLoggingIn(false);
       
@@ -99,7 +106,10 @@ export default function WelcomeScreen() {
       }
       
       setShowSyncModal(false);
-      const targetRoute = result.user?.role === 'inventory_clerk' ? '/(tabs)/inventory' : '/home';
+      const targetRoute = result.user?.role === 'inventory_clerk' ? '/(tabs)/inventory' : '/(tabs)/home';
+      console.log('[PIN FLOW] Post-login sync complete. Navigating to:', targetRoute);
+      if (hasNavigatedRef.current) return;
+      hasNavigatedRef.current = true;
       router.replace(targetRoute);
     } else {
       setError('Invalid PIN. Please try again.');

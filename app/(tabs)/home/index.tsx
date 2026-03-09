@@ -172,6 +172,16 @@ export default function HomeScreen() {
 
   const welcomeFontSize = screenWidth < 360 ? 18 : screenWidth < 400 ? 20 : 24;
 
+
+  useEffect(() => {
+    console.log('[PIN FLOW] Home screen initialized', {
+      role: currentUser?.role,
+      screenWidth,
+      screenHeight,
+      isLandscape,
+    });
+  }, [currentUser?.role, isLandscape, screenHeight, screenWidth]);
+
   const weekStartsOn = 0;
 
   const weeks = useMemo(() => {
@@ -687,6 +697,27 @@ export default function HomeScreen() {
     return `${index === 0 ? 'M' : 'L'} ${x} ${y}`;
   }).join(' ');
 
+
+  const hasUnsafeChartGeometry = useMemo(() => {
+    const numericChecks = [chartSvgWidth, chartSvgHeight, chartWidth, stepX, maxValue];
+    const hasInvalidNumber = numericChecks.some(value => !Number.isFinite(value) || value <= 0);
+    const hasInvalidPath = [pathData, areaPath, expensePathData, expenseAreaPath, omPathData, gmPathData, fcPathData]
+      .some(path => !path || path.includes('NaN') || path.includes('Infinity'));
+    return hasInvalidNumber || hasInvalidPath;
+  }, [areaPath, chartSvgHeight, chartSvgWidth, chartWidth, expenseAreaPath, expensePathData, fcPathData, gmPathData, maxValue, omPathData, pathData, stepX]);
+
+  useEffect(() => {
+    if (hasUnsafeChartGeometry) {
+      console.warn('[PIN FLOW] Unsafe chart geometry detected. Rendering fallback chart state.', {
+        chartSvgWidth,
+        chartSvgHeight,
+        chartWidth,
+        stepX,
+        maxValue,
+      });
+    }
+  }, [chartSvgHeight, chartSvgWidth, chartWidth, hasUnsafeChartGeometry, maxValue, stepX]);
+
   const labelData = useMemo(() => {
     const labelOffset = 10;
     const collisionThreshold = 14;
@@ -973,6 +1004,12 @@ export default function HomeScreen() {
               
               <View style={styles.chartAreaWrapper}>
                 <View style={styles.plotClipWrapper}>
+                  {hasUnsafeChartGeometry ? (
+                    <View style={styles.chartFallback}>
+                      <ActivityIndicator size="small" color={theme.primary} />
+                      <Text style={[styles.chartFallbackText, { color: theme.textMuted }]}>Preparing chart...</Text>
+                    </View>
+                  ) : (
                   <Svg width={chartSvgWidth} height={chartSvgHeight} style={styles.chart}>
                   <Defs>
                     <SvgLinearGradient id="areaGradient" x1="0" y1="0" x2="0" y2="1">
@@ -1185,6 +1222,7 @@ export default function HomeScreen() {
                     ))}
                   </G>
                 </Svg>
+                  )}
               </View>
               
               <View style={styles.stretchControls}>
@@ -1448,6 +1486,15 @@ const styles = StyleSheet.create({
   },
   chart: {
     marginLeft: 24,
+  },
+  chartFallback: {
+    minHeight: 120,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
+  },
+  chartFallbackText: {
+    fontSize: 12,
   },
   stretchControls: {
     flexDirection: 'row',
