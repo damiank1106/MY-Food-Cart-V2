@@ -622,7 +622,7 @@ export default function SettingsScreen() {
               >
                 <View style={[styles.settingIcon, { backgroundColor: theme.success + '20' }]}>
                   <UserPlus color={theme.success} size={20} />
-                </Title>
+                </View>
                 <Text style={[styles.settingLabel, { color: theme.text }]}>Create New User</Text>
               </TouchableOpacity>
             )}
