@@ -1340,7 +1340,6 @@ export default function HomeScreen() {
               )}
             </View>
           </View>
-          </View>
         </ScrollView>
         <Modal visible={showProgressModal} transparent animationType="fade">
           <View style={[styles.progressOverlay, { backgroundColor: theme.modalOverlay }]}>
