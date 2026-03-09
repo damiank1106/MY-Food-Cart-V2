@@ -30,7 +30,7 @@ import SyncProgressModal from '@/components/SyncProgressModal';
 import LaserBackground from '@/components/LaserBackground';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 
-const APP_VERSION = '1.0.0';
+const APP_VERSION = '1.10.0';
 const PRIVACY_POLICY_GITHUB_URL = 'https://damiank1106.github.io/MY-Food-Cart-V2/privacy-policy.html#changes';
 
 export default function SettingsScreen() {
@@ -621,7 +621,7 @@ export default function SettingsScreen() {
               >
                 <View style={[styles.settingIcon, { backgroundColor: theme.success + '20' }]}>
                   <UserPlus color={theme.success} size={20} />
-                </View>
+                </Title>
                 <Text style={[styles.settingLabel, { color: theme.text }]}>Create New User</Text>
               </TouchableOpacity>
             )}
