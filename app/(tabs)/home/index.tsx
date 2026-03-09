@@ -1223,8 +1223,9 @@ export default function HomeScreen() {
                   </G>
                 </Svg>
                   )}
+                </View>
               </View>
-              
+
               <View style={styles.stretchControls}>
                 <Text style={[styles.stretchLabel, { color: theme.textSecondary }]}>Stretch Days</Text>
                 <View style={styles.stretchButtons}>
@@ -1253,8 +1254,6 @@ export default function HomeScreen() {
                   </TouchableOpacity>
                 </View>
               </View>
-
-            </View>
           </View>
           </View>
 
