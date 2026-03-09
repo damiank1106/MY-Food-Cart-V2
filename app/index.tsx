@@ -1,11 +1,11 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { 
   View, 
   StyleSheet, 
   TouchableOpacity, 
-  Dimensions,
   Platform,
   ActivityIndicator,
+  useWindowDimensions,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useVideoPlayer, VideoView } from 'expo-video';
@@ -14,17 +14,20 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '@/contexts/AuthContext';
 import { Colors } from '@/constants/colors';
 
-const { width, height } = Dimensions.get('window');
-
-// For bigger screens, make video much taller while keeping width
-const isLargeScreen = width >= 768;
-const videoHeight = isLargeScreen ? height * 1.8 : height;
-
 const videoSource = require('../assets/videos/intro.webm');
 
 export default function IntroScreen() {
+  const { width, height } = useWindowDimensions();
   const router = useRouter();
   const { isLoading, isInitialized, settings, markIntroSeen, user } = useAuth();
+
+  const hasValidDimensions = width > 0 && height > 0;
+  const safeWidth = hasValidDimensions ? width : 1;
+  const safeHeight = hasValidDimensions ? height : 1;
+
+  const isTablet = Math.min(safeWidth, safeHeight) >= 600;
+  const isLandscape = safeWidth > safeHeight;
+  const isTabletLandscape = isTablet && isLandscape;
 
   const player = useVideoPlayer(videoSource, (p) => {
     p.loop = true;
@@ -33,6 +36,17 @@ export default function IntroScreen() {
   });
 
   const theme = settings.darkMode ? Colors.dark : Colors.light;
+
+  const nativeVideoStyle = useMemo(
+    () => [
+      styles.video,
+      {
+        width: safeWidth,
+        height: safeHeight,
+      },
+    ],
+    [safeWidth, safeHeight]
+  );
 
   useEffect(() => {
     if (!isLoading && isInitialized) {
@@ -93,8 +107,8 @@ export default function IntroScreen() {
         <View style={styles.nativeVideoContainer}>
           <VideoView
               player={player}
-              style={styles.video}
-              contentFit="contain"
+              style={nativeVideoStyle}
+              contentFit={isTabletLandscape ? 'cover' : 'contain'}
               nativeControls={false}
             />
         </View>
@@ -118,9 +132,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   video: {
-    width: width,
-    height: videoHeight,
     position: 'absolute',
+    left: 0,
+    top: 0,
   },
   webVideoContainer: {
     flex: 1,
@@ -135,6 +149,9 @@ const styles = StyleSheet.create({
   },
   nativeVideoContainer: {
     ...StyleSheet.absoluteFillObject,
+    overflow: 'hidden',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   placeholderOverlay: {
     ...StyleSheet.absoluteFillObject,
