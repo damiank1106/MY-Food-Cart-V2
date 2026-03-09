@@ -3,7 +3,7 @@
     "name": "MY Food Cart V2",
     "slug": "my-food-cart-inventory",
     "version": "1.0.0",
-    "orientation": "portrait",
+    "orientation": "default",
     "icon": "./assets/images/icon.png",
     "scheme": "rork-app",
     "userInterfaceStyle": "automatic",
