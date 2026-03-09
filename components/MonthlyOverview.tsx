@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import Svg, { Rect, Text as SvgText } from 'react-native-svg';
 import { ROLE_DISPLAY_NAMES } from '@/types';
@@ -50,18 +50,26 @@ export default function MonthlyOverview({
   };
   isAndroidTablet?: boolean;
 }) {
+  const [chartHostWidth, setChartHostWidth] = useState(0);
+
   const chart = useMemo(() => {
     const chartHeight = 190;
     const chartTopPadding = 16;
     const chartBottomPadding = 28;
-    const barWidth = 7;
-    const barGap = 3;
-    const groupGap = 14;
-    const monthCount = 12;
     const barsPerGroup = 5;
+    const monthCount = 12;
+    const minBarWidth = isAndroidTablet ? 8 : 7;
+    const targetGroupWidth = isAndroidTablet ? 52 : 49;
+    const minChartWidth = monthCount * targetGroupWidth;
+    const safeHostWidth = Number.isFinite(chartHostWidth) && chartHostWidth > 0 ? chartHostWidth : 0;
+    const chartWidth = Math.max(minChartWidth, safeHostWidth);
+    const dynamicGroupWidth = chartWidth / monthCount;
+    const barGap = Math.max(2, Math.round(dynamicGroupWidth * 0.07));
+    const groupGap = Math.max(10, Math.round(dynamicGroupWidth * 0.2));
+    const availableBarArea = Math.max(minBarWidth * barsPerGroup, dynamicGroupWidth - groupGap);
+    const barWidth = Math.max(minBarWidth, Math.floor((availableBarArea - barGap * (barsPerGroup - 1)) / barsPerGroup));
     const groupInnerWidth = barsPerGroup * barWidth + (barsPerGroup - 1) * barGap;
     const groupWidth = groupInnerWidth + groupGap;
-    const chartWidth = monthCount * groupWidth;
     const valueMax = Math.max(
       100,
       ...points.map(point => Math.max(point.sales, point.expenses, point.om, point.gm, point.fc))
@@ -92,7 +100,7 @@ export default function MonthlyOverview({
       scaleY,
       gridLines,
     };
-  }, [points]);
+  }, [chartHostWidth, isAndroidTablet, points]);
 
   const totalCards = [
     { key: 'sales', label: 'Sales', value: totalsForSelectedMonth.sales, color: colors.sales },
@@ -122,11 +130,23 @@ export default function MonthlyOverview({
         ))}
       </View>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chartScrollContent}>
-        <Svg
-          width={chart.chartWidth}
-          height={chart.chartTopPadding + chart.chartHeight + chart.chartBottomPadding}
+      <View
+        style={styles.chartViewport}
+        onLayout={(event) => {
+          const nextWidth = event.nativeEvent.layout.width;
+          if (!Number.isFinite(nextWidth) || nextWidth <= 0) return;
+          setChartHostWidth(prev => (Math.abs(prev - nextWidth) < 1 ? prev : nextWidth));
+        }}
+      >
+        <ScrollView
+          horizontal={chart.chartWidth > chartHostWidth + 2}
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.chartScrollContent}
         >
+          <Svg
+            width={chart.chartWidth}
+            height={chart.chartTopPadding + chart.chartHeight + chart.chartBottomPadding}
+          >
           {chart.gridLines.map((lineY, index) => (
             <Rect
               key={`grid-${index}`}
@@ -204,8 +224,9 @@ export default function MonthlyOverview({
               </React.Fragment>
             );
           })}
-        </Svg>
-      </ScrollView>
+          </Svg>
+        </ScrollView>
+      </View>
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.monthButtonsRow}>
         {points.map((point, index) => (
@@ -213,7 +234,7 @@ export default function MonthlyOverview({
             key={`${point.monthLabel}-button`}
             style={[
               styles.monthButton,
-              { borderColor: theme.cardBorder, width: chart.groupWidth },
+              { borderColor: theme.cardBorder, width: Math.max(36, chart.groupWidth - 2) },
               index === selectedMonthIndex && { backgroundColor: `${theme.primary}20`, borderColor: theme.primary },
             ]}
             onPress={() => onSelectMonth(index)}
@@ -282,6 +303,9 @@ const styles = StyleSheet.create({
   totalValue: {
     fontSize: 12,
     fontWeight: '700',
+  },
+  chartViewport: {
+    width: '100%',
   },
   chartScrollContent: {
     paddingBottom: 2,
