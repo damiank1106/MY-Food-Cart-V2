@@ -168,6 +168,7 @@ export default function HomeScreen() {
   const isLandscape = screenWidth > screenHeight;
   const useLeftRailLayout = isLandscape && screenWidth >= 900;
   const useTabletTwoColumnLayout = isAndroidTablet && screenWidth >= 960;
+  const useTabletWideContentLayout = isAndroidTablet && isLandscape && screenWidth >= 1100;
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
   const leftRailWidth = 110;
@@ -560,7 +561,11 @@ export default function HomeScreen() {
   const yAxisArea = 48;
   const horizontalPadding = useLeftRailLayout ? leftRailWidth + 32 : 32;
   const fallbackCardWidth = Math.max(300, screenWidth - horizontalPadding);
-  const effectiveCardWidth = chartCardWidth > 0 ? chartCardWidth : fallbackCardWidth;
+  const measuredCardWidthIsUsable = Number.isFinite(chartCardWidth) && chartCardWidth > 220;
+  const clampedMeasuredCardWidth = measuredCardWidthIsUsable
+    ? Math.min(chartCardWidth, screenWidth - horizontalPadding)
+    : 0;
+  const effectiveCardWidth = clampedMeasuredCardWidth > 0 ? clampedMeasuredCardWidth : fallbackCardWidth;
   const computedChartWidth = effectiveCardWidth - cardPadding * 2 - yAxisArea;
   const chartWidth = Math.max(260, computedChartWidth);
   const chartXOffset = 10;
@@ -944,7 +949,13 @@ export default function HomeScreen() {
 
             <View
               style={[styles.chartCard, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}
-              onLayout={(e) => setChartCardWidth(e.nativeEvent.layout.width)}
+              onLayout={(e) => {
+                const nextWidth = e.nativeEvent.layout.width;
+                if (!Number.isFinite(nextWidth) || nextWidth <= 0) {
+                  return;
+                }
+                setChartCardWidth(prev => (Math.abs(prev - nextWidth) < 1 ? prev : nextWidth));
+              }}
             >
               <View style={styles.overviewHeader}>
                 <Text style={[styles.sectionTitle, { color: theme.text }]}>Weekly Overview</Text>
@@ -1303,51 +1314,57 @@ export default function HomeScreen() {
           </View>
           </View>
 
-          <MonthlyOverview
-            theme={theme}
-            year={selectedYear}
-            points={monthlyPoints}
-            selectedMonthIndex={selectedMonthIndex}
-            onSelectMonth={setSelectedMonthIndex}
-            totalsForSelectedMonth={{
-              sales: selectedPoint.sales,
-              expenses: selectedPoint.expenses,
-              om: selectedPoint.om,
-              gm: selectedPoint.gm,
-              fc: selectedPoint.fc,
-            }}
-            isAndroidTablet={isAndroidTablet}
-            colors={{
-              sales: theme.chartLine,
-              expenses: theme.error,
-              om: '#2ECC71',
-              gm: '#9B59B6',
-              fc: '#F39C12',
-            }}
-          />
+          <View style={[styles.overviewContentGrid, useTabletWideContentLayout && styles.overviewContentGridWide]}>
+            <View style={styles.overviewMainColumn}>
+              <MonthlyOverview
+                theme={theme}
+                year={selectedYear}
+                points={monthlyPoints}
+                selectedMonthIndex={selectedMonthIndex}
+                onSelectMonth={setSelectedMonthIndex}
+                totalsForSelectedMonth={{
+                  sales: selectedPoint.sales,
+                  expenses: selectedPoint.expenses,
+                  om: selectedPoint.om,
+                  gm: selectedPoint.gm,
+                  fc: selectedPoint.fc,
+                }}
+                isAndroidTablet={isAndroidTablet}
+                colors={{
+                  sales: theme.chartLine,
+                  expenses: theme.error,
+                  om: '#2ECC71',
+                  gm: '#9B59B6',
+                  fc: '#F39C12',
+                }}
+              />
+            </View>
 
-          <WeeklyOverviewLegend
-            theme={theme}
-            salesColor={theme.chartLine}
-            expensesColor={theme.error}
-            omColor={omColor}
-            gmColor={gmColor}
-            fcColor={fcColor}
-          />
+            <View style={[styles.overviewSideColumn, useTabletWideContentLayout && styles.overviewSideColumnWide]}>
+              <WeeklyOverviewLegend
+                theme={theme}
+                salesColor={theme.chartLine}
+                expensesColor={theme.error}
+                omColor={omColor}
+                gmColor={gmColor}
+                fcColor={fcColor}
+              />
 
-          <View style={[styles.exportCard, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
-            <Text style={[styles.sectionTitle, { color: theme.text }]}>Export PDF Summary</Text>
-            <TouchableOpacity
-              style={[
-                styles.primaryButton,
-                { backgroundColor: theme.primary },
-                isGeneratingPdf && styles.primaryButtonDisabled,
-              ]}
-              onPress={handleGeneratePdf}
-              disabled={isGeneratingPdf}
-            >
-              <Text style={styles.primaryButtonText}>Generate PDF Summary</Text>
-            </TouchableOpacity>
+              <View style={[styles.exportCard, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}> 
+                <Text style={[styles.sectionTitle, { color: theme.text }]}>Export PDF Summary</Text>
+                <TouchableOpacity
+                  style={[
+                    styles.primaryButton,
+                    { backgroundColor: theme.primary },
+                    isGeneratingPdf && styles.primaryButtonDisabled,
+                  ]}
+                  onPress={handleGeneratePdf}
+                  disabled={isGeneratingPdf}
+                >
+                  <Text style={styles.primaryButtonText}>Generate PDF Summary</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
           </View>
 
           <View style={[styles.updatesCard, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}> 
@@ -1594,6 +1611,25 @@ const styles = StyleSheet.create({
   xAxisLabel: {
     fontSize: 10,
     textAlign: 'center',
+  },
+  overviewContentGrid: {
+    width: '100%',
+  },
+  overviewContentGridWide: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  overviewMainColumn: {
+    flex: 1,
+    minWidth: 0,
+  },
+  overviewSideColumn: {
+    width: '100%',
+  },
+  overviewSideColumnWide: {
+    width: 320,
+    minWidth: 280,
   },
   chartLegend: {
     flexDirection: 'row',
