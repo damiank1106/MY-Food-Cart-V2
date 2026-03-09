@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect } from 'react';
 import { 
   View, 
   StyleSheet, 
@@ -27,7 +27,7 @@ export default function IntroScreen() {
 
   const isTablet = Math.min(safeWidth, safeHeight) >= 600;
   const isLandscape = safeWidth > safeHeight;
-  const isTabletLandscape = isTablet && isLandscape;
+  const shouldUseCoverFit = isTablet || isLandscape;
 
   const player = useVideoPlayer(videoSource, (p) => {
     p.loop = true;
@@ -36,17 +36,6 @@ export default function IntroScreen() {
   });
 
   const theme = settings.darkMode ? Colors.dark : Colors.light;
-
-  const nativeVideoStyle = useMemo(
-    () => [
-      styles.video,
-      {
-        width: safeWidth,
-        height: safeHeight,
-      },
-    ],
-    [safeWidth, safeHeight]
-  );
 
   useEffect(() => {
     if (!isLoading && isInitialized) {
@@ -107,8 +96,8 @@ export default function IntroScreen() {
         <View style={styles.nativeVideoContainer}>
           <VideoView
               player={player}
-              style={nativeVideoStyle}
-              contentFit={isTabletLandscape ? 'cover' : 'contain'}
+              style={styles.videoFill}
+              contentFit={shouldUseCoverFit ? 'cover' : 'contain'}
               nativeControls={false}
             />
         </View>
@@ -131,10 +120,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  video: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
+  videoFill: {
+    ...StyleSheet.absoluteFillObject,
   },
   webVideoContainer: {
     flex: 1,
