@@ -8,7 +8,7 @@ import { useSync } from "@/contexts/SyncContext";
 import { Colors } from "@/constants/colors";
 
 export default function TabLayout() {
-  const LEFT_RAIL_WIDTH = 108;
+  const LEFT_RAIL_WIDTH = 84;
   const { user, settings } = useAuth();
   const { pendingCount } = useSync();
   const { width, height } = useWindowDimensions();
@@ -28,7 +28,7 @@ export default function TabLayout() {
   }, [height, isLandscape, useLeftRailLayout, width]);
 
   const theme = settings.darkMode ? Colors.dark : Colors.light;
-  
+
   const isInventoryClerk = user?.role === 'inventory_clerk';
 
   return (
@@ -72,25 +72,34 @@ export default function TabLayout() {
                 paddingTop: 8,
               }),
         },
-        tabBarLabelStyle: {
-          fontSize: useLeftRailLayout ? 15 : 11,
-          fontWeight: '500' as const,
-        },
+        tabBarShowLabel: !useLeftRailLayout,
+        tabBarLabelStyle: useLeftRailLayout
+          ? undefined
+          : {
+              fontSize: 11,
+              fontWeight: '500' as const,
+            },
         headerShown: false,
         tabBarHideOnKeyboard: false,
         tabBarLabelPosition: useHorizontalTabBar ? 'below-icon' : 'beside-icon',
         tabBarVariant: useHorizontalTabBar ? 'uikit' : 'material',
         tabBarItemStyle: useLeftRailLayout
           ? {
+              flex: 1,
               justifyContent: 'center',
               alignItems: 'center',
-              marginVertical: 4,
-              paddingVertical: 10,
-              paddingHorizontal: 4,
+              marginVertical: 2,
+              paddingVertical: 0,
+              paddingHorizontal: 0,
               borderRadius: 12,
             }
           : undefined,
-        tabBarIconStyle: useLeftRailLayout ? { marginRight: 10 } : undefined,
+        tabBarIconStyle: useLeftRailLayout
+          ? {
+              marginRight: 0,
+              marginLeft: 0,
+            }
+          : undefined,
         tabBarPosition,
       }}
     >
