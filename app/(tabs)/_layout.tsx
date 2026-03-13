@@ -15,6 +15,8 @@ export default function TabLayout() {
   const isLandscape = width > height;
   const useLeftRailLayout = isLandscape && width >= 900;
   const enableLeftTabPosition = useLeftRailLayout && Platform.OS !== 'android';
+  const tabBarPosition = enableLeftTabPosition ? 'left' : 'bottom';
+  const useHorizontalTabBar = tabBarPosition === 'top' || tabBarPosition === 'bottom';
 
   React.useEffect(() => {
     console.log('[PIN FLOW] Tabs layout resolved', {
@@ -68,7 +70,8 @@ export default function TabLayout() {
         },
         headerShown: false,
         tabBarHideOnKeyboard: false,
-        tabBarLabelPosition: 'below-icon',
+        tabBarLabelPosition: useHorizontalTabBar ? 'below-icon' : 'beside-icon',
+        tabBarVariant: useHorizontalTabBar ? 'uikit' : 'material',
         tabBarItemStyle: useLeftRailLayout
           ? {
               justifyContent: 'center',
@@ -76,9 +79,7 @@ export default function TabLayout() {
               marginVertical: 6,
             }
           : undefined,
-        ...(enableLeftTabPosition && {
-          tabBarPosition: 'left' as const,
-        }),
+        tabBarPosition,
       }}
     >
       <Tabs.Screen
