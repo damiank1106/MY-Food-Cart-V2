@@ -61,6 +61,8 @@ export default function TabLayout() {
                 borderRightColor: theme.tabBarBorder,
                 zIndex: 50,
                 elevation: 20,
+                justifyContent: 'space-evenly',
+                alignItems: 'center',
               }
             : {
                 position: 'absolute' as const,
@@ -85,10 +87,11 @@ export default function TabLayout() {
         tabBarVariant: useHorizontalTabBar ? 'uikit' : 'material',
         tabBarItemStyle: useLeftRailLayout
           ? {
-              flex: 1,
+              height: 56,
+              width: '100%',
               justifyContent: 'center',
               alignItems: 'center',
-              marginVertical: 2,
+              marginVertical: 0,
               paddingVertical: 0,
               paddingHorizontal: 0,
               borderRadius: 12,
@@ -98,6 +101,9 @@ export default function TabLayout() {
           ? {
               marginRight: 0,
               marginLeft: 0,
+              marginTop: 0,
+              marginBottom: 0,
+              alignSelf: 'center',
             }
           : undefined,
         tabBarPosition,
