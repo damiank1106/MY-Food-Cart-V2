@@ -8,7 +8,7 @@ import { useSync } from "@/contexts/SyncContext";
 import { Colors } from "@/constants/colors";
 
 export default function TabLayout() {
-  const LEFT_RAIL_WIDTH = 240;
+  const LEFT_RAIL_WIDTH = 108;
   const { user, settings } = useAuth();
   const { pendingCount } = useSync();
   const { width, height } = useWindowDimensions();
@@ -40,6 +40,9 @@ export default function TabLayout() {
           backgroundColor: theme.tabBar,
           borderTopColor: theme.tabBarBorder,
           borderTopWidth: 1,
+          display: 'flex',
+          opacity: 1,
+          overflow: 'visible',
           ...(useLeftRailLayout
             ? {
                 position: 'absolute' as const,
@@ -47,12 +50,17 @@ export default function TabLayout() {
                 top: 0,
                 bottom: 0,
                 width: LEFT_RAIL_WIDTH,
+                minWidth: LEFT_RAIL_WIDTH,
+                maxWidth: LEFT_RAIL_WIDTH,
+                height: '100%' as const,
                 paddingTop: insets.top + 16,
                 paddingBottom: insets.bottom + 16,
-                paddingHorizontal: 12,
+                paddingHorizontal: 8,
                 borderTopWidth: 0,
                 borderRightWidth: 1,
                 borderRightColor: theme.tabBarBorder,
+                zIndex: 50,
+                elevation: 20,
               }
             : {
                 position: 'absolute' as const,
@@ -74,11 +82,11 @@ export default function TabLayout() {
         tabBarVariant: useHorizontalTabBar ? 'uikit' : 'material',
         tabBarItemStyle: useLeftRailLayout
           ? {
-              justifyContent: 'flex-start',
-              alignItems: 'flex-start',
+              justifyContent: 'center',
+              alignItems: 'center',
               marginVertical: 4,
               paddingVertical: 10,
-              paddingHorizontal: 12,
+              paddingHorizontal: 4,
               borderRadius: 12,
             }
           : undefined,

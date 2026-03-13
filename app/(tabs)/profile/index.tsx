@@ -35,7 +35,7 @@ export default function ProfileScreen() {
   const useLeftRailLayout = isLandscape && width >= 900;
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
-  const leftRailWidth = 240;
+  const leftRailWidth = 108;
 
   const [displayName, setDisplayName] = useState(user?.name || '');
   const [bio, setBio] = useState('');

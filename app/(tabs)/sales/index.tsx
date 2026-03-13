@@ -45,7 +45,7 @@ export default function SalesScreen() {
   const useLeftRailLayout = isLandscape && width >= 900;
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
-  const leftRailWidth = 240;
+  const leftRailWidth = 108;
 
   
   const [selectedDate, setSelectedDate] = useState(new Date());
