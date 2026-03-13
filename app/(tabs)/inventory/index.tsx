@@ -38,9 +38,10 @@ export default function InventoryScreen() {
   const queryClient = useQueryClient();
   const { width, height } = useWindowDimensions();
   const isLandscape = width > height;
+  const useLeftRailLayout = isLandscape && width >= 900;
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
-  const leftRailWidth = 110;
+  const leftRailWidth = 240;
 
   
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
@@ -267,7 +268,7 @@ export default function InventoryScreen() {
       )}
       
       <SafeAreaView
-        style={[styles.safeArea, isLandscape && { paddingLeft: leftRailWidth + 16, paddingRight: 16 }]}
+        style={[styles.safeArea, useLeftRailLayout && { paddingLeft: leftRailWidth + 16, paddingRight: 16 }]}
         edges={['top']}
       >
         <View style={styles.tabsContainer}>
@@ -324,7 +325,7 @@ export default function InventoryScreen() {
 
         <ScrollView
           style={styles.list}
-          contentContainerStyle={[styles.listContent, isLandscape ? { paddingBottom: insets.bottom + 16 } : { paddingBottom: tabBarHeight + insets.bottom + 16 }]}
+          contentContainerStyle={[styles.listContent, useLeftRailLayout ? { paddingBottom: insets.bottom + 16 } : { paddingBottom: tabBarHeight + insets.bottom + 16 }]}
           showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.primary} />

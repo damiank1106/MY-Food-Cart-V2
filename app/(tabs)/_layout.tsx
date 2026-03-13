@@ -1,21 +1,21 @@
 import { Tabs } from "expo-router";
 import { Home, Package, TrendingUp, User, Settings } from "lucide-react-native";
 import React from "react";
-import { Platform, useWindowDimensions, View } from "react-native";
+import { useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/contexts/AuthContext";
 import { useSync } from "@/contexts/SyncContext";
 import { Colors } from "@/constants/colors";
 
 export default function TabLayout() {
+  const LEFT_RAIL_WIDTH = 240;
   const { user, settings } = useAuth();
   const { pendingCount } = useSync();
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const isLandscape = width > height;
   const useLeftRailLayout = isLandscape && width >= 900;
-  const enableLeftTabPosition = useLeftRailLayout && Platform.OS !== 'android';
-  const tabBarPosition = enableLeftTabPosition ? 'left' : 'bottom';
+  const tabBarPosition = useLeftRailLayout ? 'left' : 'bottom';
   const useHorizontalTabBar = tabBarPosition === 'top' || tabBarPosition === 'bottom';
 
   React.useEffect(() => {
@@ -24,10 +24,8 @@ export default function TabLayout() {
       height,
       isLandscape,
       useLeftRailLayout,
-      enableLeftTabPosition,
-      platform: Platform.OS,
     });
-  }, [enableLeftTabPosition, height, isLandscape, useLeftRailLayout, width]);
+  }, [height, isLandscape, useLeftRailLayout, width]);
 
   const theme = settings.darkMode ? Colors.dark : Colors.light;
   
@@ -46,10 +44,12 @@ export default function TabLayout() {
             ? {
                 position: 'absolute' as const,
                 left: 0,
-                top: insets.top,
-                bottom: insets.bottom,
-                width: 110,
-                paddingTop: 16,
+                top: 0,
+                bottom: 0,
+                width: LEFT_RAIL_WIDTH,
+                paddingTop: insets.top + 16,
+                paddingBottom: insets.bottom + 16,
+                paddingHorizontal: 12,
                 borderTopWidth: 0,
                 borderRightWidth: 1,
                 borderRightColor: theme.tabBarBorder,
@@ -65,7 +65,7 @@ export default function TabLayout() {
               }),
         },
         tabBarLabelStyle: {
-          fontSize: 11,
+          fontSize: useLeftRailLayout ? 15 : 11,
           fontWeight: '500' as const,
         },
         headerShown: false,
@@ -74,11 +74,15 @@ export default function TabLayout() {
         tabBarVariant: useHorizontalTabBar ? 'uikit' : 'material',
         tabBarItemStyle: useLeftRailLayout
           ? {
-              justifyContent: 'center',
-              alignItems: 'center',
-              marginVertical: 6,
+              justifyContent: 'flex-start',
+              alignItems: 'flex-start',
+              marginVertical: 4,
+              paddingVertical: 10,
+              paddingHorizontal: 12,
+              borderRadius: 12,
             }
           : undefined,
+        tabBarIconStyle: useLeftRailLayout ? { marginRight: 10 } : undefined,
         tabBarPosition,
       }}
     >
