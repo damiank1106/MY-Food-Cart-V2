@@ -31,6 +31,37 @@ export default function TabLayout() {
 
   const isInventoryClerk = user?.role === 'inventory_clerk';
 
+  const renderTabIcon = (
+    Icon: typeof Home,
+    color: string,
+    size: number,
+    showPendingBadge = false
+  ) => (
+    <View
+      style={{
+        width: size,
+        height: size,
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      <Icon color={color} size={size} />
+      {showPendingBadge && pendingCount > 0 && (
+        <View
+          style={{
+            position: 'absolute',
+            top: -1,
+            right: -1,
+            width: 8,
+            height: 8,
+            borderRadius: 4,
+            backgroundColor: theme.warning,
+          }}
+        />
+      )}
+    </View>
+  );
+
   return (
     <Tabs
       screenOptions={{
@@ -96,16 +127,21 @@ export default function TabLayout() {
               paddingHorizontal: 0,
               borderRadius: 12,
             }
-          : undefined,
-        tabBarIconStyle: useLeftRailLayout
-          ? {
-              marginRight: 0,
-              marginLeft: 0,
-              marginTop: 0,
-              marginBottom: 0,
-              alignSelf: 'center',
-            }
-          : undefined,
+          : {
+              flex: 1,
+              justifyContent: 'center',
+              alignItems: 'center',
+              margin: 0,
+              paddingVertical: 0,
+              paddingHorizontal: 0,
+            },
+        tabBarIconStyle: {
+          marginRight: 0,
+          marginLeft: 0,
+          marginTop: 0,
+          marginBottom: 0,
+          alignSelf: 'center',
+        },
         tabBarPosition,
       }}
     >
@@ -113,7 +149,7 @@ export default function TabLayout() {
         name="home"
         options={{
           title: "Home",
-          tabBarIcon: ({ color, size }) => <Home color={color} size={size} />,
+          tabBarIcon: ({ color, size }) => renderTabIcon(Home, color, size),
           href: isInventoryClerk ? null : "/(tabs)/home",
         }}
       />
@@ -121,14 +157,14 @@ export default function TabLayout() {
         name="inventory"
         options={{
           title: "Inventory",
-          tabBarIcon: ({ color, size }) => <Package color={color} size={size} />,
+          tabBarIcon: ({ color, size }) => renderTabIcon(Package, color, size),
         }}
       />
       <Tabs.Screen
         name="sales"
         options={{
           title: "Sales",
-          tabBarIcon: ({ color, size }) => <TrendingUp color={color} size={size} />,
+          tabBarIcon: ({ color, size }) => renderTabIcon(TrendingUp, color, size),
           href: isInventoryClerk ? null : "/(tabs)/sales",
         }}
       />
@@ -136,31 +172,14 @@ export default function TabLayout() {
         name="profile"
         options={{
           title: "Profile",
-          tabBarIcon: ({ color, size }) => <User color={color} size={size} />,
+          tabBarIcon: ({ color, size }) => renderTabIcon(User, color, size),
         }}
       />
       <Tabs.Screen
         name="settings"
         options={{
           title: "Settings",
-          tabBarIcon: ({ color, size }) => (
-            <View style={{ width: size, height: size }}>
-              <Settings color={color} size={size} />
-              {pendingCount > 0 && (
-                <View
-                  style={{
-                    position: 'absolute',
-                    top: -1,
-                    right: -1,
-                    width: 8,
-                    height: 8,
-                    borderRadius: 4,
-                    backgroundColor: theme.warning,
-                  }}
-                />
-              )}
-            </View>
-          ),
+          tabBarIcon: ({ color, size }) => renderTabIcon(Settings, color, size, true),
         }}
       />
     </Tabs>
