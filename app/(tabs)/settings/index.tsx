@@ -44,7 +44,7 @@ export default function SettingsScreen() {
   const useLeftRailLayout = isLandscape && width >= 900;
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
-  const leftRailWidth = 240;
+  const leftRailWidth = 108;
   
   const [showPinModal, setShowPinModal] = useState(false);
   const [showCreateUserModal, setShowCreateUserModal] = useState(false);
