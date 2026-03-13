@@ -118,11 +118,11 @@ export default function TabLayout() {
         tabBarVariant: useHorizontalTabBar ? 'uikit' : 'material',
         tabBarItemStyle: useLeftRailLayout
           ? {
-              height: 56,
+              height: 120,
               width: '100%',
               justifyContent: 'center',
               alignItems: 'center',
-              marginVertical: 0,
+              marginVertical: 2,
               paddingVertical: 0,
               paddingHorizontal: 0,
               borderRadius: 12,
