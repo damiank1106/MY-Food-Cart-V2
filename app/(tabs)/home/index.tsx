@@ -171,7 +171,7 @@ export default function HomeScreen() {
   const useTabletWideContentLayout = isAndroidTablet && isLandscape && screenWidth >= 1100;
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
-  const leftRailWidth = 110;
+  const leftRailWidth = 240;
   const [chartCardWidth, setChartCardWidth] = useState(0);
   const hasTriggeredTabletSyncRef = useRef(false);
 

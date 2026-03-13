@@ -42,9 +42,10 @@ export default function SalesScreen() {
   const queryClient = useQueryClient();
   const { width, height } = useWindowDimensions();
   const isLandscape = width > height;
+  const useLeftRailLayout = isLandscape && width >= 900;
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
-  const leftRailWidth = 110;
+  const leftRailWidth = 240;
 
   
   const [selectedDate, setSelectedDate] = useState(new Date());
@@ -397,7 +398,7 @@ export default function SalesScreen() {
       )}
       
       <SafeAreaView
-        style={[styles.safeArea, isLandscape && { paddingLeft: leftRailWidth + 16, paddingRight: 16 }]}
+        style={[styles.safeArea, useLeftRailLayout && { paddingLeft: leftRailWidth + 16, paddingRight: 16 }]}
         edges={['top']}
       >
         <View style={[styles.header, { borderBottomColor: theme.divider }]}>
@@ -449,7 +450,7 @@ export default function SalesScreen() {
 
         <ScrollView
           style={styles.content}
-          contentContainerStyle={[styles.contentContainer, isLandscape ? { paddingBottom: insets.bottom + 16 } : { paddingBottom: tabBarHeight + insets.bottom + 16 }]}
+          contentContainerStyle={[styles.contentContainer, useLeftRailLayout ? { paddingBottom: insets.bottom + 16 } : { paddingBottom: tabBarHeight + insets.bottom + 16 }]}
           showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.primary} />
