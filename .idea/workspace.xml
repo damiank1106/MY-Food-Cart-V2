@@ -4,24 +4,7 @@
     <option name="autoReloadType" value="NONE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="738d9ac3-963f-4ac1-ae1f-6318bd67b143" name="Changes" comment="update">
-      <change beforePath="$PROJECT_DIR$/.idea/caches/deviceStreaming.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/caches/deviceStreaming.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/(tabs)/_layout.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/(tabs)/_layout.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/(tabs)/home/index.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/(tabs)/home/index.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/(tabs)/inventory/_layout.tsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/(tabs)/inventory/index.tsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/(tabs)/sales/index.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/(tabs)/sales/index.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/(tabs)/settings/index.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/(tabs)/settings/index.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/index.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/index.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/welcome.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/welcome.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/components/ExpenseModal.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/ExpenseModal.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/contexts/AuthContext.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/contexts/AuthContext.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/contexts/SyncContext.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/contexts/SyncContext.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/services/database.ts" beforeDir="false" afterPath="$PROJECT_DIR$/services/database.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/services/supabase.ts" beforeDir="false" afterPath="$PROJECT_DIR$/services/supabase.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/types/index.ts" beforeDir="false" afterPath="$PROJECT_DIR$/types/index.ts" afterDir="false" />
-    </list>
+    <list default="true" id="738d9ac3-963f-4ac1-ae1f-6318bd67b143" name="Changes" comment="update" />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -79,22 +62,6 @@
       <option name="number" value="Default" />
       <option name="presentableId" value="Default" />
       <updated>1768793006761</updated>
-    </task>
-    <task id="LOCAL-00014" summary="update">
-      <option name="closed" value="true" />
-      <created>1769234137899</created>
-      <option name="number" value="00014" />
-      <option name="presentableId" value="LOCAL-00014" />
-      <option name="project" value="LOCAL" />
-      <updated>1769234137899</updated>
-    </task>
-    <task id="LOCAL-00015" summary="update">
-      <option name="closed" value="true" />
-      <created>1769288718548</created>
-      <option name="number" value="00015" />
-      <option name="presentableId" value="LOCAL-00015" />
-      <option name="project" value="LOCAL" />
-      <updated>1769288718548</updated>
     </task>
     <task id="LOCAL-00016" summary="update">
       <option name="closed" value="true" />
@@ -472,7 +439,23 @@
       <option name="project" value="LOCAL" />
       <updated>1773376312022</updated>
     </task>
-    <option name="localTasksCounter" value="63" />
+    <task id="LOCAL-00063" summary="update">
+      <option name="closed" value="true" />
+      <created>1775038251784</created>
+      <option name="number" value="00063" />
+      <option name="presentableId" value="LOCAL-00063" />
+      <option name="project" value="LOCAL" />
+      <updated>1775038251785</updated>
+    </task>
+    <task id="LOCAL-00064" summary="update">
+      <option name="closed" value="true" />
+      <created>1775038268414</created>
+      <option name="number" value="00064" />
+      <option name="presentableId" value="LOCAL-00064" />
+      <option name="project" value="LOCAL" />
+      <updated>1775038268414</updated>
+    </task>
+    <option name="localTasksCounter" value="65" />
     <servers />
   </component>
   <component name="Vcs.Log.Tabs.Properties">
