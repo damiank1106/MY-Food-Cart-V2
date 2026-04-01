@@ -11,7 +11,7 @@ import {
   Platform,
   ActivityIndicator,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { Href, useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ShoppingCart, Lock, Eye, EyeOff } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
@@ -57,7 +57,7 @@ export default function WelcomeScreen() {
 
   useEffect(() => {
     if (isInitialized && user) {
-      const targetRoute = user.role === 'inventory_clerk' ? '/(tabs)/inventory' : '/(tabs)/home';
+      const targetRoute = (user.role === 'inventory_clerk' ? '/chat' : '/home') as Href;
       console.log('[PIN FLOW] Existing authenticated user found; navigating to:', targetRoute);
       if (hasNavigatedRef.current) return;
       hasNavigatedRef.current = true;
@@ -106,7 +106,7 @@ export default function WelcomeScreen() {
       }
       
       setShowSyncModal(false);
-      const targetRoute = result.user?.role === 'inventory_clerk' ? '/(tabs)/inventory' : '/(tabs)/home';
+      const targetRoute = (result.user?.role === 'inventory_clerk' ? '/chat' : '/home') as Href;
       console.log('[PIN FLOW] Post-login sync complete. Navigating to:', targetRoute);
       if (hasNavigatedRef.current) return;
       hasNavigatedRef.current = true;

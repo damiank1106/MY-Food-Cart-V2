@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { User, AppSettings } from '@/types';
 import { initDatabase, getUserByPin, updateUser, isPinTaken, createActivity } from '@/services/database';
+import { bindSupabaseSessionToAppUser, clearSupabaseSessionBinding } from '@/services/supabase';
 
 const SETTINGS_KEY = '@myfoodcart_settings';
 const CURRENT_USER_KEY = '@myfoodcart_current_user';
@@ -38,6 +39,7 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
         const parsed = JSON.parse(savedUser);
         const freshUser = await getUserByPin(parsed.pin);
         if (freshUser) {
+          await bindSupabaseSessionToAppUser(freshUser);
           setUser(freshUser);
         }
       }
@@ -55,6 +57,7 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
     try {
       const foundUser = await getUserByPin(pin);
       if (foundUser) {
+        await bindSupabaseSessionToAppUser(foundUser);
         setUser(foundUser);
         await AsyncStorage.setItem(CURRENT_USER_KEY, JSON.stringify(foundUser));
         console.log('Login successful for:', foundUser.name);
@@ -72,6 +75,7 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
     console.log('Logging out...');
     setUser(null);
     await AsyncStorage.removeItem(CURRENT_USER_KEY);
+    await clearSupabaseSessionBinding();
   }, []);
 
   const updateCurrentUser = useCallback(async (updates: Partial<User>) => {
@@ -136,6 +140,7 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
     if (!user) return;
     const freshUser = await getUserByPin(user.pin);
     if (freshUser) {
+      await bindSupabaseSessionToAppUser(freshUser);
       setUser(freshUser);
       await AsyncStorage.setItem(CURRENT_USER_KEY, JSON.stringify(freshUser));
     }

@@ -2,8 +2,17 @@ import * as SQLite from 'expo-sqlite';
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { 
-  User, Category, InventoryItem, Sale, Expense, ExpenseItem, Activity,
-  DEFAULT_USERS, DEFAULT_CATEGORIES, generateId, OutboxItem, OutboxEntityType, OutboxStatus
+  User,
+  Sale,
+  Expense,
+  ExpenseItem,
+  Activity,
+  ChatMessage,
+  DEFAULT_USERS,
+  generateId,
+  OutboxItem,
+  OutboxEntityType,
+  OutboxStatus,
 } from '@/types';
 import { bucketByLocalDay, getDayKeysForWeek, parseLocalDateString, toLocalDayKey } from '@/services/dateUtils';
 
@@ -13,13 +22,18 @@ let dbInitialized = false;
 
 const STORAGE_KEYS = {
   users: '@myfoodcart_users',
-  categories: '@myfoodcart_categories',
-  inventory: '@myfoodcart_inventory',
   sales: '@myfoodcart_sales',
   expenses: '@myfoodcart_expenses',
   activities: '@myfoodcart_activities',
+  chatMessages: '@myfoodcart_chat_messages',
   outbox: '@myfoodcart_outbox',
   settings: '@myfoodcart_settings',
+};
+
+const LEGACY_STORAGE_KEYS = {
+  categories: '@myfoodcart_categories',
+  inventory: '@myfoodcart_inventory',
+  inventoryCleanup: '@myfoodcart_inventory_cleanup_v1',
 };
 
 async function getFromStorage<T>(key: string, defaultValue: T): Promise<T> {
@@ -42,6 +56,7 @@ async function setToStorage<T>(key: string, value: T): Promise<void> {
 
 type SaleRow = Omit<Sale, 'items'> & { items?: string | null };
 type ExpenseRow = Omit<Expense, 'items'> & { items?: string | null };
+type ChatMessageRow = ChatMessage;
 type OutboxRow = Omit<OutboxItem, 'syncStatus'> & { syncStatus?: string | null };
 
 export function serializeItems(items?: Array<string | ExpenseItem> | null): string {
@@ -125,6 +140,20 @@ function normalizeExpenseRow(row: ExpenseRow): Expense {
     name: row.name ?? '',
     items: parseExpenseItems(row.items),
   };
+}
+
+function normalizeChatMessage(message: ChatMessageRow): ChatMessage {
+  return {
+    ...message,
+    userName: message.userName?.trim() || 'Unknown User',
+    userAvatarUrl: message.userAvatarUrl ?? null,
+    localAvatarUri: message.localAvatarUri ?? null,
+    messageText: message.messageText ?? '',
+  };
+}
+
+function getChatMessagePreview(messageText: string): string {
+  return messageText.trim().replace(/\s+/g, ' ').slice(0, 80);
 }
 
 function normalizeOutboxRow(row: OutboxRow): OutboxItem {
@@ -294,6 +323,40 @@ async function ensureItemsColumn(table: 'sales' | 'expenses'): Promise<void> {
   }
 }
 
+async function cleanupLegacyInventoryData(): Promise<void> {
+  if (Platform.OS === 'web') {
+    const alreadyCleaned = await AsyncStorage.getItem(LEGACY_STORAGE_KEYS.inventoryCleanup);
+    if (alreadyCleaned === 'true') {
+      return;
+    }
+
+    await AsyncStorage.removeItem(LEGACY_STORAGE_KEYS.categories);
+    await AsyncStorage.removeItem(LEGACY_STORAGE_KEYS.inventory);
+
+    const outbox = await getFromStorage<OutboxItem[]>(STORAGE_KEYS.outbox, []);
+    const cleanedOutbox = outbox.filter(
+      item => {
+        const entityType = item.entityType as string;
+        return entityType !== 'category' && entityType !== 'inventory';
+      }
+    );
+    if (cleanedOutbox.length !== outbox.length) {
+      await setToStorage(STORAGE_KEYS.outbox, cleanedOutbox);
+    }
+
+    await AsyncStorage.setItem(LEGACY_STORAGE_KEYS.inventoryCleanup, 'true');
+    return;
+  }
+
+  if (!db) return;
+
+  await db.execAsync(`
+    DROP TABLE IF EXISTS categories;
+    DROP TABLE IF EXISTS inventory;
+    DELETE FROM outbox WHERE entityType IN ('category', 'inventory');
+  `);
+}
+
 export async function initDatabase(): Promise<void> {
   console.log('Initializing database...');
   
@@ -334,27 +397,6 @@ export async function initDatabase(): Promise<void> {
         syncStatus TEXT DEFAULT 'pending'
       );
 
-      CREATE TABLE IF NOT EXISTS categories (
-        id TEXT PRIMARY KEY,
-        name TEXT NOT NULL UNIQUE,
-        createdAt TEXT NOT NULL,
-        updatedAt TEXT NOT NULL,
-        syncStatus TEXT DEFAULT 'pending'
-      );
-
-      CREATE TABLE IF NOT EXISTS inventory (
-        id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        categoryId TEXT,
-        unit TEXT NOT NULL,
-        price REAL NOT NULL,
-        quantity REAL NOT NULL,
-        createdAt TEXT NOT NULL,
-        updatedAt TEXT NOT NULL,
-        createdBy TEXT NOT NULL,
-        syncStatus TEXT DEFAULT 'pending'
-      );
-
       CREATE TABLE IF NOT EXISTS sales (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
@@ -388,6 +430,18 @@ export async function initDatabase(): Promise<void> {
         syncStatus TEXT DEFAULT 'pending'
       );
 
+      CREATE TABLE IF NOT EXISTS chat_messages (
+        id TEXT PRIMARY KEY,
+        userId TEXT NOT NULL,
+        userName TEXT NOT NULL,
+        userAvatarUrl TEXT,
+        localAvatarUri TEXT,
+        messageText TEXT NOT NULL,
+        createdAt TEXT NOT NULL,
+        updatedAt TEXT NOT NULL,
+        syncStatus TEXT DEFAULT 'pending'
+      );
+
       CREATE TABLE IF NOT EXISTS outbox (
         id TEXT PRIMARY KEY,
         entityType TEXT NOT NULL,
@@ -399,10 +453,14 @@ export async function initDatabase(): Promise<void> {
         amount REAL,
         date TEXT
       );
+
+      CREATE INDEX IF NOT EXISTS idx_chat_messages_createdAt ON chat_messages(createdAt DESC);
+      CREATE INDEX IF NOT EXISTS idx_chat_messages_userId ON chat_messages(userId);
     `);
 
       await ensureItemsColumn('sales');
       await ensureItemsColumn('expenses');
+      await cleanupLegacyInventoryData();
 
       console.log('Database tables created');
       await seedDefaultData();
@@ -424,6 +482,7 @@ async function initWebDatabase(): Promise<void> {
   if (users.length === 0) {
     await seedDefaultDataWeb();
   }
+  await cleanupLegacyInventoryData();
 }
 
 async function seedDefaultData(): Promise<void> {
@@ -441,19 +500,6 @@ async function seedDefaultData(): Promise<void> {
       );
     }
   }
-
-  const existingCategories = await db.getAllAsync<Category>('SELECT * FROM categories');
-  if (existingCategories.length === 0) {
-    console.log('Seeding default categories...');
-    const now = new Date().toISOString();
-    
-    for (const name of DEFAULT_CATEGORIES) {
-      await db.runAsync(
-        'INSERT INTO categories (id, name, createdAt, updatedAt, syncStatus) VALUES (?, ?, ?, ?, ?)',
-        [generateId(), name, now, now, 'pending']
-      );
-    }
-  }
 }
 
 async function seedDefaultDataWeb(): Promise<void> {
@@ -468,19 +514,10 @@ async function seedDefaultDataWeb(): Promise<void> {
     syncStatus: 'pending' as const,
   }));
   await setToStorage(STORAGE_KEYS.users, users);
-
-  const categories: Category[] = DEFAULT_CATEGORIES.map(name => ({
-    id: generateId(),
-    name,
-    createdAt: now,
-    updatedAt: now,
-    syncStatus: 'pending' as const,
-  }));
-  await setToStorage(STORAGE_KEYS.categories, categories);
-  await setToStorage(STORAGE_KEYS.inventory, []);
   await setToStorage(STORAGE_KEYS.sales, []);
   await setToStorage(STORAGE_KEYS.expenses, []);
   await setToStorage(STORAGE_KEYS.activities, []);
+  await setToStorage(STORAGE_KEYS.chatMessages, []);
   await setToStorage(STORAGE_KEYS.outbox, []);
 }
 
@@ -594,175 +631,127 @@ export async function isPinTaken(pin: string, excludeUserId?: string): Promise<b
   }
 }
 
-export async function getCategories(): Promise<Category[]> {
+export async function getChatMessages(options?: {
+  limit?: number;
+  beforeCreatedAt?: string | null;
+}): Promise<ChatMessage[]> {
+  const limit = options?.limit ?? 50;
+  const beforeCreatedAt = options?.beforeCreatedAt ?? null;
+
   if (Platform.OS === 'web') {
-    return getFromStorage<Category[]>(STORAGE_KEYS.categories, []);
+    const messages = await getFromStorage<ChatMessage[]>(STORAGE_KEYS.chatMessages, []);
+    return messages
+      .map(normalizeChatMessage)
+      .filter(message => !beforeCreatedAt || message.createdAt < beforeCreatedAt)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .slice(0, limit);
   }
+
   const database = await ensureDb();
   if (!database) return [];
   try {
-    return await database.getAllAsync<Category>('SELECT * FROM categories ORDER BY name');
+    if (beforeCreatedAt) {
+      const rows = await database.getAllAsync<ChatMessageRow>(
+        'SELECT * FROM chat_messages WHERE createdAt < ? ORDER BY createdAt DESC LIMIT ?',
+        [beforeCreatedAt, limit]
+      );
+      return rows.map(normalizeChatMessage);
+    }
+
+    const rows = await database.getAllAsync<ChatMessageRow>(
+      'SELECT * FROM chat_messages ORDER BY createdAt DESC LIMIT ?',
+      [limit]
+    );
+    return rows.map(normalizeChatMessage);
   } catch (error) {
-    console.log('Error getting categories:', error);
+    console.log('Error getting chat messages:', error);
     return [];
   }
 }
 
-export async function createCategory(name: string): Promise<Category> {
-  const now = new Date().toISOString();
-  const newCategory: Category = {
-    id: generateId(),
-    name,
-    createdAt: now,
-    updatedAt: now,
-    syncStatus: 'pending',
-  };
-
+export async function getChatMessageCount(): Promise<number> {
   if (Platform.OS === 'web') {
-    const categories = await getFromStorage<Category[]>(STORAGE_KEYS.categories, []);
-    categories.push(newCategory);
-    await setToStorage(STORAGE_KEYS.categories, categories);
-    return newCategory;
+    const messages = await getFromStorage<ChatMessage[]>(STORAGE_KEYS.chatMessages, []);
+    return messages.length;
   }
 
-  const database = await ensureDb();
-  if (!database) throw new Error('Database not initialized');
-  await database.runAsync(
-    'INSERT INTO categories (id, name, createdAt, updatedAt, syncStatus) VALUES (?, ?, ?, ?, ?)',
-    [newCategory.id, newCategory.name, now, now, 'pending']
-  );
-  return newCategory;
-}
-
-export async function updateCategory(id: string, name: string): Promise<void> {
-  const now = new Date().toISOString();
-  if (Platform.OS === 'web') {
-    const categories = await getFromStorage<Category[]>(STORAGE_KEYS.categories, []);
-    const index = categories.findIndex(c => c.id === id);
-    if (index !== -1) {
-      categories[index] = { ...categories[index], name, updatedAt: now, syncStatus: 'pending' };
-      await setToStorage(STORAGE_KEYS.categories, categories);
-    }
-    return;
-  }
-  const database = await ensureDb();
-  if (!database) return;
-  await database.runAsync('UPDATE categories SET name = ?, updatedAt = ?, syncStatus = ? WHERE id = ?', [name, now, 'pending', id]);
-}
-
-export async function deleteCategory(id: string): Promise<void> {
-  if (Platform.OS === 'web') {
-    const categories = await getFromStorage<Category[]>(STORAGE_KEYS.categories, []);
-    await setToStorage(STORAGE_KEYS.categories, categories.filter(c => c.id !== id));
-    return;
-  }
-  const database = await ensureDb();
-  if (!database) return;
-  await database.runAsync('DELETE FROM categories WHERE id = ?', [id]);
-}
-
-export async function getCategoryItemCount(categoryId: string): Promise<number> {
-  if (Platform.OS === 'web') {
-    const inventory = await getFromStorage<InventoryItem[]>(STORAGE_KEYS.inventory, []);
-    return inventory.filter(i => i.categoryId === categoryId).length;
-  }
   const database = await ensureDb();
   if (!database) return 0;
   try {
-    const result = await database.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM inventory WHERE categoryId = ?', [categoryId]);
+    const result = await database.getFirstAsync<{ count: number }>(
+      'SELECT COUNT(*) as count FROM chat_messages'
+    );
     return result?.count || 0;
   } catch (error) {
-    console.log('Error getting category item count:', error);
+    console.log('Error getting chat message count:', error);
     return 0;
   }
 }
 
-export async function getInventory(): Promise<InventoryItem[]> {
-  if (Platform.OS === 'web') {
-    return getFromStorage<InventoryItem[]>(STORAGE_KEYS.inventory, []);
-  }
-  const database = await ensureDb();
-  if (!database) return [];
-  try {
-    return await database.getAllAsync<InventoryItem>('SELECT * FROM inventory ORDER BY name');
-  } catch (error) {
-    console.log('Error getting inventory:', error);
-    return [];
-  }
-}
-
-export async function getInventoryByCategory(categoryId: string | null): Promise<InventoryItem[]> {
-  if (Platform.OS === 'web') {
-    const inventory = await getFromStorage<InventoryItem[]>(STORAGE_KEYS.inventory, []);
-    return categoryId ? inventory.filter(i => i.categoryId === categoryId) : inventory;
-  }
-  const database = await ensureDb();
-  if (!database) return [];
-  try {
-    if (categoryId) {
-      return await database.getAllAsync<InventoryItem>('SELECT * FROM inventory WHERE categoryId = ? ORDER BY name', [categoryId]);
-    }
-    return await database.getAllAsync<InventoryItem>('SELECT * FROM inventory ORDER BY name');
-  } catch (error) {
-    console.log('Error getting inventory by category:', error);
-    return [];
-  }
-}
-
-export async function createInventoryItem(item: Omit<InventoryItem, 'id' | 'createdAt' | 'updatedAt' | 'syncStatus'>): Promise<InventoryItem> {
+export async function createChatMessage(
+  message: Omit<ChatMessage, 'id' | 'createdAt' | 'updatedAt' | 'syncStatus'>
+): Promise<ChatMessage> {
   const now = new Date().toISOString();
-  const newItem: InventoryItem = {
-    ...item,
+  const trimmedText = message.messageText.trim();
+  if (!trimmedText) {
+    throw new Error('Message cannot be empty');
+  }
+  const newMessage: ChatMessage = {
+    ...message,
     id: generateId(),
+    userName: message.userName.trim(),
+    userAvatarUrl: message.userAvatarUrl ?? null,
+    localAvatarUri: message.localAvatarUri ?? null,
+    messageText: trimmedText,
     createdAt: now,
     updatedAt: now,
     syncStatus: 'pending',
   };
 
   if (Platform.OS === 'web') {
-    const inventory = await getFromStorage<InventoryItem[]>(STORAGE_KEYS.inventory, []);
-    inventory.push(newItem);
-    await setToStorage(STORAGE_KEYS.inventory, inventory);
-    return newItem;
+    const messages = await getFromStorage<ChatMessage[]>(STORAGE_KEYS.chatMessages, []);
+    messages.unshift(newMessage);
+    await setToStorage(STORAGE_KEYS.chatMessages, messages);
+    await enqueueOutboxUpsert('chat_message', newMessage.id, {
+      name: getChatMessagePreview(newMessage.messageText),
+      date: newMessage.createdAt,
+    });
+    return newMessage;
   }
 
   const database = await ensureDb();
   if (!database) throw new Error('Database not initialized');
   await database.runAsync(
-    'INSERT INTO inventory (id, name, categoryId, unit, price, quantity, createdAt, updatedAt, createdBy, syncStatus) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    [newItem.id, newItem.name, newItem.categoryId, newItem.unit, newItem.price, newItem.quantity, now, now, newItem.createdBy, 'pending']
+    'INSERT INTO chat_messages (id, userId, userName, userAvatarUrl, localAvatarUri, messageText, createdAt, updatedAt, syncStatus) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    [
+      newMessage.id,
+      newMessage.userId,
+      newMessage.userName,
+      newMessage.userAvatarUrl ?? null,
+      newMessage.localAvatarUri ?? null,
+      newMessage.messageText,
+      now,
+      now,
+      'pending',
+    ]
   );
-  return newItem;
+  await enqueueOutboxUpsert('chat_message', newMessage.id, {
+    name: getChatMessagePreview(newMessage.messageText),
+    date: newMessage.createdAt,
+  });
+  return newMessage;
 }
 
-export async function updateInventoryItem(item: InventoryItem): Promise<void> {
-  const now = new Date().toISOString();
+export async function deleteChatMessage(id: string): Promise<void> {
   if (Platform.OS === 'web') {
-    const inventory = await getFromStorage<InventoryItem[]>(STORAGE_KEYS.inventory, []);
-    const index = inventory.findIndex(i => i.id === item.id);
-    if (index !== -1) {
-      inventory[index] = { ...item, updatedAt: now, syncStatus: 'pending' };
-      await setToStorage(STORAGE_KEYS.inventory, inventory);
-    }
+    const messages = await getFromStorage<ChatMessage[]>(STORAGE_KEYS.chatMessages, []);
+    await setToStorage(STORAGE_KEYS.chatMessages, messages.filter(message => message.id !== id));
     return;
   }
-  const database = await ensureDb();
-  if (!database) return;
-  await database.runAsync(
-    'UPDATE inventory SET name = ?, categoryId = ?, unit = ?, price = ?, quantity = ?, updatedAt = ?, syncStatus = ? WHERE id = ?',
-    [item.name, item.categoryId, item.unit, item.price, item.quantity, now, 'pending', item.id]
-  );
-}
 
-export async function deleteInventoryItem(id: string): Promise<void> {
-  if (Platform.OS === 'web') {
-    const inventory = await getFromStorage<InventoryItem[]>(STORAGE_KEYS.inventory, []);
-    await setToStorage(STORAGE_KEYS.inventory, inventory.filter(i => i.id !== id));
-    return;
-  }
   const database = await ensureDb();
   if (!database) return;
-  await database.runAsync('DELETE FROM inventory WHERE id = ?', [id]);
+  await database.runAsync('DELETE FROM chat_messages WHERE id = ?', [id]);
 }
 
 export async function getSales(): Promise<Sale[]> {
@@ -1152,21 +1141,19 @@ export async function removeOutboxItem(id: string): Promise<void> {
 export async function getPendingSyncCount(): Promise<number> {
   if (Platform.OS === 'web') {
     const users = await getFromStorage<User[]>(STORAGE_KEYS.users, []);
-    const categories = await getFromStorage<Category[]>(STORAGE_KEYS.categories, []);
-    const inventory = await getFromStorage<InventoryItem[]>(STORAGE_KEYS.inventory, []);
     const sales = await getFromStorage<Sale[]>(STORAGE_KEYS.sales, []);
     const expenses = await getFromStorage<Expense[]>(STORAGE_KEYS.expenses, []);
     const activities = await getFromStorage<Activity[]>(STORAGE_KEYS.activities, []);
+    const chatMessages = await getFromStorage<ChatMessage[]>(STORAGE_KEYS.chatMessages, []);
     const outbox = await getFromStorage<OutboxItem[]>(STORAGE_KEYS.outbox, []);
     const deletionOutbox = outbox.filter(item => item.operation === 'delete');
     
     return [
       ...users.filter(u => u.syncStatus === 'pending'),
-      ...categories.filter(c => c.syncStatus === 'pending'),
-      ...inventory.filter(i => i.syncStatus === 'pending'),
       ...sales.filter(s => s.syncStatus === 'pending'),
       ...expenses.filter(e => e.syncStatus === 'pending'),
       ...activities.filter(a => a.syncStatus === 'pending'),
+      ...chatMessages.filter(message => message.syncStatus === 'pending'),
       ...deletionOutbox,
     ].length;
   }
@@ -1175,45 +1162,73 @@ export async function getPendingSyncCount(): Promise<number> {
   
   const counts = await Promise.all([
     db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM users WHERE syncStatus = ?', ['pending']),
-    db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM categories WHERE syncStatus = ?', ['pending']),
-    db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM inventory WHERE syncStatus = ?', ['pending']),
     db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM sales WHERE syncStatus = ?', ['pending']),
     db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM expenses WHERE syncStatus = ?', ['pending']),
     db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM activities WHERE syncStatus = ?', ['pending']),
+    db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM chat_messages WHERE syncStatus = ?', ['pending']),
     db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM outbox WHERE operation = ?', ['delete']),
   ]);
 
   return counts.reduce((sum, result) => sum + (result?.count || 0), 0);
 }
 
-export async function markAllSynced(): Promise<void> {
-  if (Platform.OS === 'web') {
-    const users = await getFromStorage<User[]>(STORAGE_KEYS.users, []);
-    const categories = await getFromStorage<Category[]>(STORAGE_KEYS.categories, []);
-    const inventory = await getFromStorage<InventoryItem[]>(STORAGE_KEYS.inventory, []);
-    const sales = await getFromStorage<Sale[]>(STORAGE_KEYS.sales, []);
-    const expenses = await getFromStorage<Expense[]>(STORAGE_KEYS.expenses, []);
-    const activities = await getFromStorage<Activity[]>(STORAGE_KEYS.activities, []);
+type SyncableEntityTable = 'users' | 'sales' | 'expenses' | 'activities' | 'chat_messages';
 
-    await setToStorage(STORAGE_KEYS.users, users.map(u => ({ ...u, syncStatus: 'synced' as const })));
-    await setToStorage(STORAGE_KEYS.categories, categories.map(c => ({ ...c, syncStatus: 'synced' as const })));
-    await setToStorage(STORAGE_KEYS.inventory, inventory.map(i => ({ ...i, syncStatus: 'synced' as const })));
-    await setToStorage(STORAGE_KEYS.sales, sales.map(s => ({ ...s, syncStatus: 'synced' as const })));
-    await setToStorage(STORAGE_KEYS.expenses, expenses.map(e => ({ ...e, syncStatus: 'synced' as const })));
-    await setToStorage(STORAGE_KEYS.activities, activities.map(a => ({ ...a, syncStatus: 'synced' as const })));
+async function markRecordsSynced(table: SyncableEntityTable, ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+
+  if (Platform.OS === 'web') {
+    const idSet = new Set(ids);
+    const updateList = async <T extends { id: string; syncStatus: 'synced' | 'pending' }>(
+      key: string
+    ) => {
+      const items = await getFromStorage<T[]>(key, []);
+      await setToStorage(
+        key,
+        items.map(item => (idSet.has(item.id) ? { ...item, syncStatus: 'synced' as const } : item))
+      );
+    };
+
+    if (table === 'users') {
+      await updateList<User>(STORAGE_KEYS.users);
+    } else if (table === 'sales') {
+      await updateList<Sale>(STORAGE_KEYS.sales);
+    } else if (table === 'expenses') {
+      await updateList<Expense>(STORAGE_KEYS.expenses);
+    } else if (table === 'activities') {
+      await updateList<Activity>(STORAGE_KEYS.activities);
+    } else if (table === 'chat_messages') {
+      await updateList<ChatMessage>(STORAGE_KEYS.chatMessages);
+    }
     return;
   }
 
   if (!db) return;
+  const placeholders = ids.map(() => '?').join(', ');
+  await db.runAsync(
+    `UPDATE ${table} SET syncStatus = 'synced' WHERE id IN (${placeholders})`,
+    ids
+  );
+}
 
-  await db.execAsync(`
-    UPDATE users SET syncStatus = 'synced';
-    UPDATE categories SET syncStatus = 'synced';
-    UPDATE inventory SET syncStatus = 'synced';
-    UPDATE sales SET syncStatus = 'synced';
-    UPDATE expenses SET syncStatus = 'synced';
-    UPDATE activities SET syncStatus = 'synced';
-  `);
+export async function markUsersSynced(ids: string[]): Promise<void> {
+  await markRecordsSynced('users', ids);
+}
+
+export async function markSalesSynced(ids: string[]): Promise<void> {
+  await markRecordsSynced('sales', ids);
+}
+
+export async function markExpensesSynced(ids: string[]): Promise<void> {
+  await markRecordsSynced('expenses', ids);
+}
+
+export async function markActivitiesSynced(ids: string[]): Promise<void> {
+  await markRecordsSynced('activities', ids);
+}
+
+export async function markChatMessagesSynced(ids: string[]): Promise<void> {
+  await markRecordsSynced('chat_messages', ids);
 }
 
 export async function upsertUsersFromServer(serverUsers: User[]): Promise<void> {
@@ -1229,7 +1244,12 @@ export async function upsertUsersFromServer(serverUsers: User[]): Promise<void> 
       if (!local) {
         localMap.set(serverUser.id, { ...serverUser, syncStatus: 'synced' });
       } else if (local.syncStatus !== 'pending') {
-        localMap.set(serverUser.id, { ...serverUser, syncStatus: 'synced' });
+        localMap.set(serverUser.id, {
+          ...serverUser,
+          bio: serverUser.bio ?? local.bio,
+          profilePicture: serverUser.profilePicture ?? local.profilePicture,
+          syncStatus: 'synced',
+        });
       }
     }
     await setToStorage(STORAGE_KEYS.users, Array.from(localMap.values()));
@@ -1248,128 +1268,17 @@ export async function upsertUsersFromServer(serverUsers: User[]): Promise<void> 
     } else if (existing.syncStatus !== 'pending') {
       await db.runAsync(
         'UPDATE users SET name = ?, pin = ?, role = ?, bio = ?, profilePicture = ?, createdAt = ?, updatedAt = ?, syncStatus = ? WHERE id = ?',
-        [serverUser.name, serverUser.pin, serverUser.role, serverUser.bio || null, serverUser.profilePicture || null, serverUser.createdAt, serverUser.updatedAt, 'synced', serverUser.id]
-      );
-    }
-  }
-}
-
-export async function upsertCategoriesFromServer(serverCategories: Category[]): Promise<void> {
-  if (serverCategories.length === 0) return;
-  console.log(`Upserting ${serverCategories.length} categories from server`);
-
-  if (Platform.OS === 'web') {
-    let localCategories = await getFromStorage<Category[]>(STORAGE_KEYS.categories, []);
-    let inventory = await getFromStorage<InventoryItem[]>(STORAGE_KEYS.inventory, []);
-    const localMap = new Map(localCategories.map(c => [c.id, c]));
-    
-    for (const serverCat of serverCategories) {
-      try {
-        const serverNorm = serverCat.name.trim().toLowerCase();
-        
-        const collidingLocal = localCategories.find(
-          c => c.name.trim().toLowerCase() === serverNorm && c.id !== serverCat.id
-        );
-        
-        if (collidingLocal) {
-          console.log(`Name collision: local "${collidingLocal.name}" (${collidingLocal.id}) vs server "${serverCat.name}" (${serverCat.id}). Server wins.`);
-          inventory = inventory.map(item => 
-            item.categoryId === collidingLocal.id 
-              ? { ...item, categoryId: serverCat.id } 
-              : item
-          );
-          localMap.delete(collidingLocal.id);
-          localCategories = localCategories.filter(c => c.id !== collidingLocal.id);
-        }
-        
-        const existingById = localMap.get(serverCat.id);
-        if (!existingById) {
-          localMap.set(serverCat.id, { ...serverCat, syncStatus: 'synced' });
-        } else if (existingById.syncStatus !== 'pending') {
-          localMap.set(serverCat.id, { ...serverCat, syncStatus: 'synced' });
-        }
-      } catch (error) {
-        console.log(`Error upserting category ${serverCat.id}: ${error}`);
-      }
-    }
-    
-    await setToStorage(STORAGE_KEYS.inventory, inventory);
-    await setToStorage(STORAGE_KEYS.categories, Array.from(localMap.values()));
-    return;
-  }
-
-  if (!db) return;
-
-  for (const serverCat of serverCategories) {
-    try {
-      const serverNorm = serverCat.name.trim().toLowerCase();
-      
-      const collidingLocal = await db.getFirstAsync<Category>(
-        'SELECT * FROM categories WHERE lower(trim(name)) = ? AND id != ?',
-        [serverNorm, serverCat.id]
-      );
-      
-      if (collidingLocal) {
-        console.log(`Name collision: local "${collidingLocal.name}" (${collidingLocal.id}) vs server "${serverCat.name}" (${serverCat.id}). Server wins.`);
-        await db.runAsync(
-          'UPDATE inventory SET categoryId = ? WHERE categoryId = ?',
-          [serverCat.id, collidingLocal.id]
-        );
-        await db.runAsync('DELETE FROM categories WHERE id = ?', [collidingLocal.id]);
-      }
-      
-      const existingById = await db.getFirstAsync<Category>('SELECT * FROM categories WHERE id = ?', [serverCat.id]);
-      
-      if (!existingById) {
-        await db.runAsync(
-          'INSERT INTO categories (id, name, createdAt, updatedAt, syncStatus) VALUES (?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET name = excluded.name, createdAt = excluded.createdAt, updatedAt = excluded.updatedAt, syncStatus = excluded.syncStatus',
-          [serverCat.id, serverCat.name, serverCat.createdAt, serverCat.updatedAt, 'synced']
-        );
-      } else if (existingById.syncStatus !== 'pending') {
-        await db.runAsync(
-          'UPDATE categories SET name = ?, createdAt = ?, updatedAt = ?, syncStatus = ? WHERE id = ?',
-          [serverCat.name, serverCat.createdAt, serverCat.updatedAt, 'synced', serverCat.id]
-        );
-      }
-    } catch (error) {
-      console.log(`Error upserting category ${serverCat.id}: ${error}`);
-    }
-  }
-}
-
-export async function upsertInventoryFromServer(serverItems: InventoryItem[]): Promise<void> {
-  if (serverItems.length === 0) return;
-  console.log(`Upserting ${serverItems.length} inventory items from server`);
-
-  if (Platform.OS === 'web') {
-    const localInventory = await getFromStorage<InventoryItem[]>(STORAGE_KEYS.inventory, []);
-    const localMap = new Map(localInventory.map(i => [i.id, i]));
-    
-    for (const serverItem of serverItems) {
-      const local = localMap.get(serverItem.id);
-      if (!local) {
-        localMap.set(serverItem.id, { ...serverItem, syncStatus: 'synced' });
-      } else if (local.syncStatus !== 'pending') {
-        localMap.set(serverItem.id, { ...serverItem, syncStatus: 'synced' });
-      }
-    }
-    await setToStorage(STORAGE_KEYS.inventory, Array.from(localMap.values()));
-    return;
-  }
-
-  if (!db) return;
-
-  for (const serverItem of serverItems) {
-    const existing = await db.getFirstAsync<InventoryItem>('SELECT * FROM inventory WHERE id = ?', [serverItem.id]);
-    if (!existing) {
-      await db.runAsync(
-        'INSERT INTO inventory (id, name, categoryId, unit, price, quantity, createdAt, updatedAt, createdBy, syncStatus) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-        [serverItem.id, serverItem.name, serverItem.categoryId, serverItem.unit, serverItem.price, serverItem.quantity, serverItem.createdAt, serverItem.updatedAt, serverItem.createdBy, 'synced']
-      );
-    } else if (existing.syncStatus !== 'pending') {
-      await db.runAsync(
-        'UPDATE inventory SET name = ?, categoryId = ?, unit = ?, price = ?, quantity = ?, createdAt = ?, updatedAt = ?, createdBy = ?, syncStatus = ? WHERE id = ?',
-        [serverItem.name, serverItem.categoryId, serverItem.unit, serverItem.price, serverItem.quantity, serverItem.createdAt, serverItem.updatedAt, serverItem.createdBy, 'synced', serverItem.id]
+        [
+          serverUser.name,
+          serverUser.pin,
+          serverUser.role,
+          serverUser.bio ?? existing.bio ?? null,
+          serverUser.profilePicture ?? existing.profilePicture ?? null,
+          serverUser.createdAt,
+          serverUser.updatedAt,
+          'synced',
+          serverUser.id,
+        ]
       );
     }
   }
@@ -1453,116 +1362,72 @@ export async function upsertExpensesFromServer(serverExpenses: Expense[]): Promi
   }
 }
 
-export async function repairDuplicateCategories(): Promise<void> {
-  console.log('Running duplicate categories repair...');
+export async function upsertChatMessagesFromServer(serverMessages: ChatMessage[]): Promise<void> {
+  if (serverMessages.length === 0) return;
+  console.log(`Upserting ${serverMessages.length} chat messages from server`);
 
   if (Platform.OS === 'web') {
-    const categories = await getFromStorage<Category[]>(STORAGE_KEYS.categories, []);
-    const inventory = await getFromStorage<InventoryItem[]>(STORAGE_KEYS.inventory, []);
-    
-    const groupedByNorm = new Map<string, Category[]>();
-    for (const cat of categories) {
-      const norm = cat.name.trim().toLowerCase();
-      if (!groupedByNorm.has(norm)) {
-        groupedByNorm.set(norm, []);
-      }
-      groupedByNorm.get(norm)!.push(cat);
-    }
+    const localMessages = await getFromStorage<ChatMessage[]>(STORAGE_KEYS.chatMessages, []);
+    const localMap = new Map(localMessages.map(message => [message.id, message]));
 
-    const idsToDelete = new Set<string>();
-    const idRemapping = new Map<string, string>();
-
-    for (const [, group] of groupedByNorm) {
-      if (group.length <= 1) continue;
-
-      group.sort((a, b) => {
-        if (a.syncStatus === 'synced' && b.syncStatus !== 'synced') return -1;
-        if (b.syncStatus === 'synced' && a.syncStatus !== 'synced') return 1;
-        const aTime = new Date(a.createdAt).getTime();
-        const bTime = new Date(b.createdAt).getTime();
-        return aTime - bTime;
-      });
-
-      const canonical = group[0];
-      for (let i = 1; i < group.length; i++) {
-        const dup = group[i];
-        idsToDelete.add(dup.id);
-        idRemapping.set(dup.id, canonical.id);
-        console.log(`Duplicate category found: "${dup.name}" (${dup.id}) -> canonical "${canonical.name}" (${canonical.id})`);
+    for (const serverMessage of serverMessages) {
+      const normalizedMessage = normalizeChatMessage(serverMessage);
+      const local = localMap.get(serverMessage.id);
+      if (!local) {
+        localMap.set(serverMessage.id, { ...normalizedMessage, syncStatus: 'synced' });
+      } else if (local.syncStatus !== 'pending') {
+        localMap.set(serverMessage.id, {
+          ...normalizedMessage,
+          localAvatarUri: local.localAvatarUri ?? null,
+          syncStatus: 'synced',
+        });
       }
     }
 
-    if (idsToDelete.size === 0) {
-      console.log('No duplicate categories found');
-      return;
-    }
-
-    const updatedInventory = inventory.map(item => {
-      if (item.categoryId && idRemapping.has(item.categoryId)) {
-        return { ...item, categoryId: idRemapping.get(item.categoryId)! };
-      }
-      return item;
-    });
-
-    const filteredCategories = categories.filter(c => !idsToDelete.has(c.id));
-
-    await setToStorage(STORAGE_KEYS.inventory, updatedInventory);
-    await setToStorage(STORAGE_KEYS.categories, filteredCategories);
-
-    console.log(`Repaired ${idsToDelete.size} duplicate categories`);
+    const sortedMessages = Array.from(localMap.values()).sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+    await setToStorage(STORAGE_KEYS.chatMessages, sortedMessages);
     return;
   }
 
   if (!db) return;
 
-  const categories = await db.getAllAsync<Category>('SELECT * FROM categories');
-  
-  const groupedByNorm = new Map<string, Category[]>();
-  for (const cat of categories) {
-    const norm = cat.name.trim().toLowerCase();
-    if (!groupedByNorm.has(norm)) {
-      groupedByNorm.set(norm, []);
+  for (const serverMessage of serverMessages) {
+    const normalizedMessage = normalizeChatMessage(serverMessage);
+    const existing = await db.getFirstAsync<ChatMessage>('SELECT * FROM chat_messages WHERE id = ?', [normalizedMessage.id]);
+    if (!existing) {
+      await db.runAsync(
+        'INSERT INTO chat_messages (id, userId, userName, userAvatarUrl, localAvatarUri, messageText, createdAt, updatedAt, syncStatus) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [
+          normalizedMessage.id,
+          normalizedMessage.userId,
+          normalizedMessage.userName,
+          normalizedMessage.userAvatarUrl ?? null,
+          normalizedMessage.localAvatarUri ?? null,
+          normalizedMessage.messageText,
+          normalizedMessage.createdAt,
+          normalizedMessage.updatedAt,
+          'synced',
+        ]
+      );
+    } else if (existing.syncStatus !== 'pending') {
+      await db.runAsync(
+        'UPDATE chat_messages SET userId = ?, userName = ?, userAvatarUrl = ?, localAvatarUri = ?, messageText = ?, createdAt = ?, updatedAt = ?, syncStatus = ? WHERE id = ?',
+        [
+          normalizedMessage.userId,
+          normalizedMessage.userName,
+          normalizedMessage.userAvatarUrl ?? null,
+          existing.localAvatarUri ?? normalizedMessage.localAvatarUri ?? null,
+          normalizedMessage.messageText,
+          normalizedMessage.createdAt,
+          normalizedMessage.updatedAt,
+          'synced',
+          normalizedMessage.id,
+        ]
+      );
     }
-    groupedByNorm.get(norm)!.push(cat);
   }
-
-  const idsToDelete: string[] = [];
-  const idRemapping = new Map<string, string>();
-
-  for (const [, group] of groupedByNorm) {
-    if (group.length <= 1) continue;
-
-    group.sort((a, b) => {
-      if (a.syncStatus === 'synced' && b.syncStatus !== 'synced') return -1;
-      if (b.syncStatus === 'synced' && a.syncStatus !== 'synced') return 1;
-      const aTime = new Date(a.createdAt).getTime();
-      const bTime = new Date(b.createdAt).getTime();
-      return aTime - bTime;
-    });
-
-    const canonical = group[0];
-    for (let i = 1; i < group.length; i++) {
-      const dup = group[i];
-      idsToDelete.push(dup.id);
-      idRemapping.set(dup.id, canonical.id);
-      console.log(`Duplicate category found: "${dup.name}" (${dup.id}) -> canonical "${canonical.name}" (${canonical.id})`);
-    }
-  }
-
-  if (idsToDelete.length === 0) {
-    console.log('No duplicate categories found');
-    return;
-  }
-
-  for (const [dupId, canonicalId] of idRemapping) {
-    await db.runAsync('UPDATE inventory SET categoryId = ? WHERE categoryId = ?', [canonicalId, dupId]);
-  }
-
-  for (const id of idsToDelete) {
-    await db.runAsync('DELETE FROM categories WHERE id = ?', [id]);
-  }
-
-  console.log(`Repaired ${idsToDelete.length} duplicate categories`);
 }
 
 interface ServerUser {
@@ -1596,10 +1461,10 @@ export async function migrateLocalUserIdsToServerIds(options: MigrationOptions):
 
   if (Platform.OS === 'web') {
     const localUsers = await getFromStorage<User[]>(STORAGE_KEYS.users, []);
-    let inventory = await getFromStorage<InventoryItem[]>(STORAGE_KEYS.inventory, []);
     let sales = await getFromStorage<Sale[]>(STORAGE_KEYS.sales, []);
     let expenses = await getFromStorage<Expense[]>(STORAGE_KEYS.expenses, []);
     let activities = await getFromStorage<Activity[]>(STORAGE_KEYS.activities, []);
+    let chatMessages = await getFromStorage<ChatMessage[]>(STORAGE_KEYS.chatMessages, []);
 
     const idRemapping = new Map<string, string>();
     const localIdsToRemove = new Set<string>();
@@ -1616,18 +1481,6 @@ export async function migrateLocalUserIdsToServerIds(options: MigrationOptions):
 
     const localUserIds = new Set(localUsers.map(u => u.id));
     let orphanFixCount = 0;
-
-    inventory = inventory.map(item => {
-      if (item.createdBy && idRemapping.has(item.createdBy)) {
-        return { ...item, createdBy: idRemapping.get(item.createdBy)! };
-      }
-      if (item.createdBy && !localUserIds.has(item.createdBy) && !validServerIds.has(item.createdBy) && fallbackServerId) {
-        console.log(`Fixing orphan inventory ${item.id}: ${item.createdBy} -> ${fallbackServerId}`);
-        orphanFixCount++;
-        return { ...item, createdBy: fallbackServerId };
-      }
-      return item;
-    });
 
     sales = sales.map(s => {
       if (s.createdBy && idRemapping.has(s.createdBy)) {
@@ -1665,6 +1518,18 @@ export async function migrateLocalUserIdsToServerIds(options: MigrationOptions):
       return a;
     });
 
+    chatMessages = chatMessages.map(message => {
+      if (message.userId && idRemapping.has(message.userId)) {
+        return { ...message, userId: idRemapping.get(message.userId)! };
+      }
+      if (message.userId && !localUserIds.has(message.userId) && !validServerIds.has(message.userId) && fallbackServerId) {
+        console.log(`Fixing orphan chat message ${message.id}: ${message.userId} -> ${fallbackServerId}`);
+        orphanFixCount++;
+        return { ...message, userId: fallbackServerId };
+      }
+      return message;
+    });
+
     const updatedUsers = localUsers.filter(u => !localIdsToRemove.has(u.id));
     for (const serverUser of serverUsers) {
       const existsInUpdated = updatedUsers.some(u => u.id === serverUser.id);
@@ -1674,7 +1539,7 @@ export async function migrateLocalUserIdsToServerIds(options: MigrationOptions):
           id: serverUser.id,
           name: matchedLocal?.name || serverUser.name || '',
           pin: serverUser.pin,
-          role: (serverUser.role as User['role']) || matchedLocal?.role || 'worker',
+          role: (serverUser.role as User['role']) || matchedLocal?.role || 'general_manager',
           bio: matchedLocal?.bio,
           profilePicture: matchedLocal?.profilePicture,
           createdAt: matchedLocal?.createdAt || new Date().toISOString(),
@@ -1685,10 +1550,10 @@ export async function migrateLocalUserIdsToServerIds(options: MigrationOptions):
     }
 
     await setToStorage(STORAGE_KEYS.users, updatedUsers);
-    await setToStorage(STORAGE_KEYS.inventory, inventory);
     await setToStorage(STORAGE_KEYS.sales, sales);
     await setToStorage(STORAGE_KEYS.expenses, expenses);
     await setToStorage(STORAGE_KEYS.activities, activities);
+    await setToStorage(STORAGE_KEYS.chatMessages, chatMessages);
 
     console.log(`Migration complete: ${idRemapping.size} user ID remaps, ${orphanFixCount} orphan fixes`);
     return;
@@ -1711,10 +1576,10 @@ export async function migrateLocalUserIdsToServerIds(options: MigrationOptions):
 
   for (const [localId, serverId] of idRemapping) {
     console.log(`Updating FK references from ${localId} to ${serverId}`);
-    await db.runAsync('UPDATE inventory SET createdBy = ? WHERE createdBy = ?', [serverId, localId]);
     await db.runAsync('UPDATE sales SET createdBy = ? WHERE createdBy = ?', [serverId, localId]);
     await db.runAsync('UPDATE expenses SET createdBy = ? WHERE createdBy = ?', [serverId, localId]);
     await db.runAsync('UPDATE activities SET userId = ? WHERE userId = ?', [serverId, localId]);
+    await db.runAsync('UPDATE chat_messages SET userId = ? WHERE userId = ?', [serverId, localId]);
   }
 
   for (const localId of localIdsToRemove) {
@@ -1732,7 +1597,7 @@ export async function migrateLocalUserIdsToServerIds(options: MigrationOptions):
           serverUser.id,
           matchedLocal?.name || serverUser.name || '',
           serverUser.pin,
-          serverUser.role || matchedLocal?.role || 'worker',
+          serverUser.role || matchedLocal?.role || 'general_manager',
           matchedLocal?.bio || null,
           matchedLocal?.profilePicture || null,
           matchedLocal?.createdAt || now,
@@ -1746,15 +1611,6 @@ export async function migrateLocalUserIdsToServerIds(options: MigrationOptions):
   let orphanFixCount = 0;
 
   if (fallbackServerId) {
-    const orphanedInventory = await db.getAllAsync<{ id: string; createdBy: string }>(
-      `SELECT id, createdBy FROM inventory WHERE createdBy NOT IN (SELECT id FROM users)`
-    );
-    for (const item of orphanedInventory) {
-      console.log(`Fixing orphan inventory ${item.id}: ${item.createdBy} -> ${fallbackServerId}`);
-      await db.runAsync('UPDATE inventory SET createdBy = ? WHERE id = ?', [fallbackServerId, item.id]);
-      orphanFixCount++;
-    }
-
     const orphanedSales = await db.getAllAsync<{ id: string; createdBy: string }>(
       `SELECT id, createdBy FROM sales WHERE createdBy NOT IN (SELECT id FROM users)`
     );
@@ -1781,6 +1637,15 @@ export async function migrateLocalUserIdsToServerIds(options: MigrationOptions):
       await db.runAsync('UPDATE activities SET userId = ? WHERE id = ?', [fallbackServerId, activity.id]);
       orphanFixCount++;
     }
+
+    const orphanedChatMessages = await db.getAllAsync<{ id: string; userId: string }>(
+      `SELECT id, userId FROM chat_messages WHERE userId NOT IN (SELECT id FROM users)`
+    );
+    for (const message of orphanedChatMessages) {
+      console.log(`Fixing orphan chat message ${message.id}: ${message.userId} -> ${fallbackServerId}`);
+      await db.runAsync('UPDATE chat_messages SET userId = ? WHERE id = ?', [fallbackServerId, message.id]);
+      orphanFixCount++;
+    }
   }
 
   console.log(`Migration complete: ${idRemapping.size} user ID remaps, ${orphanFixCount} orphan fixes`);
@@ -1797,14 +1662,11 @@ export async function resolveUserPinConflict(
 
   if (Platform.OS === 'web') {
     let users = await getFromStorage<User[]>(STORAGE_KEYS.users, []);
-    let inventory = await getFromStorage<InventoryItem[]>(STORAGE_KEYS.inventory, []);
     let sales = await getFromStorage<Sale[]>(STORAGE_KEYS.sales, []);
     let expenses = await getFromStorage<Expense[]>(STORAGE_KEYS.expenses, []);
     let activities = await getFromStorage<Activity[]>(STORAGE_KEYS.activities, []);
+    let chatMessages = await getFromStorage<ChatMessage[]>(STORAGE_KEYS.chatMessages, []);
 
-    inventory = inventory.map(item =>
-      item.createdBy === localUserId ? { ...item, createdBy: serverUserId } : item
-    );
     sales = sales.map(s =>
       s.createdBy === localUserId ? { ...s, createdBy: serverUserId } : s
     );
@@ -1813,6 +1675,9 @@ export async function resolveUserPinConflict(
     );
     activities = activities.map(a =>
       a.userId === localUserId ? { ...a, userId: serverUserId } : a
+    );
+    chatMessages = chatMessages.map(message =>
+      message.userId === localUserId ? { ...message, userId: serverUserId } : message
     );
 
     users = users.filter(u => u.id !== localUserId);
@@ -1826,19 +1691,19 @@ export async function resolveUserPinConflict(
     }
 
     await setToStorage(STORAGE_KEYS.users, users);
-    await setToStorage(STORAGE_KEYS.inventory, inventory);
     await setToStorage(STORAGE_KEYS.sales, sales);
     await setToStorage(STORAGE_KEYS.expenses, expenses);
     await setToStorage(STORAGE_KEYS.activities, activities);
+    await setToStorage(STORAGE_KEYS.chatMessages, chatMessages);
     return;
   }
 
   if (!db) return;
 
-  await db.runAsync('UPDATE inventory SET createdBy = ? WHERE createdBy = ?', [serverUserId, localUserId]);
   await db.runAsync('UPDATE sales SET createdBy = ? WHERE createdBy = ?', [serverUserId, localUserId]);
   await db.runAsync('UPDATE expenses SET createdBy = ? WHERE createdBy = ?', [serverUserId, localUserId]);
   await db.runAsync('UPDATE activities SET userId = ? WHERE userId = ?', [serverUserId, localUserId]);
+  await db.runAsync('UPDATE chat_messages SET userId = ? WHERE userId = ?', [serverUserId, localUserId]);
 
   await db.runAsync('DELETE FROM users WHERE id = ?', [localUserId]);
 
@@ -1866,8 +1731,8 @@ export async function resolveUserPinConflict(
 export interface OrphanRepairResult {
   fixedSales: number;
   fixedExpenses: number;
-  fixedInventory: number;
   fixedActivities: number;
+  fixedChatMessages: number;
 }
 
 export async function repairOrphanAuthors(fallbackUserId: string): Promise<OrphanRepairResult> {
@@ -1875,8 +1740,8 @@ export async function repairOrphanAuthors(fallbackUserId: string): Promise<Orpha
   const result: OrphanRepairResult = {
     fixedSales: 0,
     fixedExpenses: 0,
-    fixedInventory: 0,
     fixedActivities: 0,
+    fixedChatMessages: 0,
   };
 
   if (Platform.OS === 'web') {
@@ -1888,21 +1753,12 @@ export async function repairOrphanAuthors(fallbackUserId: string): Promise<Orpha
       return result;
     }
 
-    let inventory = await getFromStorage<InventoryItem[]>(STORAGE_KEYS.inventory, []);
     let sales = await getFromStorage<Sale[]>(STORAGE_KEYS.sales, []);
     let expenses = await getFromStorage<Expense[]>(STORAGE_KEYS.expenses, []);
     let activities = await getFromStorage<Activity[]>(STORAGE_KEYS.activities, []);
+    let chatMessages = await getFromStorage<ChatMessage[]>(STORAGE_KEYS.chatMessages, []);
 
     const now = new Date().toISOString();
-
-    inventory = inventory.map(item => {
-      if (item.syncStatus === 'pending' && item.createdBy && !validUserIds.has(item.createdBy)) {
-        console.log(`Fixing orphan inventory item ${item.id}: ${item.createdBy} -> ${fallbackUserId}`);
-        result.fixedInventory++;
-        return { ...item, createdBy: fallbackUserId, updatedAt: now };
-      }
-      return item;
-    });
 
     sales = sales.map(sale => {
       if (sale.syncStatus === 'pending' && sale.createdBy && !validUserIds.has(sale.createdBy)) {
@@ -1931,12 +1787,21 @@ export async function repairOrphanAuthors(fallbackUserId: string): Promise<Orpha
       return activity;
     });
 
-    await setToStorage(STORAGE_KEYS.inventory, inventory);
+    chatMessages = chatMessages.map(message => {
+      if (message.syncStatus === 'pending' && message.userId && !validUserIds.has(message.userId)) {
+        console.log(`Fixing orphan chat message ${message.id}: ${message.userId} -> ${fallbackUserId}`);
+        result.fixedChatMessages++;
+        return { ...message, userId: fallbackUserId, updatedAt: now };
+      }
+      return message;
+    });
+
     await setToStorage(STORAGE_KEYS.sales, sales);
     await setToStorage(STORAGE_KEYS.expenses, expenses);
     await setToStorage(STORAGE_KEYS.activities, activities);
+    await setToStorage(STORAGE_KEYS.chatMessages, chatMessages);
 
-    console.log(`Orphan repair complete (web): ${result.fixedInventory} inventory, ${result.fixedSales} sales, ${result.fixedExpenses} expenses, ${result.fixedActivities} activities`);
+    console.log(`Orphan repair complete (web): ${result.fixedSales} sales, ${result.fixedExpenses} expenses, ${result.fixedActivities} activities, ${result.fixedChatMessages} chat messages`);
     return result;
   }
 
@@ -1951,15 +1816,6 @@ export async function repairOrphanAuthors(fallbackUserId: string): Promise<Orpha
   }
 
   const now = new Date().toISOString();
-
-  const orphanedInventory = await db.getAllAsync<{ id: string; createdBy: string }>(
-    `SELECT id, createdBy FROM inventory WHERE syncStatus = 'pending' AND createdBy NOT IN (SELECT id FROM users)`
-  );
-  for (const item of orphanedInventory) {
-    console.log(`Fixing orphan inventory item ${item.id}: ${item.createdBy} -> ${fallbackUserId}`);
-    await db.runAsync('UPDATE inventory SET createdBy = ?, updatedAt = ? WHERE id = ?', [fallbackUserId, now, item.id]);
-    result.fixedInventory++;
-  }
 
   const orphanedSales = await db.getAllAsync<{ id: string; createdBy: string }>(
     `SELECT id, createdBy FROM sales WHERE syncStatus = 'pending' AND createdBy NOT IN (SELECT id FROM users)`
@@ -1988,15 +1844,23 @@ export async function repairOrphanAuthors(fallbackUserId: string): Promise<Orpha
     result.fixedActivities++;
   }
 
-  console.log(`Orphan repair complete: ${result.fixedInventory} inventory, ${result.fixedSales} sales, ${result.fixedExpenses} expenses, ${result.fixedActivities} activities`);
+  const orphanedChatMessages = await db.getAllAsync<{ id: string; userId: string }>(
+    `SELECT id, userId FROM chat_messages WHERE syncStatus = 'pending' AND userId NOT IN (SELECT id FROM users)`
+  );
+  for (const message of orphanedChatMessages) {
+    console.log(`Fixing orphan chat message ${message.id}: ${message.userId} -> ${fallbackUserId}`);
+    await db.runAsync('UPDATE chat_messages SET userId = ?, updatedAt = ? WHERE id = ?', [fallbackUserId, now, message.id]);
+    result.fixedChatMessages++;
+  }
+
+  console.log(`Orphan repair complete: ${result.fixedSales} sales, ${result.fixedExpenses} expenses, ${result.fixedActivities} activities, ${result.fixedChatMessages} chat messages`);
   return result;
 }
 
 export interface PendingSummary {
   totals: {
     users: number;
-    categories: number;
-    inventory: number;
+    chatMessages: number;
     sales: number;
     expenses: number;
     activities: number;
@@ -2005,8 +1869,7 @@ export interface PendingSummary {
   };
   itemsByTable: {
     users: { id: string; pin: string; name: string; role: string; syncStatus: string; updatedAt: string }[];
-    categories: { id: string; name: string; syncStatus: string; updatedAt: string }[];
-    inventory: { id: string; name: string; createdBy: string; categoryId: string; syncStatus: string; updatedAt: string }[];
+    chatMessages: { id: string; userId: string; userName: string; messageText: string; syncStatus: string; updatedAt: string }[];
     sales: { id: string; name: string; total: number; createdBy: string; date: string; syncStatus: string; updatedAt: string }[];
     expenses: { id: string; name: string; total: number; createdBy: string; date: string; syncStatus: string; updatedAt: string }[];
     activities: { id: string; type: string; description: string; userId: string; syncStatus: string; createdAt: string }[];
@@ -2016,45 +1879,44 @@ export interface PendingSummary {
 
 export async function getPendingSummaryAndItems(limitPerTable = 50): Promise<PendingSummary> {
   const result: PendingSummary = {
-    totals: { users: 0, categories: 0, inventory: 0, sales: 0, expenses: 0, activities: 0, deletions: 0, total: 0 },
-    itemsByTable: { users: [], categories: [], inventory: [], sales: [], expenses: [], activities: [], deletions: [] },
+    totals: { users: 0, chatMessages: 0, sales: 0, expenses: 0, activities: 0, deletions: 0, total: 0 },
+    itemsByTable: { users: [], chatMessages: [], sales: [], expenses: [], activities: [], deletions: [] },
   };
 
   try {
     if (Platform.OS === 'web') {
       const users = await getFromStorage<User[]>(STORAGE_KEYS.users, []);
-      const categories = await getFromStorage<Category[]>(STORAGE_KEYS.categories, []);
-      const inventory = await getFromStorage<InventoryItem[]>(STORAGE_KEYS.inventory, []);
+      const chatMessages = await getFromStorage<ChatMessage[]>(STORAGE_KEYS.chatMessages, []);
       const sales = await getFromStorage<Sale[]>(STORAGE_KEYS.sales, []);
       const expenses = await getFromStorage<Expense[]>(STORAGE_KEYS.expenses, []);
       const activities = await getFromStorage<Activity[]>(STORAGE_KEYS.activities, []);
       const outbox = await getFromStorage<OutboxItem[]>(STORAGE_KEYS.outbox, []);
 
       const pendingUsers = users.filter(u => u.syncStatus === 'pending');
-      const pendingCategories = categories.filter(c => c.syncStatus === 'pending');
-      const pendingInventory = inventory.filter(i => i.syncStatus === 'pending');
+      const pendingChatMessages = chatMessages.filter(message => message.syncStatus === 'pending');
       const pendingSales = sales.filter(s => s.syncStatus === 'pending');
       const pendingExpenses = expenses.filter(e => e.syncStatus === 'pending');
       const pendingActivities = activities.filter(a => a.syncStatus === 'pending');
       const pendingDeletions = outbox.filter(item => item.operation === 'delete').map(normalizeOutboxRow);
 
       result.totals.users = pendingUsers.length;
-      result.totals.categories = pendingCategories.length;
-      result.totals.inventory = pendingInventory.length;
+      result.totals.chatMessages = pendingChatMessages.length;
       result.totals.sales = pendingSales.length;
       result.totals.expenses = pendingExpenses.length;
       result.totals.activities = pendingActivities.length;
       result.totals.deletions = pendingDeletions.length;
-      result.totals.total = pendingUsers.length + pendingCategories.length + pendingInventory.length + pendingSales.length + pendingExpenses.length + pendingActivities.length + pendingDeletions.length;
+      result.totals.total = pendingUsers.length + pendingChatMessages.length + pendingSales.length + pendingExpenses.length + pendingActivities.length + pendingDeletions.length;
 
       result.itemsByTable.users = pendingUsers.slice(0, limitPerTable).map(u => ({
         id: u.id, pin: u.pin, name: u.name, role: u.role, syncStatus: u.syncStatus || 'pending', updatedAt: u.updatedAt,
       }));
-      result.itemsByTable.categories = pendingCategories.slice(0, limitPerTable).map(c => ({
-        id: c.id, name: c.name, syncStatus: c.syncStatus || 'pending', updatedAt: c.updatedAt,
-      }));
-      result.itemsByTable.inventory = pendingInventory.slice(0, limitPerTable).map(i => ({
-        id: i.id, name: i.name, createdBy: i.createdBy, categoryId: i.categoryId || '', syncStatus: i.syncStatus || 'pending', updatedAt: i.updatedAt,
+      result.itemsByTable.chatMessages = pendingChatMessages.slice(0, limitPerTable).map(message => ({
+        id: message.id,
+        userId: message.userId,
+        userName: message.userName,
+        messageText: message.messageText,
+        syncStatus: message.syncStatus || 'pending',
+        updatedAt: message.updatedAt,
       }));
       result.itemsByTable.sales = pendingSales.slice(0, limitPerTable).map(s => ({
         id: s.id, name: s.name, total: s.total, createdBy: s.createdBy, date: s.date, syncStatus: s.syncStatus || 'pending', updatedAt: s.updatedAt,
@@ -2072,10 +1934,9 @@ export async function getPendingSummaryAndItems(limitPerTable = 50): Promise<Pen
 
     if (!db) return result;
 
-    const [usersCount, categoriesCount, inventoryCount, salesCount, expensesCount, activitiesCount, deletionsCount] = await Promise.all([
+    const [usersCount, chatMessagesCount, salesCount, expensesCount, activitiesCount, deletionsCount] = await Promise.all([
       db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM users WHERE syncStatus = ?', ['pending']),
-      db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM categories WHERE syncStatus = ?', ['pending']),
-      db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM inventory WHERE syncStatus = ?', ['pending']),
+      db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM chat_messages WHERE syncStatus = ?', ['pending']),
       db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM sales WHERE syncStatus = ?', ['pending']),
       db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM expenses WHERE syncStatus = ?', ['pending']),
       db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM activities WHERE syncStatus = ?', ['pending']),
@@ -2083,18 +1944,16 @@ export async function getPendingSummaryAndItems(limitPerTable = 50): Promise<Pen
     ]);
 
     result.totals.users = usersCount?.count || 0;
-    result.totals.categories = categoriesCount?.count || 0;
-    result.totals.inventory = inventoryCount?.count || 0;
+    result.totals.chatMessages = chatMessagesCount?.count || 0;
     result.totals.sales = salesCount?.count || 0;
     result.totals.expenses = expensesCount?.count || 0;
     result.totals.activities = activitiesCount?.count || 0;
     result.totals.deletions = deletionsCount?.count || 0;
-    result.totals.total = result.totals.users + result.totals.categories + result.totals.inventory + result.totals.sales + result.totals.expenses + result.totals.activities + result.totals.deletions;
+    result.totals.total = result.totals.users + result.totals.chatMessages + result.totals.sales + result.totals.expenses + result.totals.activities + result.totals.deletions;
 
-    const [pendingUsers, pendingCategories, pendingInventory, pendingSales, pendingExpenses, pendingActivities, pendingDeletions] = await Promise.all([
+    const [pendingUsers, pendingChatMessages, pendingSales, pendingExpenses, pendingActivities, pendingDeletions] = await Promise.all([
       db.getAllAsync<User>(`SELECT * FROM users WHERE syncStatus = 'pending' LIMIT ?`, [limitPerTable]),
-      db.getAllAsync<Category>(`SELECT * FROM categories WHERE syncStatus = 'pending' LIMIT ?`, [limitPerTable]),
-      db.getAllAsync<InventoryItem>(`SELECT * FROM inventory WHERE syncStatus = 'pending' LIMIT ?`, [limitPerTable]),
+      db.getAllAsync<ChatMessageRow>(`SELECT * FROM chat_messages WHERE syncStatus = 'pending' LIMIT ?`, [limitPerTable]),
       db.getAllAsync<Sale>(`SELECT * FROM sales WHERE syncStatus = 'pending' LIMIT ?`, [limitPerTable]),
       db.getAllAsync<Expense>(`SELECT * FROM expenses WHERE syncStatus = 'pending' LIMIT ?`, [limitPerTable]),
       db.getAllAsync<Activity>(`SELECT * FROM activities WHERE syncStatus = 'pending' LIMIT ?`, [limitPerTable]),
@@ -2104,11 +1963,13 @@ export async function getPendingSummaryAndItems(limitPerTable = 50): Promise<Pen
     result.itemsByTable.users = pendingUsers.map(u => ({
       id: u.id, pin: u.pin, name: u.name, role: u.role, syncStatus: u.syncStatus || 'pending', updatedAt: u.updatedAt,
     }));
-    result.itemsByTable.categories = pendingCategories.map(c => ({
-      id: c.id, name: c.name, syncStatus: c.syncStatus || 'pending', updatedAt: c.updatedAt,
-    }));
-    result.itemsByTable.inventory = pendingInventory.map(i => ({
-      id: i.id, name: i.name, createdBy: i.createdBy, categoryId: i.categoryId || '', syncStatus: i.syncStatus || 'pending', updatedAt: i.updatedAt,
+    result.itemsByTable.chatMessages = pendingChatMessages.map(message => ({
+      id: message.id,
+      userId: message.userId,
+      userName: message.userName,
+      messageText: message.messageText,
+      syncStatus: message.syncStatus || 'pending',
+      updatedAt: message.updatedAt,
     }));
     result.itemsByTable.sales = pendingSales.map(s => ({
       id: s.id, name: s.name, total: s.total, createdBy: s.createdBy, date: s.date, syncStatus: s.syncStatus || 'pending', updatedAt: s.updatedAt,

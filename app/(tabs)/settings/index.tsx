@@ -172,50 +172,29 @@ export default function SettingsScreen() {
           </View>
         )}
 
-        {pendingSummary.totals.categories > 0 && (
+        {pendingSummary.totals.chatMessages > 0 && (
           <View style={styles.tableGroup}>
             <TouchableOpacity
               style={styles.tableHeader}
-              onPress={() => toggleTableExpanded('categories')}
+              onPress={() => toggleTableExpanded('chatMessages')}
             >
-              {expandedTables.categories ? (
+              {expandedTables.chatMessages ? (
                 <ChevronDown color={theme.textMuted} size={16} />
               ) : (
                 <ChevronRight color={theme.textMuted} size={16} />
               )}
               <Text style={[styles.tableTitle, { color: theme.text }]}>
-                Categories ({pendingSummary.totals.categories})
+                Chat Messages ({pendingSummary.totals.chatMessages})
               </Text>
             </TouchableOpacity>
-            {expandedTables.categories && pendingSummary.itemsByTable.categories.map(item => (
+            {expandedTables.chatMessages && pendingSummary.itemsByTable.chatMessages.map(item => (
               <View key={item.id} style={[styles.pendingItem, { borderColor: theme.divider }]}>
-                <Text style={[styles.pendingItemName, { color: theme.text }]}>{item.name}</Text>
+                <Text style={[styles.pendingItemName, { color: theme.text }]}>{item.userName}</Text>
                 <Text style={[styles.pendingItemId, { color: theme.textMuted }]}>ID: {truncateId(item.id)}</Text>
-              </View>
-            ))}
-          </View>
-        )}
-
-        {pendingSummary.totals.inventory > 0 && (
-          <View style={styles.tableGroup}>
-            <TouchableOpacity
-              style={styles.tableHeader}
-              onPress={() => toggleTableExpanded('inventory')}
-            >
-              {expandedTables.inventory ? (
-                <ChevronDown color={theme.textMuted} size={16} />
-              ) : (
-                <ChevronRight color={theme.textMuted} size={16} />
-              )}
-              <Text style={[styles.tableTitle, { color: theme.text }]}>
-                Inventory ({pendingSummary.totals.inventory})
-              </Text>
-            </TouchableOpacity>
-            {expandedTables.inventory && pendingSummary.itemsByTable.inventory.map(item => (
-              <View key={item.id} style={[styles.pendingItem, { borderColor: theme.divider }]}>
-                <Text style={[styles.pendingItemName, { color: theme.text }]}>{item.name}</Text>
-                <Text style={[styles.pendingItemId, { color: theme.textMuted }]}>ID: {truncateId(item.id)}</Text>
-                <Text style={[styles.pendingItemMeta, { color: theme.warning }]}>created_by: {truncateId(item.createdBy)}</Text>
+                <Text style={[styles.pendingItemMeta, { color: theme.warning }]}>user_id: {truncateId(item.userId)}</Text>
+                <Text style={[styles.pendingItemMeta, { color: theme.textMuted }]} numberOfLines={2}>
+                  {item.messageText}
+                </Text>
               </View>
             ))}
           </View>
@@ -318,10 +297,9 @@ export default function SettingsScreen() {
                 <Text style={[styles.pendingItemName, { color: theme.text }]}>
                   {item.entityType === 'sale' && 'Deleted Sale'}
                   {item.entityType === 'expense' && 'Deleted Expense'}
-                  {item.entityType === 'inventory' && 'Deleted Inventory'}
-                  {item.entityType === 'category' && 'Deleted Category'}
                   {item.entityType === 'user' && 'Deleted User'}
                   {item.entityType === 'activity' && 'Deleted Activity'}
+                  {item.entityType === 'chat_message' && 'Deleted Chat Message'}
                 </Text>
                 <Text style={[styles.pendingItemId, { color: theme.textMuted }]}>ID: {truncateId(item.entityId)}</Text>
                 <Text style={[styles.pendingItemMeta, { color: theme.textMuted }]}>
@@ -1038,7 +1016,7 @@ export default function SettingsScreen() {
             <ScrollView style={styles.privacyBody} showsVerticalScrollIndicator={false}>
               <Text style={[styles.privacySection, { color: theme.text }]}>Data Collection</Text>
               <Text style={[styles.privacyText, { color: theme.textSecondary }]}>
-                MY Food Cart collects and stores data locally on your device including sales records, inventory items, expenses, and user profiles. This data is used solely for the purpose of managing your food cart business operations.
+                MY Food Cart collects and stores data locally on your device including sales records, chat messages, expenses, and user profiles. This data is used solely for the purpose of managing your food cart business operations.
               </Text>
 
               <Text style={[styles.privacySection, { color: theme.text }]}>Data Storage</Text>

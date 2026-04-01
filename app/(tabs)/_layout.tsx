@@ -1,7 +1,7 @@
 import { Tabs } from "expo-router";
-import { Home, Package, TrendingUp, User, Settings } from "lucide-react-native";
+import { Home, MessageCircle, TrendingUp, User, Settings } from "lucide-react-native";
 import React from "react";
-import { useWindowDimensions, View } from "react-native";
+import { Platform, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/contexts/AuthContext";
 import { useSync } from "@/contexts/SyncContext";
@@ -16,7 +16,7 @@ export default function TabLayout() {
   const isLandscape = width > height;
   const useLeftRailLayout = isLandscape && width >= 900;
   const tabBarPosition = useLeftRailLayout ? 'left' : 'bottom';
-  const useHorizontalTabBar = tabBarPosition === 'top' || tabBarPosition === 'bottom';
+  const useHorizontalTabBar = tabBarPosition === 'bottom';
 
   React.useEffect(() => {
     console.log('[PIN FLOW] Tabs layout resolved', {
@@ -70,7 +70,6 @@ export default function TabLayout() {
         tabBarStyle: {
           backgroundColor: theme.tabBar,
           borderTopColor: theme.tabBarBorder,
-          borderTopWidth: 1,
           display: 'flex',
           opacity: 1,
           overflow: 'visible',
@@ -100,6 +99,7 @@ export default function TabLayout() {
                 left: 0,
                 right: 0,
                 bottom: 0,
+                borderTopWidth: 1,
                 height: 80 + insets.bottom,
                 paddingBottom: insets.bottom,
                 paddingTop: 8,
@@ -150,14 +150,15 @@ export default function TabLayout() {
         options={{
           title: "Home",
           tabBarIcon: ({ color, size }) => renderTabIcon(Home, color, size),
-          href: isInventoryClerk ? null : "/(tabs)/home",
+          href: isInventoryClerk ? null : "/home",
         }}
       />
       <Tabs.Screen
-        name="inventory"
+        name="chat"
         options={{
-          title: "Inventory",
-          tabBarIcon: ({ color, size }) => renderTabIcon(Package, color, size),
+          title: "Chat",
+          tabBarIcon: ({ color, size }) => renderTabIcon(MessageCircle, color, size),
+          tabBarHideOnKeyboard: Platform.OS === 'android',
         }}
       />
       <Tabs.Screen
@@ -165,7 +166,7 @@ export default function TabLayout() {
         options={{
           title: "Sales",
           tabBarIcon: ({ color, size }) => renderTabIcon(TrendingUp, color, size),
-          href: isInventoryClerk ? null : "/(tabs)/sales",
+          href: isInventoryClerk ? null : "/sales",
         }}
       />
       <Tabs.Screen

@@ -135,7 +135,6 @@ export default function SalesScreen() {
     foodCart: foodCartPercent,
     includeExp: includeExpenses,
   });
-  const effectiveNetSales = splitAmounts.base;
   const operationManagerAmount = splitAmounts.operation;
   const generalManagerAmount = splitAmounts.general;
   const foodCartAmount = splitAmounts.foodCart;
@@ -380,7 +379,7 @@ export default function SalesScreen() {
       } else {
         Alert.alert('Sync failed', 'We could not sync all items. Please try again.');
       }
-    } catch (error) {
+    } catch {
       Alert.alert('Sync failed', 'We could not sync your pending items. Please try again.');
     } finally {
       setIsSyncingPending(false);

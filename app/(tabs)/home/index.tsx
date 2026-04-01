@@ -18,13 +18,13 @@ import { Package, ShoppingCart, User, Settings, RefreshCw } from 'lucide-react-n
 import { useQuery } from '@tanstack/react-query';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Print from 'expo-print';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as MailComposer from 'expo-mail-composer';
 import * as Sharing from 'expo-sharing';
 import { useAuth } from '@/contexts/AuthContext';
 import { Colors } from '@/constants/colors';
 
-import { useRouter } from 'expo-router';
+import { Href, useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { formatCurrency, ROLE_DISPLAY_NAMES, UserRole } from '@/types';
@@ -134,14 +134,10 @@ export default function HomeScreen() {
 
   useEffect(() => {
     if (currentUser?.role === 'inventory_clerk') {
-      console.log('Inventory clerk detected on Home screen, redirecting to Inventory');
-      router.replace('/(tabs)/inventory');
+      console.log('Inventory clerk detected on Home screen, redirecting to Chat');
+      router.replace('/chat' as Href);
     }
   }, [currentUser, router]);
-
-  if (currentUser?.role === 'inventory_clerk') {
-    return null;
-  }
   const [selectedWeek, setSelectedWeek] = useState(0);
   const [selectedMonthIndex, setSelectedMonthIndex] = useState(new Date().getMonth());
   const [refreshing, setRefreshing] = useState(false);
@@ -499,7 +495,11 @@ export default function HomeScreen() {
         return;
       }
 
-      const buttons = [
+      const buttons: {
+        text: string;
+        onPress?: () => void;
+        style?: 'default' | 'cancel' | 'destructive';
+      }[] = [
         { text: 'Cancel', style: 'cancel' as const },
       ];
 

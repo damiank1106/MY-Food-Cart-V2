@@ -134,7 +134,7 @@ export default function ExpenseModal({ visible, theme, onClose, onSubmit }: Expe
       });
       resetForm();
       onClose();
-    } catch (error) {
+    } catch {
       setValidationError('Unable to save expense. Please try again.');
     }
   }, [expenseItems, expenseItemsTotal, expenseName, expenseTotal, onClose, onSubmit, resetForm]);

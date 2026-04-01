@@ -12,29 +12,6 @@ export interface User {
   syncStatus: 'synced' | 'pending';
 }
 
-export interface Category {
-  id: string;
-  name: string;
-  createdAt: string;
-  updatedAt: string;
-  syncStatus: 'synced' | 'pending';
-}
-
-export type UnitType = 'pcs' | 'kg' | 'g' | 'L' | 'mL' | 'bundle' | 'pack';
-
-export interface InventoryItem {
-  id: string;
-  name: string;
-  categoryId: string | null;
-  unit: UnitType;
-  price: number;
-  quantity: number;
-  createdAt: string;
-  updatedAt: string;
-  createdBy: string;
-  syncStatus: 'synced' | 'pending';
-}
-
 export interface Sale {
   id: string;
   name: string;
@@ -65,6 +42,18 @@ export interface Expense {
   syncStatus: 'synced' | 'pending';
 }
 
+export interface ChatMessage {
+  id: string;
+  userId: string;
+  userName: string;
+  userAvatarUrl?: string | null;
+  localAvatarUri?: string | null;
+  messageText: string;
+  createdAt: string;
+  updatedAt: string;
+  syncStatus: 'synced' | 'pending';
+}
+
 export type ActivityType = 'inventory_add' | 'inventory_update' | 'inventory_delete' | 'sale_add' | 'expense_add' | 'profile_update' | 'settings_change';
 
 export interface Activity {
@@ -76,7 +65,7 @@ export interface Activity {
   syncStatus: 'synced' | 'pending';
 }
 
-export type OutboxEntityType = 'sale' | 'expense' | 'inventory' | 'category' | 'user' | 'activity';
+export type OutboxEntityType = 'sale' | 'expense' | 'user' | 'activity' | 'chat_message';
 
 export type OutboxOperation = 'upsert' | 'delete';
 
@@ -106,10 +95,6 @@ export interface AppSettings {
   backgroundIntensity: BackgroundIntensity;
   weeklyDayLabelSpacing?: number;
 }
-
-export const DEFAULT_CATEGORIES: string[] = ['Cart', 'Freezer', 'Condiments', 'Packing Supply'];
-
-export const UNITS: UnitType[] = ['pcs', 'kg', 'g', 'L', 'mL', 'bundle', 'pack'];
 
 export const ROLE_DISPLAY_NAMES: Record<UserRole, string> = {
   general_manager: 'Assistant Cook',

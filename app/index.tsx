@@ -7,7 +7,7 @@ import {
   ActivityIndicator,
   useWindowDimensions,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { Href, useRouter } from 'expo-router';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { ChevronRight } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -41,7 +41,7 @@ export default function IntroScreen() {
     if (!isLoading && isInitialized) {
       if (settings.hasSeenIntro) {
         if (user) {
-          const targetRoute = user.role === 'inventory_clerk' ? '/(tabs)/inventory' : '/(tabs)/home';
+          const targetRoute = (user.role === 'inventory_clerk' ? '/chat' : '/home') as Href;
           console.log('[PIN FLOW] Intro auth redirect to:', targetRoute);
           router.replace(targetRoute);
         } else {
